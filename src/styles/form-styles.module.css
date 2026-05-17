@@ -1,0 +1,105 @@
+.formGroup {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  width: max-content;
+}
+
+.formLabel {
+  font-weight: 600;
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.statesGroup {
+  width: 25%;
+}
+.submitButton {
+  border: none;
+  padding: 0.5rem 1rem;
+  color: #fff;
+  background-color: var(--theme-color);
+  width: max-content;
+  -webkit-border-radius: 5px;
+  -moz-border-radius: 5px;
+  -ms-border-radius: 5px;
+  -o-border-radius: 5px;
+  border-radius: 5px;
+}
+
+.submitButton:hover {
+  background-color: var(--color-hover-dark);
+}
+
+.datesGroup {
+  width: max-content;
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 10px;
+}
+
+.buttonGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: max-content;
+}
+
+@media (max-width: 988px) {
+  .statesGroup {
+    width: 100%;
+  }
+  .datesGroup {
+    width: max-content;
+  }
+}
+
+@media (max-width: 768px) {
+  .LocationGroup {
+    width: 100%;
+  }
+  .datesGroup {
+    width: 100%;
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .dates-group {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .formGroup {
+    width: 100%;
+  }
+
+  .MuiFormControl-root {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 367px) {
+  .buttonGroup {
+    display: flex;
+    flex-wrap: wrap !important;
+    width: 100%;
+  }
+}

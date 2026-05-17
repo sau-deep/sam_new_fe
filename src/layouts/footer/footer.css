@@ -1,0 +1,155 @@
+.amb-footer {
+  width: 100%;
+  padding: 5px 5%;
+  background: #1c1d1d;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  height: max-content;
+  gap: 10px;
+  position: fixed;
+  bottom: 0;
+  z-index: 100;
+}
+
+/* Mobile responsive footer */
+@media (max-width: 768px) {
+  .amb-footer {
+    padding: 8px 3%;
+    gap: 8px;
+  }
+  
+  .amb-logo-unicef,
+  .amb-logo-ieg {
+    height: 18px;
+  }
+  
+  .team-button {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .amb-footer {
+    padding: 6px 2%;
+    gap: 6px;
+  }
+  
+  .amb-logo-unicef,
+  .amb-logo-ieg {
+    height: 16px;
+  }
+  
+  .team-button {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
+
+.amb-logo-unicef {
+  width: 100%;
+  height: 20px;
+}
+
+.amb-logo-nutrition {
+  width: 100%;
+  height: 20px;
+}
+
+.amb-logo-ieg {
+  width: 100%;
+  height: 20px;
+}
+
+.team-button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.team-button:hover {
+  background: #0056b3;
+}
+
+.team-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.team-modal {
+  background: white;
+  border-radius: 8px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.team-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.team-modal-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-button:hover {
+  color: #000;
+}
+
+.team-modal-content {
+  padding: 20px;
+}
+
+.team-member {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.team-member:last-child {
+  margin-bottom: 0;
+}
+
+.team-member strong {
+  color: #007bff;
+  font-size: 16px;
+}

@@ -1,0 +1,62 @@
+name: Deploy SAM v2 (New UI) to AWS S3 + CloudFront /v2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-sam-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  BUCKET_NAME: coecmamsupport.com
+  CLOUDFRONT_DISTRIBUTION_ID: E4L4PA4P2IR55
+  WEBSITE_URL: https://coecmamsupport.com/v2
+  NODE_VERSION: "18"
+
+jobs:
+  deploy:
+    name: Build & Deploy SAM v2
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build & Deploy to S3 /v2 + invalidate CloudFront
+        env:
+          CI: "false"
+          AWS_PROFILE: ""
+          BUCKET_NAME: ${{ env.BUCKET_NAME }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          WEBSITE_URL: ${{ env.WEBSITE_URL }}
+        run: |
+          chmod +x ./deploy-to-aws.sh
+          ./deploy-to-aws.sh
+
+      - name: Deployment summary
+        run: |
+          echo "## SAM v2 deployment complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: ${{ env.WEBSITE_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- S3 prefix: s3://${{ env.BUCKET_NAME }}/v2/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- CloudFront distribution: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" >> "$GITHUB_STEP_SUMMARY"

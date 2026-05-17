@@ -1,0 +1,356 @@
+{
+  "survey": {
+    "title": "EMPLOYEE SATISFACTION & ENGAGEMENT SURVEY – 2025",
+    "subtitle": "Thank you for helping us shape an even better workplace. Your answers are confidential and reported only in aggregate.",
+    "estimatedTime": "Estimated time: 7–10 minutes",
+    "language": "Language",
+    "submit": "Submit Survey",
+    "reset": "Reset Form",
+    "sections": {
+      "overall": "OVERALL JOB SATISFACTION & ENGAGEMENT",
+      "environment": "WORK ENVIRONMENT & CULTURE", 
+      "leadership": "LEADERSHIP & MANAGEMENT EXCELLENCE",
+      "growth": "CAREER GROWTH & DEVELOPMENT",
+      "compensation": "COMPENSATION & TOTAL REWARDS",
+      "technology": "TECHNOLOGY & DIGITAL ENABLEMENT",
+      "worklife": "WORK-LIFE INTEGRATION & WELLBEING",
+      "innovation": "INNOVATION & FUTURE FOCUS",
+      "communication": "COMMUNICATION & INFORMATION FLOW",
+      "recognition": "RECOGNITION & PERFORMANCE",
+      "onboarding": "ONBOARDING EXPERIENCE",
+      "future": "FUTURE OUTLOOK",
+      "insights": "OPEN-ENDED INSIGHTS"
+    },
+    "questions": {
+      "q1": "How often do you feel enthusiastic and motivated about your work at BEL?",
+      "q2": "On a scale of 1-10, how likely are you to recommend  BEL as a great place to work? (Net Promoter Score)",
+      "q2a": "If you gave a score of 8 or below, what would move us closer to a 10?",
+      "q3": "Which statement best describes your current job satisfaction?",
+      "q3a": "If you selected \"somewhat dissatisfied\" or \"actively looking,\" what are the main reasons?",
+      "q4": "Rate the following aspects of our workplace culture (1=Poor, 5=Excellent):",
+      "q4_psychological": "Psychological safety",
+      "q4_innovation": "Innovation encouragement", 
+      "q4_diversity": "Diversity & inclusion",
+      "q4_communication": "Open communication",
+      "q4_trust": "Trust among colleagues",
+      "q5": "Which best describes your sense of belonging at work?",
+      "q6": "Which three words best describe our company culture? (Please select up to three)",
+      "q7": "I feel part of a team(inter-department) working together for a shared vision",
+      "q8": "My direct manager... (Select all that apply)",
+      "q9": "I have a clear understanding of my role and how it contributes to the company's goals and growth of the Unit.",
+      "q10": "Rate senior leadership's effectiveness in:",
+      "q10_vision": "Vision & strategy communication",
+      "q10_transparency": "Transparency in decision-making", 
+      "q10_feedback": "Acting on employee feedback",
+      "q10_change": "Leading through change",
+      "q11": "Do you have a clear understanding of your career path at BEL?",
+      "q11a": "If unclear/no path, what support do you need?",
+      "q12": "In the past year, how many hours of professional development have you received?",
+      "q13": "Rank your top 3 development priorities (1=highest priority):",
+      "q14": "Rate the quality of development opportunities available:",
+      "q15": "How fairly compensated do you feel relative to:",
+      "q15_market": "Similar roles in the market",
+      "q15_contributions": "Your contributions to BEL",
+      "q15_colleagues": "Colleagues in similar roles",
+      "q16": "Rank your top 3 benefits (1=most important):",
+      "q17": "Is there one new benefit you would like us to consider adding?",
+      "q18": "The technology tools I use for work are:",
+      "q19": "How well does our technology enable you to:",
+      "q19_efficiency": "Work efficiently",
+      "q19_collaborate": "Collaborate with colleagues",
+      "q19_customers": "Serve customers effectively", 
+      "q19_information": "Access information quickly",
+      "q20": "My current work-life balance is:",
+      "q21": "I am able to disconnect from work-related duties outside of my working hours.",
+      "q22": "How effectively does the BEL support your mental health and wellbeing?",
+      "q22a": "What additional wellbeing support would be valuable?",
+      "q23": "How encouraged do you feel to share new ideas and suggestions?",
+      "q24": "Rate our organization's capability in:",
+      "q24_market": "Adapting to market changes",
+      "q24_technology": "Technology adoption",
+      "q24_innovation": "Innovation culture",
+      "q24_digital": "Digital transformation",
+      "q25": "What's the biggest barrier to innovation in your area?",
+      "q26": "How do you prefer to receive BEL updates? (Select top 2)",
+      "q27": "Rate the effectiveness of communication about:",
+      "q27_strategy": "Company strategy and goals",
+      "q27_changes": "Changes affecting your role",
+      "q27_performance": "Performance expectations",
+      "q27_recognition": "Recognition and achievements",
+      "q28": "How often do you receive recognition for your contributions?",
+      "q29": "Which forms of recognition are most meaningful to you? (Select top 3)",
+      "q30": "Do you feel your performance is evaluated fairly and accurately?",
+      "q30a": "How could our performance review process be improved?",
+      "q31": "How would you rate your onboarding experience(induction/on-the job training) overall?",
+      "q32": "Did you receive the necessary resources and training to feel successful when you first started working?",
+      "q33": "How long did it take you to feel fully productive in your role?",
+      "q33a": "What would have accelerated your time to productivity?",
+      "q34": "Do you see yourself working at  BEL FIVE years from now?",
+      "q35": "If you plan to stay, what are the main reasons? (Select all that apply if you answered 'Yes' or 'Probably')",
+      "q36": "If you are unsure or considering leaving, what factors are influencing your decision? (Optional, select all that apply)",
+      "q37": "If you were CMD for a day, What is the first thing(any one) you would change in BEL?",
+      "q38": "What would make you more effective in your role?",
+      "q39": "List 3 things which you find good in the BEL-GAD unit.",
+      "q40": "List 3 things which you would like to change in the BEL-GAD unit.",
+      "q41": "Any other feedback or suggestions?"
+    },
+    "options": {
+      "frequency": {
+        "always": "Always (Every day)",
+        "very_often": "Very Often (4-5 days a week)",
+        "often": "Often (2-3 days a week)",
+        "sometimes": "Sometimes (Once a week)",
+        "rarely": "Rarely (Few times a month)",
+        "never": "Never"
+      },
+      "nps": {
+        "0": "0", "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
+        "6": "6", "7": "7", "8": "8", "9": "9", "10": "😍 10"
+      },
+      "satisfaction": {
+        "love_job": "I love my job and look forward to coming to work",
+        "generally_satisfied": "I'm generally satisfied with my work", 
+        "meets_needs": "My job meets my basic needs",
+        "somewhat_dissatisfied": "I'm somewhat dissatisfied with my work",
+        "looking_opportunities": "I'm actively looking for other opportunities"
+      },
+      "rating_1_5": {
+        "1": "😞 1 - Poor",
+        "2": "😕 2 - Below Average", 
+        "3": "😐 3 - Average",
+        "4": "😊 4 - Good",
+        "5": "😍 5 - Excellent"
+      },
+      "belonging": {
+        "truly_belong": "I feel like I truly belong and can be my authentic self",
+        "generally_included": "I generally feel included but sometimes feel like an outsider",
+        "dont_fit": "I often feel like I don't quite fit in",
+        "excluded": "I feel excluded or isolated"
+      },
+      "culture_words": {
+        "collaborative": "🤝 Collaborative",
+        "competitive": "🏆 Competitive", 
+        "innovative": "💡 Innovative",
+        "hierarchical": "📊 Hierarchical",
+        "flexible": "🤸 Flexible",
+        "fast_paced": "⚡ Fast-paced",
+        "supportive": "🤗 Supportive",
+        "inclusive": "🌈 Inclusive",
+        "transparent": "🔍 Transparent",
+        "bureaucratic": "📋 Bureaucratic"
+      },
+      "agreement": {
+        "strongly_agree": "Strongly Agree",
+        "agree": "Agree",
+        "neutral": "Neutral",
+        "disagree": "Disagree",
+        "strongly_disagree": "Strongly Disagree"
+      },
+      "manager_qualities": {
+        "clear_direction": "🎯 Provides clear direction and priorities",
+        "recognizes": "👏 Recognizes and appreciates my contributions",
+        "supports_development": "📈 Supports my professional development",
+        "gives_feedback": "💬 Gives constructive feedback regularly",
+        "trusts_decisions": "🤝 Trusts me to make decisions in my role",
+        "available": "📞 Is available when I need guidance",
+        "demonstrates_values": "⭐ Demonstrates company values consistently",
+        "none": "❌ None of the above"
+      },
+      "grades": {
+        "a_plus": "A+",
+        "a": "A",
+        "b": "B", 
+        "c": "C",
+        "d": "D"
+      },
+      "career_clarity": {
+        "very_clear": "😍 Yes, very clear",
+        "somewhat_clear": "😊 Somewhat clear",
+        "unclear": "😕 Unclear", 
+        "no_path": "😞 No path exists"
+      },
+      "development_hours": {
+        "0": "😞 0 hours",
+        "1_10": "😕 1-10 hours",
+        "11_25": "😐 11-25 hours",
+        "26_50": "😊 26-50 hours", 
+        "50_plus": "😍 50+ hours"
+      },
+      "development_priorities": {
+        "technical": "💻 Technical/functional skills",
+        "leadership": "👑 Leadership and management training",
+        "digital": "📱 Digital/technology skills",
+        "communication": "💬 Communication and presentation skills",
+        "project_management": "📊 Project management",
+        "cross_functional": "🔄 Cross-functional experience",
+        "mentoring": "🤝 Mentoring/coaching",
+        "certifications": "🏆 Industry certifications"
+      },
+      "quality_rating": {
+        "world_class": "🌟 World-class",
+        "above_average": "😍 Above average",
+        "average": "😐 Average",
+        "below_average": "😕 Below average",
+        "poor": "😞 Poor"
+      },
+      "compensation": {
+        "much_above": "😍 Much above",
+        "above": "😊 Above", 
+        "fair": "😐 Fair",
+        "below": "😕 Below",
+        "much_below": "😞 Much below"
+      },
+      "benefits": {
+        "medical": "🏥 Medical policy",
+        "pension": "💰 Pension scheme", 
+        "retired_health": "👴 Retired employee health scheme",
+        "besafe": "🛡️ BESAFE Scheme",
+        "leaves": "🏖️ Number of leaves granted",
+        "prp_ppi": "💵 PRP/PPI",
+        "creche": "👶 Creche facility",
+        "quarters": "🏠 Company quarters",
+        "iut": "🎓 IUT Benefits",
+        "club": "🎾 Club facility",
+        "canteen": "🍽️ Canteen"
+      },
+      "technology": {
+        "cutting_edge": "🚀 Cutting-edge and give us competitive advantage",
+        "modern": "😍 Modern and meet my needs well",
+        "adequate": "😐 Adequate but could be better", 
+        "outdated": "😕 Outdated and slow me down",
+        "hindering": "😞 Seriously hindering my productivity"
+      },
+      "effectiveness": {
+        "excellent": "😍 Excellent",
+        "good": "😊 Good",
+        "fair": "😐 Fair",
+        "poor": "😞 Poor"
+      },
+      "work_life": {
+        "excellent": "😍 Excellent - I have great flexibility and boundaries",
+        "good": "😊 Good - Generally manageable with occasional stress",
+        "fair": "😐 Fair - Sometimes struggle but usually cope",
+        "poor": "😕 Poor - Often stressed and overworked",
+        "terrible": "😞 Terrible - Constantly overwhelmed"
+      },
+      "wellbeing_support": {
+        "outstanding": "🌟 Outstanding support",
+        "good": "😍 Good support",
+        "some": "😐 Some support",
+        "limited": "😕 Limited support",
+        "no_support": "😞 No support"
+      },
+      "idea_encouragement": {
+        "highly_encouraged": "Highly encouraged - ideas are welcomed and acted upon",
+        "somewhat_encouraged": "Somewhat encouraged - ideas are heard but not always acted upon",
+        "discouraged": "Discouraged - ideas are rarely welcomed or considered",
+        "strongly_discouraged": "Strongly discouraged - better to keep ideas to myself"
+      },
+      "capability": {
+        "leading": "🥇 Leading",
+        "following": "😊 Following",
+        "lagging": "😕 Lagging",
+        "struggling": "😞 Struggling"
+      },
+      "innovation_barriers": {
+        "time_resources": "Lack of time/resources",
+        "risk_averse": "Risk-averse culture",
+        "unclear_processes": "Unclear processes",
+        "insufficient_funding": "Insufficient funding",
+        "lack_support": "Lack of leadership support",
+        "skills_gaps": "Skills/capability gaps"
+      },
+      "communication_preferences": {
+        "email": "📧 Email/Email newsletters",
+        "meetings": "👥 Team meetings",
+        "notice_board": "📋 Notice board",
+        "digital_platforms": "💻 Digital workplace platforms/BEL Sampark/SAMVAD/BEL Jharokha",
+        "video_messages": "📹 Video messages from leadership",
+        "presentations": "📊 Department presentations",
+        "one_on_one": "👤 One-on-one with manager"
+      },
+      "recognition_frequency": {
+        "daily": "😍 Daily",
+        "weekly": "😊 Weekly",
+        "monthly": "😐 Monthly",
+        "quarterly": "😕 Quarterly",
+        "annually": "😞 Annually",
+        "rarely": "😞 Rarely/Never"
+      },
+      "recognition_forms": {
+        "public_praise": "👏 Public praise from manager/leadership",
+        "thank_you_notes": "💌 Written thank you notes",
+        "monetary": "💰 Monetary rewards/bonuses",
+        "development": "📈 Professional development opportunities",
+        "responsibilities": "📊 Increased responsibilities/stretch assignments",
+        "peer_awards": "🏆 Peer nominations/awards",
+        "advancement": "⬆️ Career advancement"
+      },
+      "performance_fairness": {
+        "completely_fair": "Yes, completely fair",
+        "mostly_fair": "Mostly fair",
+        "somewhat_fair": "Somewhat fair",
+        "unfair": "Unfair",
+        "very_unfair": "Very unfair"
+      },
+      "onboarding": {
+        "exceptional": "Exceptional - set me up for success",
+        "good": "Good - adequate preparation",
+        "average": "Average - basic coverage",
+        "poor": "Poor - gaps in preparation",
+        "terrible": "Terrible - unprepared for role"
+      },
+      "resources_training": {
+        "had_everything": "Yes, I had everything I needed.",
+        "had_most": "I had most of what I needed.",
+        "missing_few": "I was missing a few key things.",
+        "did_not_have": "I did not have the resources and training I needed."
+      },
+      "productivity_time": {
+        "1_2_months": "😍 1-2 months",
+        "3_4_months": "😊 3-4 months",
+        "5_6_months": "😐 5-6 months",
+        "still_not": "😞 Still not there"
+      },
+      "future_outlook": {
+        "yes_definitely": "Yes, definitely",
+        "probably": "Probably",
+        "unsure": "Unsure",
+        "probably_not": "Probably not",
+        "definitely_not": "Definitely not"
+      },
+      "stay_reasons": {
+        "meaningful_work": "💖 My work is meaningful and enjoyable.",
+        "great_relationships": "🤝 I have a great relationship with my manager and team.",
+        "satisfied_compensation": "💰 I am satisfied with my compensation and benefits.",
+        "growth_opportunities": "📈 I see strong opportunities for career growth.",
+        "believe_mission": "🎯 I believe in the company's mission and leadership.",
+        "culture_fit": "🌟 The company culture is a great fit for me."
+      },
+      "leaving_factors": {
+        "compensation_concerns": "💰 Concerns about compensation or benefits.",
+        "lack_growth": "📈 Lack of career growth opportunities.",
+        "management_issues": "👔 Dissatisfaction with management or leadership.",
+        "work_not_engaging": "😐 The work is not engaging or meaningful.",
+        "culture_issues": "🏢 Issues with company culture or work environment.",
+        "better_opportunities": "🌟 Better opportunities elsewhere.",
+        "work_life_balance": "⚖️ Poor work-life balance."
+      }
+    },
+    "placeholders": {
+      "text_response": "Please provide your response...",
+      "list_item": "Item",
+      "other_specify": "Please specify..."
+    },
+    "validation": {
+      "required": "This field is required",
+      "select_max": "Please select maximum {{max}} options",
+      "select_min": "Please select at least {{min}} options"
+    }
+  },
+  "footer": {
+    "version": "Version",
+    "copyright": "© 2025 Bharat Electronics Limited. All rights reserved.",
+    "thank_you": "Thank you for your time and honesty! Your input guides our next steps toward an even better employee experience."
+  }
+}

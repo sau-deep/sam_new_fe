@@ -1,0 +1,256 @@
+/* Status Box Styles */
+.statusBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: all 0.3s ease;
+  min-width: 80px;
+}
+
+.statusBox:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.statusLabel {
+  color: rgba(255, 255, 255, 0.8) !important;
+  font-weight: 600 !important;
+  font-size: 0.7rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 !important;
+}
+
+.statusIcons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.statusIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Offline Mode Styles - Single indicator in green */
+.statusIcon.offlineMode {
+  width: auto;
+  min-width: 90px;
+  height: auto;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(39, 174, 96, 0.2) !important;
+  border: 2px solid rgba(39, 174, 96, 0.3) !important;
+  color: #27ae60 !important;
+}
+
+.statusIcon.offlineMode:hover {
+  transform: none;
+  background: rgba(39, 174, 96, 0.3) !important;
+  border-color: rgba(39, 174, 96, 0.5) !important;
+}
+
+.statusIcon.offlineMode::before {
+  display: none;
+}
+
+.statusIcon:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Network Status Styles */
+.statusIcon.online {
+  background: rgba(39, 174, 96, 0.2);
+  color: #27ae60;
+  border: 2px solid rgba(39, 174, 96, 0.3);
+}
+
+.statusIcon.online:hover {
+  background: rgba(39, 174, 96, 0.3);
+  border-color: rgba(39, 174, 96, 0.5);
+}
+
+.statusIcon.offline {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+  border: 2px solid rgba(231, 76, 60, 0.3);
+}
+
+.statusIcon.offline:hover {
+  background: rgba(231, 76, 60, 0.3);
+  border-color: rgba(231, 76, 60, 0.5);
+}
+
+/* Location Status Styles */
+.statusIcon.location {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--status-color, #f39c12);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.statusIcon.location:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--status-color, #f39c12);
+}
+
+/* Offline Text Styles */
+.offlineText {
+  color: #27ae60 !important;
+  font-size: 0.65rem !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 !important;
+  line-height: 1.2;
+}
+
+/* Status Icon Animations */
+.statusIcon.online::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(39, 174, 96, 0.3);
+  transform: translate(-50%, -50%) scale(0);
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+.statusIcon.location::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--status-color, #f39c12);
+  opacity: 0.3;
+  transform: translate(-50%, -50%) scale(0);
+  animation: pulse-location 2s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-location {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+  .statusBox {
+    padding: 6px 10px;
+    min-width: 70px;
+  }
+  
+  .statusLabel {
+    font-size: 0.65rem !important;
+  }
+  
+  .statusIcon {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .statusIcon.offlineMode {
+    min-width: 80px;
+    padding: 5px 8px;
+  }
+  
+  .offlineText {
+    font-size: 0.6rem !important;
+  }
+  
+  .statusIcons {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .statusBox {
+    padding: 4px 8px;
+    min-width: 60px;
+  }
+  
+  .statusLabel {
+    font-size: 0.6rem !important;
+  }
+  
+  .statusIcon {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .statusIcon.offlineMode {
+    min-width: 70px;
+    padding: 4px 6px;
+  }
+  
+  .offlineText {
+    font-size: 0.55rem !important;
+  }
+  
+  .statusIcons {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 300px) {
+  .statusBox {
+    padding: 3px 6px;
+    min-width: 50px;
+  }
+  
+  .statusLabel {
+    display: none; /* Hide label on very small screens */
+  }
+  
+  .statusIcon {
+    width: 22px;
+    height: 22px;
+  }
+  
+  .statusIcon.offlineMode {
+    min-width: 60px;
+    padding: 3px 5px;
+  }
+  
+  .offlineText {
+    font-size: 0.5rem !important;
+  }
+}

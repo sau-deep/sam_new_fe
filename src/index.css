@@ -1,0 +1,100 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #F5F7FA;
+  color: #374151;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --unicef-blue: #1CABE2;
+  --unicef-dark: #002147;
+  --unicef-navy: #374EA2;
+  --unicef-orange: #F26A21;
+  --unicef-green: #80BD41;
+  --unicef-yellow: #FFC20E;
+  --unicef-red: #E2231A;
+  --sidebar-width: 260px;
+  --sidebar-collapsed: 80px;
+  --header-height: 64px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Ant Design overrides */
+.ant-layout-sider { min-height: 100vh; }
+.ant-menu-dark .ant-menu-item-selected { background-color: #1CABE2 !important; }
+.ant-card { border-radius: 12px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important; }
+.ant-btn-primary { background: #1CABE2 !important; border-color: #1CABE2 !important; }
+.ant-btn-primary:hover { background: #0E8BBD !important; border-color: #0E8BBD !important; }
+
+/* Stat cards */
+.stat-card { border-radius: 16px !important; overflow: hidden; }
+.stat-card .ant-card-body { padding: 24px; }
+
+/* Page wrapper */
+.page-container { padding: 24px; max-width: 1600px; }
+
+/* India Map */
+.india-map svg { width: 100%; height: auto; }
+
+/* Leaflet fix */
+.leaflet-container { height: 100%; width: 100%; }
+
+/* Login page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  background: linear-gradient(135deg, #002147 0%, #1CABE2 50%, #374EA2 100%);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .page-container { padding: 12px; }
+  .ant-card { border-radius: 8px !important; }
+}
+
+/* Pulse animation for online/offline */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.pulse { animation: pulse 2s infinite; }
+
+/* Gradient badges */
+.badge-admin { background: linear-gradient(135deg, #667eea, #764ba2); }
+.badge-unicef { background: linear-gradient(135deg, #1CABE2, #374EA2); }
+.badge-state { background: linear-gradient(135deg, #80BD41, #1CABE2); }
+.badge-surveyor { background: linear-gradient(135deg, #F26A21, #FFC20E); }
+
+/* Table striped */
+.ant-table-tbody > tr:nth-child(even) > td { background: #f8fafc; }
+
+/* Form sections */
+.form-section { background: white; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.form-section-title { font-size: 16px; font-weight: 600; color: #002147; border-bottom: 2px solid #1CABE2; padding-bottom: 12px; margin-bottom: 20px; }
+
+/* Surveyor mobile-centered view */
+.surveyor-mobile-view {
+  max-width: 430px;
+  margin: 0 auto;
+  width: 100%;
+  background: #F5F7FA;
+}
+
+@media (min-width: 500px) {
+  .surveyor-mobile-view {
+    box-shadow: 0 0 40px rgba(0,0,0,0.10);
+    min-height: calc(100vh - 64px);
+    background: white;
+  }
+}
+
+@media (max-width: 430px) {
+  .surveyor-mobile-view {
+    max-width: 100%;
+    margin: 0;
+  }
+}
