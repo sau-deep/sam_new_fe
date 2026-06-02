@@ -1,13 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Form, Input, Button, message, Select, Typography, Divider, Spin } from "antd";
-import { UserOutlined, LockOutlined, GlobalOutlined, SafetyOutlined } from "@ant-design/icons";
+import { Form, Input, Button, message, Select } from "antd";
+import { UserOutlined, LockOutlined, GlobalOutlined, SafetyOutlined, CheckCircleFilled } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "react-i18next";
 import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
 
-const { Title, Text } = Typography;
 const { Option } = Select;
 
 const LANGUAGES = [
@@ -15,11 +14,13 @@ const LANGUAGES = [
   { code: "hi", label: "हिंदी" },
 ];
 
-const HERO_STATS = [
-  { value: "6+", label: "States Covered" },
-  { value: "10K+", label: "Surveys Conducted" },
-  { value: "500+", label: "Surveyors Active" },
-  { value: "50K+", label: "Children Assessed" },
+const SUPPORT_WA = "https://wa.me/917701816408?text=Hello%2C%20I%20need%20support%20with%20the%20SAM%20Platform%20login.";
+
+const FEATURES = [
+  "Real-time data collection",
+  "Offline form support",
+  "Multi-language interface",
+  "Role-based access control",
 ];
 
 export default function Login() {
@@ -28,8 +29,10 @@ export default function Login() {
   const location = useLocation();
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
 
-  // Redirect already-authenticated users to their dashboard
+  const from = location.state?.from?.pathname || "/dashboard";
+
   useEffect(() => {
     if (!authLoading && user) {
       if (isAdmin() || isUnicef()) navigate("/dashboard/admin", { replace: true });
@@ -37,9 +40,6 @@ export default function Login() {
       else navigate("/surveys", { replace: true });
     }
   }, [authLoading, user, isAdmin, isUnicef, isStateAdmin, isSurveyor, navigate]);
-  const [form] = Form.useForm();
-
-  const from = location.state?.from?.pathname || "/dashboard";
 
   const handleSubmit = async (values) => {
     setLoading(true);
@@ -51,13 +51,13 @@ export default function Login() {
       if (data.success) {
         login(data.data);
         const roles = data.data.authorities || [];
-        const isAdmin = roles.some((r) => r === ROLES.ADMIN || r.authority === ROLES.ADMIN);
-        const isUnicef = roles.some((r) => r === ROLES.UNICEF || r.authority === ROLES.UNICEF);
+        const isAdminRole = roles.some((r) => r === ROLES.ADMIN || r.authority === ROLES.ADMIN);
+        const isUnicefRole = roles.some((r) => r === ROLES.UNICEF || r.authority === ROLES.UNICEF);
         const isState = roles.some((r) => r === ROLES.STATE || r.authority === ROLES.STATE);
-        const isSurveyor = roles.some((r) => r === ROLES.SURVEYOR || r.authority === ROLES.SURVEYOR);
-        if (isAdmin || isUnicef) navigate("/dashboard/admin");
+        const isSurveyorRole = roles.some((r) => r === ROLES.SURVEYOR || r.authority === ROLES.SURVEYOR);
+        if (isAdminRole || isUnicefRole) navigate("/dashboard/admin");
         else if (isState) navigate("/dashboard/state");
-        else if (isSurveyor) navigate("/surveys");
+        else if (isSurveyorRole) navigate("/surveys");
         else navigate(from);
       } else {
         message.error(data.message || "Invalid credentials");
@@ -70,88 +70,109 @@ export default function Login() {
   };
 
   return (
-    <div className="login-page">
-      {/* Left Hero Panel */}
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", justifyContent: "center",
-        alignItems: "center", padding: "48px", color: "white",
-        background: "linear-gradient(160deg, #002147 0%, #1CABE2 100%)",
-        position: "relative", overflow: "hidden",
-      }}>
-        {/* Background pattern */}
-        <div style={{
-          position: "absolute", inset: 0, opacity: 0.05,
-          backgroundImage: "radial-gradient(circle at 20% 50%, #fff 1px, transparent 1px), radial-gradient(circle at 80% 20%, #fff 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }} />
+    <div style={{ minHeight: "100vh", display: "flex", background: "#F0F6FF" }}>
 
-        {/* Logos */}
-        <div style={{ display: "flex", alignItems: "center", gap: 24, marginBottom: 48, zIndex: 1 }}>
+      {/* ── Left Hero Panel ── */}
+      <div className="login-hero" style={{
+        background: "linear-gradient(160deg, #002147 0%, #1565C0 60%, #1CABE2 100%)",
+        padding: "48px 40px",
+        color: "white",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* Dot grid background */}
+        <div style={{
+          position: "absolute", inset: 0,
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }} />
+        {/* Decorative blobs */}
+        <div style={{ position: "absolute", top: -80, right: -80, width: 300, height: 300, borderRadius: "50%", background: "rgba(28,171,226,0.12)" }} />
+        <div style={{ position: "absolute", bottom: -60, left: -60, width: 240, height: 240, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+
+        {/* Logo badges */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 40, position: "relative", zIndex: 1 }}>
           <div style={{
-            width: 80, height: 80, borderRadius: 16, background: "white",
+            background: "white", borderRadius: 14, width: 72, height: 72,
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
           }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: "#1CABE2" }}>UN</div>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#1CABE2", letterSpacing: -1 }}>UN</span>
           </div>
-          <div style={{ width: 2, height: 48, background: "rgba(255,255,255,0.3)" }} />
+          <div style={{ width: 1, height: 40, background: "rgba(255,255,255,0.25)" }} />
           <div style={{
-            width: 80, height: 80, borderRadius: 16, background: "white",
+            background: "white", borderRadius: 14, width: 72, height: 72,
             display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
           }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#002147", lineHeight: 1.1 }}>IEG</div>
+            <span style={{ fontSize: 16, fontWeight: 900, color: "#002147" }}>IEG</span>
           </div>
         </div>
 
-        <Title level={2} style={{ color: "white", textAlign: "center", marginBottom: 8, zIndex: 1, fontWeight: 800 }}>
-          SAM Platform
-        </Title>
-        <Text style={{ color: "rgba(255,255,255,0.85)", textAlign: "center", fontSize: 15, maxWidth: 340, lineHeight: 1.6, zIndex: 1 }}>
-          Hot-Spot Identification & Micro-Targeting for Child Malnutrition Interventions
-        </Text>
+        {/* Title */}
+        <div style={{ position: "relative", zIndex: 1, marginBottom: 12 }}>
+          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.2, letterSpacing: -0.5 }}>SAM Platform</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 1.5 }}>
+            Hot-Spot Identification & Micro-Targeting<br />for Child Malnutrition Interventions
+          </div>
+        </div>
 
-        <Divider style={{ borderColor: "rgba(255,255,255,0.2)", margin: "32px 0" }} />
+        {/* Divider */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.15)", margin: "28px 0", position: "relative", zIndex: 1 }} />
 
-        <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, textAlign: "center", maxWidth: 340, zIndex: 1 }}>
-          Wasting Among Under-Five Children · Sponsored by UNICEF · Developed & Managed by IEG
-        </Text>
-
-        {/* Stats row */}
-        <div style={{ display: "flex", gap: 24, marginTop: 40, flexWrap: "wrap", justifyContent: "center", zIndex: 1 }}>
-          {HERO_STATS.map((s) => (
-            <div key={s.label} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 28, fontWeight: 800, color: "#FFC20E" }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginTop: 2 }}>{s.label}</div>
+        {/* Feature list */}
+        <div style={{ position: "relative", zIndex: 1, marginBottom: 36 }}>
+          {FEATURES.map((f) => (
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <CheckCircleFilled style={{ color: "#1CABE2", fontSize: 15, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.85)" }}>{f}</span>
             </div>
           ))}
         </div>
 
-        {/* Decorative circles */}
-        <div style={{
-          position: "absolute", bottom: -80, right: -80, width: 320, height: 320,
-          borderRadius: "50%", border: "60px solid rgba(255,255,255,0.04)",
-        }} />
-        <div style={{
-          position: "absolute", top: -40, left: -40, width: 200, height: 200,
-          borderRadius: "50%", border: "40px solid rgba(255,255,255,0.04)",
-        }} />
+        {/* Bottom credit */}
+        <div style={{ position: "relative", zIndex: 1, marginTop: 36, fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>
+          Sponsored by UNICEF · Developed & Managed by IEG<br />Wasting Among Under-Five Children
+        </div>
       </div>
 
-      {/* Right Login Panel */}
-      <div style={{
-        width: 480, background: "white", display: "flex", flexDirection: "column",
-        justifyContent: "center", padding: "48px 40px",
-        boxShadow: "-20px 0 60px rgba(0,0,0,0.15)",
-      }}>
-        {/* Language switch */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 32 }}>
+      {/* ── Right Form Panel ── */}
+      <div className="login-form-panel" style={{ background: "#F0F6FF" }}>
+
+        {/* Mobile branding — shown only on mobile */}
+        <div className="login-mobile-brand" style={{ display: "none", marginBottom: 28 }}>
+          <div style={{
+            background: "linear-gradient(135deg, #002147, #1CABE2)",
+            borderRadius: 20,
+            padding: "24px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            boxShadow: "0 8px 32px rgba(0,33,71,0.25)",
+          }}>
+            <div style={{
+              background: "white", borderRadius: 12, width: 52, height: 52,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 16, fontWeight: 900, color: "#1CABE2" }}>UN</span>
+            </div>
+            <div>
+              <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>SAM Platform</div>
+              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 3 }}>UNICEF × IEG · Hot-Spot Identification</div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Language selector */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
           <Select
             defaultValue={i18n.language?.split("-")[0] || "en"}
             onChange={(v) => i18n.changeLanguage(v)}
-            style={{ width: 120 }}
-            suffixIcon={<GlobalOutlined />}
+            style={{ width: 130 }}
+            suffixIcon={<GlobalOutlined style={{ color: "#1CABE2" }} />}
             size="small"
+            variant="outlined"
           >
             {LANGUAGES.map((l) => (
               <Option key={l.code} value={l.code}>{l.label}</Option>
@@ -159,46 +180,69 @@ export default function Login() {
           </Select>
         </div>
 
-        <div style={{ marginBottom: 40 }}>
+        {/* Form card */}
+        <div style={{
+          background: "white",
+          borderRadius: 24,
+          padding: "36px 32px",
+          boxShadow: "0 4px 32px rgba(0,33,71,0.10)",
+          border: "1px solid rgba(28,171,226,0.1)",
+        }}>
+          {/* Official badge */}
           <div style={{
-            display: "inline-flex", alignItems: "center", gap: 8,
-            background: "#E8F6FD", padding: "6px 14px", borderRadius: 20, marginBottom: 16,
+            display: "inline-flex", alignItems: "center", gap: 6,
+            background: "linear-gradient(135deg, #E8F6FD, #D6F0FB)",
+            border: "1px solid rgba(28,171,226,0.25)",
+            padding: "5px 12px", borderRadius: 20, marginBottom: 20,
           }}>
-            <SafetyOutlined style={{ color: "#1CABE2", fontSize: 13 }} />
-            <span style={{ color: "#1CABE2", fontSize: 12, fontWeight: 600 }}>Official Access Only</span>
+            <SafetyOutlined style={{ color: "#1CABE2", fontSize: 12 }} />
+            <span style={{ color: "#1CABE2", fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>OFFICIAL ACCESS ONLY</span>
           </div>
-          <Title level={2} style={{ color: "#002147", marginBottom: 4, fontWeight: 800 }}>
-            {t("signIn")}
-          </Title>
-          <Text style={{ color: "#6B7280", fontSize: 14 }}>
-            Sign in to access your personalized dashboard
-          </Text>
-        </div>
 
-        <Spin spinning={loading} tip="Authenticating...">
-          <Form form={form} onFinish={handleSubmit} layout="vertical" size="large" requiredMark={false}>
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: "#002147", lineHeight: 1.2 }}>
+              {t("signIn")}
+            </div>
+            <div style={{ fontSize: 13, color: "#6B7280", marginTop: 6 }}>
+              Sign in to access your personalized dashboard
+            </div>
+          </div>
+
+          <Form form={form} onFinish={handleSubmit} layout="vertical" requiredMark={false}>
             <Form.Item
               name="username"
-              label={<span style={{ fontWeight: 500, color: "#374151" }}>{t("username")}</span>}
+              label={
+                <span style={{ fontWeight: 600, color: "#374151", fontSize: 13 }}>
+                  {t("username")}
+                </span>
+              }
               rules={[{ required: true, message: "Please enter your username" }]}
+              style={{ marginBottom: 16 }}
             >
               <Input
-                prefix={<UserOutlined style={{ color: "#9CA3AF" }} />}
-                placeholder="Enter username"
-                style={{ borderRadius: 10, height: 48 }}
+                prefix={<UserOutlined style={{ color: "#1CABE2" }} />}
+                placeholder="Enter your username"
+                size="large"
+                style={{ borderRadius: 12, height: 50, borderColor: "#D1E9F8", fontSize: 14 }}
                 autoComplete="username"
               />
             </Form.Item>
 
             <Form.Item
               name="password"
-              label={<span style={{ fontWeight: 500, color: "#374151" }}>{t("password")}</span>}
+              label={
+                <span style={{ fontWeight: 600, color: "#374151", fontSize: 13 }}>
+                  {t("password")}
+                </span>
+              }
               rules={[{ required: true, message: "Please enter your password" }]}
+              style={{ marginBottom: 24 }}
             >
               <Input.Password
-                prefix={<LockOutlined style={{ color: "#9CA3AF" }} />}
-                placeholder="Enter password"
-                style={{ borderRadius: 10, height: 48 }}
+                prefix={<LockOutlined style={{ color: "#1CABE2" }} />}
+                placeholder="Enter your password"
+                size="large"
+                style={{ borderRadius: 12, height: 50, borderColor: "#D1E9F8", fontSize: 14 }}
                 autoComplete="current-password"
               />
             </Form.Item>
@@ -208,30 +252,64 @@ export default function Login() {
               htmlType="submit"
               block
               loading={loading}
+              size="large"
               style={{
-                height: 52, borderRadius: 10, marginTop: 8,
-                fontSize: 16, fontWeight: 600,
-                background: "linear-gradient(135deg, #1CABE2, #374EA2)",
+                height: 52,
+                borderRadius: 14,
+                fontSize: 15,
+                fontWeight: 700,
+                background: "linear-gradient(135deg, #1CABE2 0%, #374EA2 100%)",
                 border: "none",
-                boxShadow: "0 4px 16px rgba(28,171,226,0.4)",
+                boxShadow: "0 6px 20px rgba(28,171,226,0.35)",
+                letterSpacing: 0.3,
               }}
             >
-              {loading ? "Signing In..." : t("signIn")}
+              {loading ? "Signing In…" : t("signIn")}
             </Button>
           </Form>
-        </Spin>
 
-        <div style={{ marginTop: 32, textAlign: "center" }}>
-          <Text style={{ color: "#9CA3AF", fontSize: 12 }}>
-            Having trouble? Contact your administrator
-          </Text>
+          <div style={{ marginTop: 20, textAlign: "center" }}>
+            <span style={{ color: "#9CA3AF", fontSize: 12 }}>
+              Having trouble?{" "}
+              <span style={{ color: "#1CABE2", fontWeight: 600 }}>Contact your administrator</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Info boxes below form */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+          <div style={{
+            background: "white", borderRadius: 16, padding: "16px",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+            borderLeft: "4px solid #1CABE2",
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#1CABE2", marginBottom: 4, letterSpacing: 0.5 }}>PLATFORM</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>SAM v2.0</div>
+            <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Secure · Encrypted</div>
+          </div>
+          <a href={SUPPORT_WA} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+            <div style={{
+              background: "white", borderRadius: 16, padding: "16px",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.05)",
+              borderLeft: "4px solid #25D366",
+              cursor: "pointer",
+              transition: "box-shadow 0.2s",
+            }}
+              onMouseEnter={(e) => e.currentTarget.style.boxShadow = "0 4px 20px rgba(37,211,102,0.2)"}
+              onMouseLeave={(e) => e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.05)"}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#25D366", marginBottom: 4, letterSpacing: 0.5 }}>SUPPORT</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>WhatsApp Help</div>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Tap to message us</div>
+            </div>
+          </a>
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: "auto", paddingTop: 32, textAlign: "center", borderTop: "1px solid #F3F4F6" }}>
-          <Text style={{ color: "#D1D5DB", fontSize: 11 }}>
-            SAM Platform v2.0 · UNICEF × IEG · Restricted Access
-          </Text>
+        <div style={{ textAlign: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid #E5EDF8" }}>
+          <span style={{ fontSize: 11, color: "#C3D4E8" }}>
+            SAM Platform v2.0 · UNICEF × IEG · All rights reserved
+          </span>
         </div>
       </div>
     </div>

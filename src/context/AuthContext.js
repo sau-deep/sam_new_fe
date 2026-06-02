@@ -95,11 +95,13 @@ export function AuthProvider({ children }) {
     return null;
   }, [isAdmin, isUnicef, isIEG, isStateAdmin, isSurveyor]);
 
+  const isOfflineMode = useCallback(() => !!user?.offline, [user]);
+
   return (
     <AuthContext.Provider value={{
       user, loading, login, logout,
       hasRole, isAdmin, isUnicef, isStateAdmin, isSurveyor, isIEG,
-      canViewAll, canManage, getPrimaryRole,
+      canViewAll, canManage, getPrimaryRole, isOfflineMode,
     }}>
       {children}
     </AuthContext.Provider>

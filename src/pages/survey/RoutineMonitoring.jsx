@@ -33,8 +33,7 @@ import apiService from '../../services/api';
 import Loader from "components/ui/Loader";
 import AutoSaveIndicator from "components/ui/AutoSaveIndicator";
 import { ArrowBack, ArrowForward, Check, Description } from "@mui/icons-material";
-import { getStateOptions, getDistrictOptions, getBlockOptions } from "constants";
-import { useTranslation } from "react-i18next";
+import { getStateOptions, getDistrictOptions, getBlockOptions } from "constants/locations";
 import { filterNumberKeyDown } from 'utils'
 import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
@@ -87,7 +86,7 @@ const RoutineMonitoring = () => {
     const [loadingStatus, setLoadingStatus] = useState(false);
     const navigate = useNavigate();
     const location = useLocation();
-    const { t } = useTranslation();
+    const { t } = useFormTranslation('routine');
     const isOnline = useNetworkStatus();
     
     // Add retry state management

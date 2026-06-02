@@ -216,7 +216,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={process.env.PUBLIC_URL || ""}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <ConfigProvider theme={antdTheme}>
           <AuthProvider>

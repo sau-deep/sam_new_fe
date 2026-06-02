@@ -1,13 +1,8 @@
 import { useState } from "react";
-import { Row, Col, Card, Button, Tag, Typography, Badge, Progress, Alert } from "antd";
-import {
-  HomeOutlined, SyncOutlined, ClockCircleOutlined,
-  CheckCircleOutlined, WifiOutlined, DisconnectOutlined,
-  BarChartOutlined, FormOutlined,
-} from "@ant-design/icons";
+import { Row, Col, Card, Button, Tag, Typography } from "antd";
+import { BarChartOutlined, FormOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { useNetworkStatus } from "../../utils/networkState";
 import { SURVEY_FORMS, ROLES } from "../../config";
 
 const { Title, Text } = Typography;
@@ -48,8 +43,8 @@ const FORM_CARD_DEFINITIONS = [
     title: "Concurrent Assessment",
     subtitle: "Bi-annual child health and nutrition assessment",
     path: "/surveys/bi-annual",
-    color: "#374EA2",
-    gradient: "linear-gradient(135deg, #374EA2 0%, #9B59B6 100%)",
+    color: "#5B21B6",
+    gradient: "linear-gradient(135deg, #1E1B4B 0%, #5B21B6 100%)",
     icon: "📊",
     sections: ["Child Assessment", "Anthropometry", "Feeding Practices"],
   },
@@ -58,8 +53,8 @@ const FORM_CARD_DEFINITIONS = [
     title: "Follow-Up Assessment",
     subtitle: "Track progress of previously assessed children",
     path: "/surveys/followup",
-    color: "#F26A21",
-    gradient: "linear-gradient(135deg, #F26A21 0%, #FFC20E 100%)",
+    color: "#C2410C",
+    gradient: "linear-gradient(135deg, #7C2D12 0%, #C2410C 100%)",
     icon: "🔄",
     sections: ["Previous Data Review", "Current Status", "Referral"],
   },
@@ -68,7 +63,6 @@ const FORM_CARD_DEFINITIONS = [
 export default function SurveyHome() {
   const navigate = useNavigate();
   const { user, getPrimaryRole } = useAuth();
-  const isOnline = useNetworkStatus();
   const role = getPrimaryRole();
   const isSurveyor = role === ROLES.SURVEYOR;
   const [formConfig] = useState(getFormConfig);
@@ -82,37 +76,15 @@ export default function SurveyHome() {
     <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <div style={{ marginBottom: 8 }}>
           <Title level={3} style={{ margin: 0, color: "#002147" }}>
             {isSurveyor ? "My Survey Forms" : "Survey Forms"}
           </Title>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 5,
-            background: isOnline ? "#EBF9E0" : "#FEF3E8",
-            padding: "4px 12px", borderRadius: 20,
-          }}>
-            {isOnline
-              ? <WifiOutlined style={{ color: "#4A8C1C", fontSize: 12 }} />
-              : <DisconnectOutlined style={{ color: "#D45800", fontSize: 12 }} />}
-            <span style={{ fontSize: 12, fontWeight: 600, color: isOnline ? "#4A8C1C" : "#D45800" }}>
-              {isOnline ? "Online" : "Offline — forms save locally"}
-            </span>
-          </div>
         </div>
         <Text style={{ color: "#6B7280" }}>
           Welcome back, <strong>{user?.name || user?.username}</strong> · Select a form to begin
         </Text>
       </div>
-
-      {!isOnline && (
-        <Alert
-          type="warning"
-          showIcon
-          message="You are offline"
-          description="Forms can still be filled and will sync automatically when you reconnect to the internet."
-          style={{ marginBottom: 20, borderRadius: 10 }}
-        />
-      )}
 
       {/* Form Cards */}
       <Row gutter={[20, 20]}>
@@ -122,7 +94,6 @@ export default function SurveyHome() {
               style={{
                 borderRadius: 20, border: "none", overflow: "hidden",
                 boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-                opacity: form.enabled ? 1 : 0.65,
                 cursor: form.enabled ? "pointer" : "not-allowed",
                 transition: "transform 0.2s, box-shadow 0.2s",
               }}
@@ -135,6 +106,7 @@ export default function SurveyHome() {
               <div style={{
                 background: form.gradient, padding: "24px 28px 28px",
                 position: "relative", overflow: "hidden",
+                filter: form.enabled ? "none" : "grayscale(60%) brightness(0.75)",
               }}>
                 <div style={{
                   position: "absolute", top: -20, right: -20, width: 120, height: 120,

@@ -8,7 +8,7 @@ const TEAM_MEMBERS = [
   { name: "Dr. Rakesh Kumar", role: "Senior Consultant – SAM Hotspot Project" },
   { name: "Dr. Arun Kumar Yadav", role: "Junior Consultant - SAM Hotspot Project" },
   { name: "Dr. Chanda Murya", role: "Junior Consultant - SAM Hotspot Project" },
-  { name: "IT Support - Saurav Solanki", role: null },
+  { name: "DIiva Enterprises", role: "IT Support" },
 ];
 
 export default function Footer() {
@@ -21,12 +21,12 @@ export default function Footer() {
         display: "flex",
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "space-between",
         padding: "12px 24px",
-        gap: 24,
         color: "white",
         flexShrink: 0,
       }}>
+        {/* Left — IEG logo */}
         <a
           href="https://iegindia.org/"
           target="_blank"
@@ -40,6 +40,21 @@ export default function Footer() {
           />
         </a>
 
+        {/* Centre — UNICEF logo */}
+        <a
+          href="https://www.unicef.org/india/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ display: "flex", alignItems: "center" }}
+        >
+          <img
+            src={unicefLogo}
+            alt="UNICEF"
+            style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
+        </a>
+
+        {/* Right — Team button */}
         <Button
           type="text"
           onClick={() => setTeamOpen(true)}
@@ -55,19 +70,6 @@ export default function Footer() {
         >
           Team
         </Button>
-
-        <a
-          href="https://www.unicef.org/india/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: "flex", alignItems: "center" }}
-        >
-          <img
-            src={unicefLogo}
-            alt="UNICEF"
-            style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
-          />
-        </a>
       </footer>
 
       <Modal

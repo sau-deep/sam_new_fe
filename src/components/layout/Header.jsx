@@ -12,17 +12,83 @@ import { ROLES } from "../../config";
 const { Option } = Select;
 
 const ROLE_COLORS = {
-  [ROLES.ADMIN]: { bg: "#E8F0FE", color: "#374EA2", label: "Admin" },
-  [ROLES.UNICEF]: { bg: "#E8F6FD", color: "#1CABE2", label: "UNICEF" },
-  [ROLES.STATE]: { bg: "#EBF9E0", color: "#4A8C1C", label: "State Admin" },
+  [ROLES.ADMIN]:    { bg: "#E8F0FE", color: "#374EA2", label: "Admin" },
+  [ROLES.UNICEF]:   { bg: "#E8F6FD", color: "#1CABE2", label: "UNICEF" },
+  [ROLES.STATE]:    { bg: "#EBF9E0", color: "#4A8C1C", label: "State Admin" },
   [ROLES.SURVEYOR]: { bg: "#FEF3E8", color: "#D45800", label: "Surveyor" },
-  [ROLES.IEG]: { bg: "#F3E8FF", color: "#7C3AED", label: "IEG" },
+  [ROLES.IEG]:      { bg: "#F3E8FF", color: "#7C3AED", label: "IEG" },
 };
 
-export default function AppHeader({ collapsed, onToggle, notifCount = 0 }) {
+// Compact mobile header for surveyor role — no sidebar toggle, no language, no notifs
+function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
+  const initials = (user?.name || user?.username || "U")
+    .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+
+  return (
+    <div style={{
+      height: 56, background: "#002147", display: "flex", alignItems: "center",
+      padding: "0 16px", gap: 12,
+      position: "sticky", top: 0, zIndex: 90,
+      boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+    }}>
+      {/* Branding */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 6, background: "white",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          <span style={{ fontWeight: 800, color: "#1CABE2", fontSize: 9 }}>SAM</span>
+        </div>
+        <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>SAM v2</span>
+      </div>
+
+      {/* Prominent network signal pill */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6,
+        background: isOnline ? "rgba(74,140,28,0.25)" : "rgba(212,88,0,0.3)",
+        border: `1.5px solid ${isOnline ? "#4A8C1C" : "#D45800"}`,
+        padding: "5px 12px", borderRadius: 20,
+        animation: isOnline ? "none" : "offlinePulse 2s ease-in-out infinite",
+      }}>
+        {isOnline
+          ? <WifiOutlined style={{ color: "#6DCC36", fontSize: 15 }} />
+          : <DisconnectOutlined style={{ color: "#FF7A3D", fontSize: 15 }} />}
+        <span style={{
+          fontSize: 12, fontWeight: 700,
+          color: isOnline ? "#6DCC36" : "#FF7A3D",
+          letterSpacing: 0.3,
+        }}>
+          {isOnline ? "Online" : "Offline"}
+        </span>
+      </div>
+
+      {/* User avatar with dropdown */}
+      <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={["click"]}>
+        <Avatar
+          size={32}
+          style={{
+            background: "linear-gradient(135deg, #1CABE2, #374EA2)",
+            cursor: "pointer", flexShrink: 0, fontWeight: 700, fontSize: 12,
+          }}
+        >
+          {initials}
+        </Avatar>
+      </Dropdown>
+
+      <style>{`
+        @keyframes offlinePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.55; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSidebarToggle = false }) {
   const { user, logout, getPrimaryRole } = useAuth();
   const navigate = useNavigate();
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const isOnline = useNetworkStatus();
   const role = getPrimaryRole();
   const roleStyle = ROLE_COLORS[role] || { bg: "#F3F4F6", color: "#6B7280", label: "User" };
@@ -44,6 +110,10 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0 }) {
     },
   ];
 
+  if (hideSidebarToggle) {
+    return <SurveyorMobileHeader isOnline={isOnline} user={user} userMenuItems={userMenuItems} />;
+  }
+
   return (
     <div style={{
       height: 64, background: "white", display: "flex", alignItems: "center",
@@ -59,7 +129,7 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0 }) {
         style={{ width: 40, height: 40, color: "#6B7280", borderRadius: 8 }}
       />
 
-      {/* App title (breadcrumb area) */}
+      {/* App title */}
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: 15, color: "#111827" }}>
           Hot-Spot Identification & Micro-Targeting
@@ -80,10 +150,7 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0 }) {
             {isOnline
               ? <WifiOutlined style={{ color: "#4A8C1C", fontSize: 13 }} />
               : <DisconnectOutlined style={{ color: "#D45800", fontSize: 13 }} />}
-            <span style={{
-              fontSize: 11, fontWeight: 600,
-              color: isOnline ? "#4A8C1C" : "#D45800",
-            }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? "#4A8C1C" : "#D45800" }}>
               {isOnline ? "Online" : "Offline"}
             </span>
           </div>
@@ -115,13 +182,11 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0 }) {
         </Tooltip>
 
         {/* Role badge */}
-        <Tag
-          style={{
-            background: roleStyle.bg, color: roleStyle.color,
-            border: "none", borderRadius: 20, fontWeight: 600, fontSize: 11,
-            padding: "2px 10px",
-          }}
-        >
+        <Tag style={{
+          background: roleStyle.bg, color: roleStyle.color,
+          border: "none", borderRadius: 20, fontWeight: 600, fontSize: 11,
+          padding: "2px 10px",
+        }}>
           {roleStyle.label}
         </Tag>
 

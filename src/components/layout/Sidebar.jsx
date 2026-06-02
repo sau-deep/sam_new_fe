@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layout, Menu, Badge, Tooltip } from "antd";
+import { Layout, Menu } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { ROLES } from "../../config";
@@ -102,7 +102,7 @@ function buildMenuItems(role, notifCount) {
   if (isAdmin || isIEG) {
     items.push({
       key: "/notifications",
-      icon: <Badge count={notifCount} offset={[6, -2]}><BellOutlined /></Badge>,
+      icon: <BellOutlined />,
       label: (
         <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           Notifications

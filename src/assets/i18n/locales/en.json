@@ -1,6 +1,8 @@
 {
   "emailId": "Email ID",
+  "username": "Username",
   "password": "Password",
+  "signIn": "Sign In",
   "reset": "Reset",
   "myProjects": "My Projects",
   "survey": "Survey Name",
