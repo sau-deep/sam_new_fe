@@ -4,9 +4,10 @@ import {
 } from "react-simple-maps";
 import { Tooltip, Tag } from "antd";
 import { MAP_COLOR_SCALE } from "../../theme/unicef";
+import indiaGeo from "../../assets/india-states.json";
 
-// India TopoJSON from public CDN
-const INDIA_TOPO = "https://raw.githubusercontent.com/deldersveld/topojson/master/countries/india/india-states.json";
+// Imported directly as a module — no CDN/URL dependency, works offline and with any base path
+const INDIA_TOPO = indiaGeo;
 
 // States we cover in SAM
 const SAM_STATES = ["Rajasthan", "Odisha", "Madhya Pradesh", "Chhattisgarh", "Jharkhand", "Telangana"];
@@ -37,7 +38,7 @@ export default function IndiaMap({ data = {}, onStateClick, title = "State-Wise 
           <Geographies geography={INDIA_TOPO}>
             {({ geographies }) =>
               geographies.map((geo) => {
-                const stateName = geo.properties.NAME_1 || geo.properties.name || "";
+                const stateName = geo.properties.ST_NM || geo.properties.NAME_1 || geo.properties.name || "";
                 const value = data[stateName] || 0;
                 const isCovered = SAM_STATES.some((s) => stateName.toLowerCase().includes(s.toLowerCase()));
                 const color = isCovered ? getColor(value, maxVal) : "#F3F4F6";

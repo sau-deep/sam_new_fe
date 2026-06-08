@@ -1,9 +1,10 @@
 export const API_BASE_URL = "https://api.coecmamsupport.com";
+//export const API_BASE_URL = "http://localhost:8082"
 
 export const SURVEY_FORMS = {
-  HOUSE_HOLD: false,
-  BI_ANNUAL: false,
-  FOLLOWUP: false,
+  HOUSE_HOLD: true,
+  BI_ANNUAL: true,
+  FOLLOWUP: true,
   ROUTINE_MONITORING: true,
 };
 

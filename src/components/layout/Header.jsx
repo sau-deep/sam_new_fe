@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useNetworkStatus } from "../../utils/networkState";
 import { ROLES } from "../../config";
+import { LANGUAGES } from "../../constants";
+import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
 
 const { Option } = Select;
 
@@ -35,11 +37,11 @@ function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
         <div style={{
           width: 30, height: 30, borderRadius: 6, background: "white",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 3,
         }}>
-          <span style={{ fontWeight: 800, color: "#1CABE2", fontSize: 9 }}>SAM</span>
+          <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
-        <span style={{ color: "white", fontWeight: 700, fontSize: 14 }}>SAM v2</span>
+        <span style={{ color: "white", fontWeight: 700, fontSize: 13 }}>CMAM programme</span>
       </div>
 
       {/* Prominent network signal pill */}
@@ -161,12 +163,13 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
           value={i18n.language?.split("-")[0] || "en"}
           onChange={(v) => i18n.changeLanguage(v)}
           size="small"
-          style={{ width: 90 }}
+          style={{ width: 150 }}
           suffixIcon={<GlobalOutlined style={{ color: "#6B7280" }} />}
           bordered={false}
         >
-          <Option value="en">EN</Option>
-          <Option value="hi">हि</Option>
+          {LANGUAGES.map((lang) => (
+            <Option key={lang.code} value={lang.code}>{lang.label}</Option>
+          ))}
         </Select>
 
         {/* Notifications */}

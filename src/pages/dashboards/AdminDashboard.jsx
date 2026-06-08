@@ -15,6 +15,7 @@ import IndiaMap from "../../components/dashboard/IndiaMap";
 import api from "../../services/axiosInstance";
 import { CHART_COLORS, UNICEF_COLORS } from "../../theme/unicef";
 import { useAuth } from "../../context/AuthContext";
+import { useTranslation } from "react-i18next";
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -94,6 +95,7 @@ export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState([dayjs().subtract(6, "month"), dayjs()]);
   const [selectedState, setSelectedState] = useState(null);
   const { isAdmin } = useAuth();
+  const { t } = useTranslation();
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -101,9 +103,11 @@ export default function AdminDashboard() {
       const startDate = dateRange[0].format("YYYY-MM-DD");
       const endDate = dateRange[1].format("YYYY-MM-DD");
 
-      const [dashRes, pendingCountRes] = await Promise.allSettled([
+      const [dashRes, pendingCountRes, unicefStatsRes, mapDataRes] = await Promise.allSettled([
         api.get("/form/routine-monitoring/dashboard", { params: { startDate, endDate } }),
         api.get("/form/routine-monitoring/edit-notifications/pending/count"),
+        api.get("/unicef/dashboard/stats"),
+        api.get("/unicef/dashboard/map-data"),
       ]);
 
       if (dashRes.status === "fulfilled") {
@@ -146,6 +150,29 @@ export default function AdminDashboard() {
           pendingNotifications: typeof pendingCount === "number" ? pendingCount : (pendingCount?.count ?? prev.pendingNotifications),
         }));
       }
+
+      if (unicefStatsRes.status === "fulfilled") {
+        const d = unicefStatsRes.value.data?.data ?? unicefStatsRes.value.data;
+        setStats((prev) => ({
+          ...prev,
+          totalDistricts: d.totalDistricts ?? prev.totalDistricts,
+          totalBlocks: d.totalBlocks ?? prev.totalBlocks,
+          totalVillages: d.totalVillages ?? prev.totalVillages,
+          totalSurveyors: d.totalSurveyors ?? prev.totalSurveyors,
+        }));
+      }
+
+      if (mapDataRes.status === "fulfilled") {
+        const payload = mapDataRes.value.data?.data ?? mapDataRes.value.data;
+        const stateList = Array.isArray(payload?.data) ? payload.data : [];
+        if (stateList.length > 0) {
+          const liveMapData = {};
+          stateList.forEach((s) => {
+            if (s.stateName) liveMapData[s.stateName] = s.responses ?? 0;
+          });
+          setMapData(liveMapData);
+        }
+      }
     } catch { /* fallback to demo data on error */ } finally {
       setLoading(false);
     }
@@ -155,28 +182,28 @@ export default function AdminDashboard() {
 
   const statCards = [
     {
-      title: "Total Surveys", value: stats.totalSurveys,
+      title: t("totalSurveys"), value: stats.totalSurveys,
       icon: <FileTextOutlined />,
       gradient: "linear-gradient(135deg, #1CABE2, #374EA2)",
-      trend: 12.5, trendLabel: "vs last month",
+      trend: 12.5, trendLabel: t("vsLastMonth"),
     },
     {
-      title: "States Covered", value: stats.totalStates,
+      title: t("statesCovered"), value: stats.totalStates,
       icon: <GlobalOutlined />,
       gradient: "linear-gradient(135deg, #80BD41, #1CABE2)",
     },
     {
-      title: "Active Surveyors", value: stats.activeSurveyors,
+      title: t("activeSurveyors"), value: stats.activeSurveyors,
       icon: <TeamOutlined />,
       gradient: "linear-gradient(135deg, #374EA2, #9B59B6)",
-      description: `${stats.totalSurveyors} total registered`,
-      trend: 5.2, trendLabel: "vs last month",
+      description: `${stats.totalSurveyors} ${t("totalRegistered")}`,
+      trend: 5.2, trendLabel: t("vsLastMonth"),
     },
     {
-      title: "Pending Reviews", value: stats.pendingNotifications || 0,
+      title: t("pendingReviews"), value: stats.pendingNotifications || 0,
       icon: <SyncOutlined />,
       gradient: "linear-gradient(135deg, #F26A21, #FFC20E)",
-      description: "RMC edit notifications",
+      description: t("rmcEditNotifications"),
     },
   ];
 
@@ -185,8 +212,8 @@ export default function AdminDashboard() {
       {/* Page header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <Title level={3} style={{ margin: 0, color: "#002147" }}>Admin Dashboard</Title>
-          <Text style={{ color: "#6B7280" }}>Real-time overview · All states · All forms</Text>
+          <Title level={3} style={{ margin: 0, color: "#002147" }}>{t("adminDashboard")}</Title>
+          <Text style={{ color: "#6B7280" }}>{t("realTimeOverview")} · {t("allStates")} · {t("allForms")}</Text>
         </div>
         <Space>
           <RangePicker
@@ -217,12 +244,12 @@ export default function AdminDashboard() {
       {/* Secondary stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {[
-          { title: "Districts", value: stats.totalDistricts || 48, color: "#1CABE2" },
-          { title: "Blocks", value: stats.totalBlocks || 312, color: "#374EA2" },
-          { title: "Villages", value: stats.totalVillages || 4820, color: "#80BD41" },
-          { title: "Total Surveyors", value: stats.totalSurveyors || 342, color: "#F26A21" },
+          { key: "districts", title: t("districts"), value: stats.totalDistricts, color: "#1CABE2" },
+          { key: "blocks", title: t("blocks"), value: stats.totalBlocks, color: "#374EA2" },
+          { key: "villages", title: t("villages"), value: stats.totalVillages, color: "#80BD41" },
+          { key: "totalSurveyors", title: t("totalSurveyors"), value: stats.totalSurveyors, color: "#F26A21" },
         ].map((s) => (
-          <Col xs={12} sm={6} key={s.title}>
+          <Col xs={12} sm={6} key={s.key}>
             <Card style={{ borderRadius: 12, border: "1px solid #F3F4F6", textAlign: "center" }} bodyStyle={{ padding: "16px 12px" }}>
               <Statistic title={s.title} value={s.value} valueStyle={{ color: s.color, fontWeight: 800, fontSize: 24 }} />
             </Card>
@@ -235,8 +262,8 @@ export default function AdminDashboard() {
         {/* Trend Line Chart */}
         <Col xs={24} lg={16}>
           <ChartCard
-            title="Survey Submissions Trend"
-            subtitle="Monthly count across all form types"
+            title={t("surveyTrend")}
+            subtitle={t("surveyTrendSubtitle")}
             loading={loading}
             height={300}
             extra={
@@ -278,7 +305,7 @@ export default function AdminDashboard() {
 
         {/* Form Distribution Pie */}
         <Col xs={24} lg={8}>
-          <ChartCard title="Survey Form Distribution" subtitle="All-time breakdown by type" loading={loading} height={300}>
+          <ChartCard title={t("formDistribution")} subtitle="All-time breakdown by type" loading={loading} height={300}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -310,7 +337,7 @@ export default function AdminDashboard() {
         <Col xs={24} lg={14}>
           <Card title={
             <div>
-              <div style={{ fontWeight: 700, color: "#111827" }}>Geographic Coverage</div>
+              <div style={{ fontWeight: 700, color: "#111827" }}>{t("geographicCoverage")}</div>
               <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>Survey density across covered states</div>
             </div>
           } style={{ borderRadius: 16 }} bodyStyle={{ padding: 16 }}>
@@ -337,7 +364,7 @@ export default function AdminDashboard() {
         <Col xs={24} lg={10}>
           <Card title={
             <div>
-              <div style={{ fontWeight: 700, color: "#111827" }}>Recent Activity</div>
+              <div style={{ fontWeight: 700, color: "#111827" }}>{t("recentActivity")}</div>
               <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>System events & submissions</div>
             </div>
           } style={{ borderRadius: 16, height: "100%" }}>
@@ -360,8 +387,8 @@ export default function AdminDashboard() {
       <Card
         title={
           <div>
-            <div style={{ fontWeight: 700, color: "#111827" }}>State-Wise Performance</div>
-            <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>Coverage and completion metrics by state</div>
+            <div style={{ fontWeight: 700, color: "#111827" }}>{t("stateBreakdown")}</div>
+            <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>{t("stateBreakdownSubtitle")}</div>
           </div>
         }
         style={{ borderRadius: 16 }}

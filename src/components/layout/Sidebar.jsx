@@ -3,6 +3,7 @@ import { Layout, Menu } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { ROLES } from "../../config";
+import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
 import {
   DashboardOutlined, FileTextOutlined, TeamOutlined, BarChartOutlined,
   BellOutlined, FolderOpenOutlined, DownloadOutlined, AuditOutlined,
@@ -173,14 +174,14 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
         <div style={{
           width: 36, height: 36, borderRadius: 8, background: "white",
           display: "flex", alignItems: "center", justifyContent: "center",
-          flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+          flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,0.2)", padding: 4,
         }}>
-          <span style={{ fontWeight: 800, color: "#1CABE2", fontSize: 12 }}>SAM</span>
+          <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
         {!collapsed && (
           <div>
-            <div style={{ color: "white", fontWeight: 700, fontSize: 15, lineHeight: 1.2 }}>SAM v2</div>
-            <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 10 }}>UNICEF × IEG</div>
+            <div style={{ color: "white", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>CMAM programme</div>
+            <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 10 }}>IEG</div>
           </div>
         )}
       </div>

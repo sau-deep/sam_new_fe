@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Modal, Button } from "antd";
-import unicefLogo from "../../assets/img/UNICEFLogo.png";
 import iegLogo from "../../assets/img/IELogo.png";
 
 const TEAM_MEMBERS = [
@@ -36,20 +35,6 @@ export default function Footer() {
           <img
             src={iegLogo}
             alt="Institute of Economic Growth"
-            style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
-          />
-        </a>
-
-        {/* Centre — UNICEF logo */}
-        <a
-          href="https://www.unicef.org/india/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: "flex", alignItems: "center" }}
-        >
-          <img
-            src={unicefLogo}
-            alt="UNICEF"
             style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
           />
         </a>

@@ -6,13 +6,10 @@ import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "react-i18next";
 import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
+import { LANGUAGES } from "../../constants";
+import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
 
 const { Option } = Select;
-
-const LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "hi", label: "हिंदी" },
-];
 
 const SUPPORT_WA = "https://wa.me/917701816408?text=Hello%2C%20I%20need%20support%20with%20the%20SAM%20Platform%20login.";
 
@@ -96,22 +93,15 @@ export default function Login() {
             background: "white", borderRadius: 14, width: 72, height: 72,
             display: "flex", alignItems: "center", justifyContent: "center",
             boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
+            padding: 6,
           }}>
-            <span style={{ fontSize: 22, fontWeight: 900, color: "#1CABE2", letterSpacing: -1 }}>UN</span>
-          </div>
-          <div style={{ width: 1, height: 40, background: "rgba(255,255,255,0.25)" }} />
-          <div style={{
-            background: "white", borderRadius: 14, width: 72, height: 72,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.25)",
-          }}>
-            <span style={{ fontSize: 16, fontWeight: 900, color: "#002147" }}>IEG</span>
+            <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
         </div>
 
         {/* Title */}
         <div style={{ position: "relative", zIndex: 1, marginBottom: 12 }}>
-          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.2, letterSpacing: -0.5 }}>SAM Platform</div>
+          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.2, letterSpacing: -0.5 }}>CMAM programme</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 1.5 }}>
             Hot-Spot Identification & Micro-Targeting<br />for Child Malnutrition Interventions
           </div>
@@ -132,7 +122,7 @@ export default function Login() {
 
         {/* Bottom credit */}
         <div style={{ position: "relative", zIndex: 1, marginTop: 36, fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>
-          Sponsored by UNICEF · Developed & Managed by IEG<br />Wasting Among Under-Five Children
+          Wasting Among Under-Five Children
         </div>
       </div>
 
@@ -153,12 +143,13 @@ export default function Login() {
             <div style={{
               background: "white", borderRadius: 12, width: 52, height: 52,
               display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              padding: 5,
             }}>
-              <span style={{ fontSize: 16, fontWeight: 900, color: "#1CABE2" }}>UN</span>
+              <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
             <div>
-              <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>SAM Platform</div>
-              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 3 }}>UNICEF × IEG · Hot-Spot Identification</div>
+              <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>CMAM programme</div>
+              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 3 }}>IEG · Hot-Spot Identification</div>
             </div>
           </div>
 
@@ -167,9 +158,9 @@ export default function Login() {
         {/* Language selector */}
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
           <Select
-            defaultValue={i18n.language?.split("-")[0] || "en"}
+            value={i18n.language?.split("-")[0] || "en"}
             onChange={(v) => i18n.changeLanguage(v)}
-            style={{ width: 130 }}
+            style={{ width: 160 }}
             suffixIcon={<GlobalOutlined style={{ color: "#1CABE2" }} />}
             size="small"
             variant="outlined"
@@ -284,7 +275,7 @@ export default function Login() {
             borderLeft: "4px solid #1CABE2",
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1CABE2", marginBottom: 4, letterSpacing: 0.5 }}>PLATFORM</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>SAM v2.0</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>CMAM programme</div>
             <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Secure · Encrypted</div>
           </div>
           <a href={SUPPORT_WA} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
@@ -308,7 +299,7 @@ export default function Login() {
         {/* Footer */}
         <div style={{ textAlign: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid #E5EDF8" }}>
           <span style={{ fontSize: 11, color: "#C3D4E8" }}>
-            SAM Platform v2.0 · UNICEF × IEG · All rights reserved
+            CMAM programme v2.0 · IEG · All rights reserved
           </span>
         </div>
       </div>
