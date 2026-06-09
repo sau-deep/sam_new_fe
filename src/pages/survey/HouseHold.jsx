@@ -50,8 +50,11 @@ import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../
 // Services
 import apiService from '../../services/api';
 
-// Constants
-import { getStateOptions, getDistrictOptions, getBlockOptions, getVillageOptions } from "constants";
+// Per-form location helpers (block-level, backend-driven + offline cache).
+import { getFormLocationHelpers } from "utils/formLocations";
+import useFormLocations from "hooks/useFormLocations";
+const { getStateOptions, getDistrictOptions, getBlockOptions, getVillageOptions } =
+  getFormLocationHelpers("HOUSE_HOLD");
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -116,6 +119,8 @@ const HouseHold = () => {
   const [villagesAvailable, setVillagesAvailable] = useState(true); // New state to track village availability
   const [villageValidationError, setVillageValidationError] = useState(''); // New state for village validation error
   const isOnline = useNetworkStatus();
+  // Load this form's active locations (online -> backend + cache, offline -> cache).
+  useFormLocations("HOUSE_HOLD");
   const { t, i18n } = useFormTranslation('household');
   const navigate = useNavigate();
 

@@ -27,7 +27,9 @@ import Loader from "components/ui/Loader";
 import SnackBar from "components/ui/SnackBar";
 import WhatsAppContact from "components/ui/WhatsAppContact";
 import {ArrowBack, ArrowForward, Check} from "@mui/icons-material";
-import {getDistrictOptions, getStateOptions, getBlockOptions} from "constants";
+// Per-form location helpers (block-level, backend-driven + offline cache).
+import { getFormLocationHelpers } from "utils/formLocations";
+import useFormLocations from "hooks/useFormLocations";
 import {useTranslation} from "react-i18next";
 import { useFormTranslation } from "hooks/useFormTranslation";
 import {filterNumberKeyDown} from 'utils'
@@ -41,6 +43,9 @@ import ConsentDialog from '../../components/ui/ConsentDialog';
 import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
 import { getConsentStatus } from '../../utils/consentManager';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
+
+const { getDistrictOptions, getStateOptions, getBlockOptions } =
+  getFormLocationHelpers("FOLLOWUP");
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -164,6 +169,8 @@ const Followup = () => {
     const [showSnackBar, setShowSnackBar] = useState(false);
     const [snackBarMessage, setSnackBarMessage] = useState({text: "", type: ""});
     const isOnline = useNetworkStatus();
+    // Load this form's active locations (online -> backend + cache, offline -> cache).
+    useFormLocations("FOLLOWUP");
     const navigate = useNavigate();
     const location = useLocation();
     const {t} = useFormTranslation('followup');

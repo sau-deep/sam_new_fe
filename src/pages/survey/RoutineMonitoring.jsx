@@ -33,7 +33,9 @@ import apiService from '../../services/api';
 import Loader from "components/ui/Loader";
 import AutoSaveIndicator from "components/ui/AutoSaveIndicator";
 import { ArrowBack, ArrowForward, Check, Description } from "@mui/icons-material";
-import { getStateOptions, getDistrictOptions, getBlockOptions } from "constants/locations";
+// Per-form location helpers (block-level, backend-driven + offline cache).
+import { getFormLocationHelpers } from "utils/formLocations";
+import useFormLocations from "hooks/useFormLocations";
 import { filterNumberKeyDown } from 'utils'
 import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
@@ -63,6 +65,8 @@ import {
 } from '../../utils/routineMonitoringPreferences';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
 
+const { getStateOptions, getDistrictOptions, getBlockOptions } =
+  getFormLocationHelpers("ROUTINE_MONITORING");
 
 const ITEM_HEIGHT = 35;
 const ITEM_PADDING_TOP = 4;
@@ -88,7 +92,9 @@ const RoutineMonitoring = () => {
     const location = useLocation();
     const { t } = useFormTranslation('routine');
     const isOnline = useNetworkStatus();
-    
+    // Load this form's active locations (online -> backend + cache, offline -> cache).
+    useFormLocations("ROUTINE_MONITORING");
+
     // Add retry state management
     const [retryCount, setRetryCount] = useState(0);
     const [showSaveOfflineOption, setShowSaveOfflineOption] = useState(false);

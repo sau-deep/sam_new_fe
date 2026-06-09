@@ -29,15 +29,9 @@ import AutoSaveIndicator from "components/ui/AutoSaveIndicator";
 import ErrorReportingDialog from '../../components/ui/ErrorReportingDialog';
 import ConsentDialog from '../../components/ui/ConsentDialog';
 import { ArrowBack, ArrowForward, Check, LocationOn, LocationOff } from "@mui/icons-material";
-import {
-  getStateOptions,
-  getDistrictOptions,
-  getBlockOptions,
-  getVillageOptions,
-  getDistrictOptionsByStateName,
-  getBlockOptionsByDistrictName,
-  getVillageOptionsByBlockName,
-} from "constants";
+// Per-form location helpers (block-level, backend-driven + offline cache).
+import { getFormLocationHelpers } from "utils/formLocations";
+import useFormLocations from "hooks/useFormLocations";
 import { useTranslation } from "react-i18next";
 import { useFormTranslation } from "hooks/useFormTranslation";
 import { filterNumberKeyDown } from 'utils'
@@ -50,7 +44,42 @@ import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsa
 import { getConsentStatus } from '../../utils/consentManager';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
 import { useFormikContext } from "formik";
+import { calculateWHZ, classifyWHZ } from 'utils/whoZScore';
 // import MapComponent from 'components/ui/StreetMap'; // Removed - using direct geolocation API instead
+
+const {
+  getStateOptions,
+  getDistrictOptions,
+  getBlockOptions,
+  getVillageOptions,
+  getDistrictOptionsByStateName,
+  getBlockOptionsByDistrictName,
+  getVillageOptionsByBlockName,
+} = getFormLocationHelpers("BI_ANNUAL");
+
+/**
+ * Watches ANTH1 (weight) / ANTH2 (height) / sex / age and auto-fills
+ * ANTH4 (nutritionalCategory) using the WHO 2006 WHZ LMS method.
+ * Must be rendered inside a <Formik> tree.
+ */
+const WHZAutoCalculator = () => {
+  const { values, setFieldValue } = useFormikContext();
+  useEffect(() => {
+    const wt = values.current_wt;
+    const ht = values.currentHt;
+    // 999 = not measured — skip
+    if (wt === '999' || String(wt) === '999' || ht === '999' || String(ht) === '999') return;
+    const whz = calculateWHZ(wt, ht, values.childAgeMonths, values.childSex);
+    if (whz !== null) {
+      const cls = classifyWHZ(whz);
+      if (cls) setFieldValue('nutritionalCategory', cls);
+    }
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    values.current_wt, values.currentHt,
+    values.childAgeMonths, values.childSex,
+  ]);
+  return null;
+};
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -470,6 +499,9 @@ const BiAnnual = () => {
   const [locationStatus, setLocationStatus] = useState('checking'); // 'checking', 'granted', 'denied', 'error', 'unavailable'
   const [locationError, setLocationError] = useState('');
   const isOnline = useNetworkStatus();
+  // Load this form's active locations (online -> backend + cache, offline -> cache)
+  // and re-render dropdowns once ready.
+  useFormLocations("BI_ANNUAL");
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedVillage, setSelectedVillage] = useState(null);
@@ -1312,6 +1344,8 @@ const BiAnnual = () => {
                 
                 return (
                 <Form>
+                  {/* WHZ auto-calculator: watches ANTH1/ANTH2/sex/age → auto-sets ANTH4 */}
+                  <WHZAutoCalculator />
                   {/* Auto-save indicator */}
                   <AutoSaveIndicator
                     lastSaved={autoSave.lastSaved}
@@ -4084,7 +4118,7 @@ const BiAnnual = () => {
                             </>
                           )}
 
-                          {/* ANTH4: Nutritional category as per weight-for-height/length */}
+                          {/* ANTH4: Nutritional category — auto-set from WHZ (ANTH1 weight + ANTH2 height) */}
                           <Grid item xs={12} sm={7} className={{
                             [styles.invalid]: touched.nutritionalCategory && !!errors.nutritionalCategory,
                           }}>
@@ -4092,14 +4126,50 @@ const BiAnnual = () => {
                               {t('anth4')} <span className={styles.requiredStar}>*</span>
                             </label>
                             <em>{t('anth4_note')}</em>
-                            <RadioGroup aria-label="Nutritional category" name="nutritionalCategory" size="small"
-                              id="nutritionalCategory" value={values.nutritionalCategory}
-                              onChange={handleChange}
-                              onBlur={handleBlur} error={touched.nutritionalCategory && !!errors.nutritionalCategory}>
-                              <FormControlLabel value="SAM" control={<Radio />} label={t('sam')} />
-                              <FormControlLabel value="MAM" control={<Radio />} label={t('mam')} />
-                              <FormControlLabel value="Normal" control={<Radio />} label={t('normal')} />
-                            </RadioGroup>
+                            {(() => {
+                              const skip =
+                                values.current_wt === '999' || String(values.current_wt) === '999' ||
+                                values.currentHt === '999' || String(values.currentHt) === '999';
+                              const whz = skip ? null : calculateWHZ(
+                                values.current_wt, values.currentHt,
+                                values.childAgeMonths, values.childSex
+                              );
+                              return (
+                                <>
+                                  {whz !== null && (
+                                    <Box sx={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 1,
+                                      mb: 1, mt: 0.5, px: 1.5, py: 0.75, borderRadius: 1,
+                                      backgroundColor: whz < -3 ? '#fdecea' : whz < -2 ? '#fff8e1' : '#e8f5e9',
+                                      border: '1px solid',
+                                      borderColor: whz < -3 ? '#e57373' : whz < -2 ? '#ffb300' : '#66bb6a',
+                                    }}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        WHZ: {whz.toFixed(2)} ({classifyWHZ(whz)})
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: '#555', fontStyle: 'italic' }}>
+                                        — auto-selected
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  <RadioGroup aria-label="Nutritional category" name="nutritionalCategory" size="small"
+                                    id="nutritionalCategory" value={values.nutritionalCategory}
+                                    onChange={handleChange}
+                                    onBlur={handleBlur} error={touched.nutritionalCategory && !!errors.nutritionalCategory}
+                                    sx={{ pointerEvents: whz !== null ? 'none' : 'auto' }}>
+                                    <FormControlLabel value="SAM" control={<Radio />} label={
+                                      <Typography variant="body2">{t('sam')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ &lt; -3)</Typography></Typography>
+                                    } />
+                                    <FormControlLabel value="MAM" control={<Radio />} label={
+                                      <Typography variant="body2">{t('mam')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(-3 ≤ WHZ &lt; -2)</Typography></Typography>
+                                    } />
+                                    <FormControlLabel value="Normal" control={<Radio />} label={
+                                      <Typography variant="body2">{t('normal')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ ≥ -2)</Typography></Typography>
+                                    } />
+                                  </RadioGroup>
+                                </>
+                              );
+                            })()}
                           </Grid>
 
                           {/* ANTH5: Is the child enrolled in the CMAM programme? */}

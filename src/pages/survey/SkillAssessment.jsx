@@ -1,4 +1,4 @@
-import React, { useState, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { useNavigate } from "react-router-dom";
 import styles from "./survey.module.css";
 import * as Yup from "yup";
@@ -26,7 +26,8 @@ import {
 import apiService from '../../services/api';
 import Loader from "components/ui/Loader";
 import { ArrowBack, ArrowForward, Check } from "@mui/icons-material";
-import { getStateOptions, getDistrictOptions, getBlockOptions } from "constants";
+// Section of the Routine Monitoring form -> uses ROUTINE_MONITORING per-form locations.
+import { getFormLocationHelpers } from "utils/formLocations";
 import { useTranslation } from "react-i18next";
 import { filterNumberKeyDown } from 'utils'
 import { saveOfflineForm } from 'utils/indexDB'
@@ -34,8 +35,12 @@ import useNetworkStatus from 'utils/networkState';
 import AwaRegistration from './AwaRegistration';
 import { styled } from '@mui/material/styles';
 import { useCheckboxGroupWithOthers, useRadioGroupWithOthers, createOthersValidation } from 'utils/formUtils';
+import { calculateWHZ, classifyWHZ } from 'utils/whoZScore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+
+const { getStateOptions, getDistrictOptions, getBlockOptions } =
+  getFormLocationHelpers("ROUTINE_MONITORING");
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -213,6 +218,41 @@ const SkillAssessment = forwardRef((props, ref) => {
     const [classifyWastingAww, setClassifyWastingAww] = useState('');
     const [nutritionalStatusXScorecard, setNutritionalStatusXScorecard] = useState('');
     const [screeningSamChildren, setScreeningSamChildren] = useState('');
+    const [calculatedWHZ, setCalculatedWHZ] = useState(null);
+
+    // Auto-calculate WHZ whenever any of the 5 relevant inputs change.
+    // Runs both on mount and whenever sex, age, weight, height, or the Q4.17 method changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (formValues.classifyWastingAww !== 'Used WFL / WFH z-score chart') {
+            setCalculatedWHZ(null);
+            return;
+        }
+        const whz = calculateWHZ(
+            formValues.childWeightAww,
+            formValues.childHeightAww,
+            formValues.childAge,
+            formValues.childSex
+        );
+        setCalculatedWHZ(whz);
+        if (whz !== null) {
+            const classification = classifyWHZ(whz);
+            if (classification) {
+                setFormValues(prev => ({ ...prev, nutritionalStatusXScorecard: classification }));
+                setNutritionalStatusXScorecard(classification);
+            }
+        } else {
+            setFormValues(prev => ({ ...prev, nutritionalStatusXScorecard: '' }));
+            setNutritionalStatusXScorecard('');
+        }
+    }, [ // eslint-disable-line react-hooks/exhaustive-deps
+        formValues.classifyWastingAww,
+        formValues.childWeightAww,
+        formValues.childHeightAww,
+        formValues.childAge,
+        formValues.childSex,
+    ]);
+
 
     const generateMonthOptions = () => [
         { value: '01', label: 'January' },
@@ -1473,8 +1513,10 @@ const SkillAssessment = forwardRef((props, ref) => {
                             name="classifyWastingAww"
                             value={formValues.classifyWastingAww}
                             onChange={(e) => {
-                                updateFormValue('classifyWastingAww', e.target.value);
-                                setClassifyWastingAww(e.target.value);
+                                const selected = e.target.value;
+                                updateFormValue('classifyWastingAww', selected);
+                                setClassifyWastingAww(selected);
+                                // WHZ recalculation is handled by useEffect watching classifyWastingAww
                             }}
                         >
                             <FormControlLabel value="Used WFL / WFH z-score chart" control={<Radio />} label={t('usedWFLWFHZScoreChart')} />
@@ -1502,29 +1544,43 @@ const SkillAssessment = forwardRef((props, ref) => {
                             <label className={styles.label} htmlFor="nutritionalStatusXScorecard">
                                 {t('section418NutritionalStatusXScorecard')} <span className={styles.requiredStar}>*</span>
                             </label>
+
+                            {/* WHZ result badge */}
+                            {calculatedWHZ !== null && (
+                                <Box sx={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 1,
+                                    mb: 1.5, px: 1.5, py: 0.75, borderRadius: 1,
+                                    backgroundColor: calculatedWHZ < -3 ? '#fdecea' : calculatedWHZ < -2 ? '#fff8e1' : '#e8f5e9',
+                                    border: '1px solid', borderColor: calculatedWHZ < -3 ? '#e57373' : calculatedWHZ < -2 ? '#ffb300' : '#66bb6a',
+                                }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        WHZ: {calculatedWHZ.toFixed(2)} ({classifyWHZ(calculatedWHZ)})
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: '#555', fontStyle: 'italic' }}>
+                                        — auto-selected
+                                    </Typography>
+                                </Box>
+                            )}
+
                             <RadioGroup
                                 aria-label="nutritionalStatusXScorecard"
                                 name="nutritionalStatusXScorecard"
                                 value={formValues.nutritionalStatusXScorecard}
-                                onChange={(e) => {
-                                    updateFormValue('nutritionalStatusXScorecard', e.target.value);
-                                    setNutritionalStatusXScorecard(e.target.value);
-                                }}
+                                onChange={() => {}}
+                                sx={{ pointerEvents: calculatedWHZ !== null ? 'none' : 'auto' }}
                             >
-                                <FormControlLabel value="SAM" control={<Radio />} label={t('SAM')} />
-                                <FormControlLabel value="MAM" control={<Radio />} label={t('MAM')} />
-                                <FormControlLabel value="Normal" control={<Radio />} label={t('normal')} />
+                                <FormControlLabel value="SAM" control={<Radio />} label={
+                                    <Typography variant="body2">{t('SAM')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ &lt; -3)</Typography></Typography>
+                                } />
+                                <FormControlLabel value="MAM" control={<Radio />} label={
+                                    <Typography variant="body2">{t('MAM')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(-3 ≤ WHZ &lt; -2)</Typography></Typography>
+                                } />
+                                <FormControlLabel value="Normal" control={<Radio />} label={
+                                    <Typography variant="body2">{t('normal')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ ≥ -2)</Typography></Typography>
+                                } />
                             </RadioGroup>
                             {shouldShowError('nutritionalStatusXScorecard') && (
-                                <Typography
-                                    variant="caption"
-                                    sx={{
-                                        color: '#d32f2f',
-                                        fontSize: '0.75rem',
-                                        mt: 0.5,
-                                        display: 'block'
-                                    }}
-                                >
+                                <Typography variant="caption" sx={{ color: '#d32f2f', fontSize: '0.75rem', mt: 0.5, display: 'block' }}>
                                     {t('validationRequiredField') || 'This field is required'}
                                 </Typography>
                             )}

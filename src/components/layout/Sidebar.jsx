@@ -9,6 +9,7 @@ import {
   BellOutlined, FolderOpenOutlined, DownloadOutlined, AuditOutlined,
   UserOutlined, SettingOutlined, GlobalOutlined, HomeOutlined,
   PieChartOutlined, LineChartOutlined, HeatMapOutlined, AppstoreOutlined,
+  EnvironmentOutlined,
 } from "@ant-design/icons";
 
 const { Sider } = Layout;
@@ -125,6 +126,24 @@ function buildMenuItems(role, notifCount) {
     items.push({ key: "/audit", icon: <AuditOutlined />, label: "Audit Logs" });
   }
 
+  // Location Management — admin only
+  if (isAdmin) {
+    items.push({
+      key: "locations",
+      icon: <EnvironmentOutlined />,
+      label: "Locations",
+      children: [
+        { key: "/locations/villages", icon: <EnvironmentOutlined />, label: "Village Management" },
+        { key: "/locations/form-locations", icon: <AppstoreOutlined />, label: "Form Locations" },
+      ],
+    });
+  }
+
+  // Settings — admin only
+  if (isAdmin) {
+    items.push({ key: "/settings", icon: <SettingOutlined />, label: "Settings" });
+  }
+
   // Resources
   items.push({ key: "/resources", icon: <FolderOpenOutlined />, label: "Resources" });
 
@@ -144,6 +163,7 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
     if (path.startsWith("/dashboard") || path.startsWith("/analytics")) return ["analytics"];
     if (path.startsWith("/data")) return ["data"];
     if (path.startsWith("/users")) return ["users"];
+    if (path.startsWith("/locations")) return ["locations"];
     return [];
   };
 

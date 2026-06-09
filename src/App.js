@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // BEL Survey Components
@@ -12,6 +12,8 @@ import { ConfigProvider, Spin } from "antd";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { FormConfigProvider } from "./context/FormConfigContext";
+import api from "./services/axiosInstance";
 import { antdTheme } from "./theme/unicef";
 import AppLayout from "./components/layout/AppLayout";
 import { ROLES } from "./config";
@@ -38,6 +40,9 @@ const MySubmissions = lazy(() => import("./pages/surveys/MySubmissions"));
 const StateWiseSummary = lazy(() => import("./pages/data/StateWiseSummary"));
 const ResponseSummary = lazy(() => import("./pages/data/ResponseSummary"));
 const CompleteResponse = lazy(() => import("./pages/data/CompleteResponse"));
+const Settings = lazy(() => import("./pages/settings/Settings"));
+const VillageManagement = lazy(() => import("./pages/locations/VillageManagement"));
+const FormLocationManagement = lazy(() => import("./pages/forms/FormLocationManagement"));
 
 const PageLoader = () => (
   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -52,6 +57,65 @@ function ProtectedRoute({ children, roles = [] }) {
   if (roles.length > 0 && !roles.some((r) => hasRole(r))) {
     return <Navigate to="/unauthorized" replace />;
   }
+  return children;
+}
+
+// FormGuard makes its OWN direct API call on every visit rather than reading
+// from the shared context.  This eliminates an entire class of bugs where:
+//   • setFormConfig() and setChecking(false) land in different React render
+//     batches, so FormGuard evaluates the old context value.
+//   • The shared context hasn't finished its own fetch yet when the guard
+//     first renders.
+//   • The backend returns the config as an already-parsed Object that the
+//     context's JSON.parse() would have thrown on.
+function FormGuard({ formKey, children }) {
+  // "checking" → waiting for backend  |  "allowed" → open  |  "blocked" → redirect
+  const [status, setStatus] = useState("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get("/bel/config/form_config", {
+        noCache: true,
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      })
+      .then((res) => {
+        if (cancelled) return;
+        const raw = res.data?.data;
+
+        // No config key in DB yet → all forms are enabled by default
+        if (raw == null) { setStatus("allowed"); return; }
+
+        // Handle both a JSON string and a pre-parsed object (defensive)
+        let config;
+        try {
+          config = typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {
+          config = {};
+        }
+
+        // Treat missing key (undefined / true) as enabled; only explicit
+        // false blocks access.
+        setStatus(config[formKey] === false ? "blocked" : "allowed");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Backend unreachable — fall back to localStorage so a previously
+        // confirmed disabled form is still blocked even when offline.
+        try {
+          const stored = JSON.parse(localStorage.getItem("formConfig") || "{}");
+          setStatus(stored[formKey] === false ? "blocked" : "allowed");
+        } catch {
+          setStatus("allowed"); // safe default: show form, don't silently block
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [formKey]);
+
+  if (status === "checking") return <PageLoader />;
+  if (status === "blocked") return <Navigate to="/surveys" replace />;
   return children;
 }
 
@@ -134,16 +198,24 @@ function AppRoutes() {
           {/* Surveys */}
           <Route path="/surveys" element={<SurveyHome />} />
           <Route path="/surveys/routine-monitoring" element={
-            <ProtectedRoute roles={ALL_ROLES}><RoutineMonitoring /></ProtectedRoute>
+            <ProtectedRoute roles={ALL_ROLES}>
+              <FormGuard formKey="ROUTINE_MONITORING"><RoutineMonitoring /></FormGuard>
+            </ProtectedRoute>
           } />
           <Route path="/surveys/household" element={
-            <ProtectedRoute roles={ALL_ROLES}><HouseHold /></ProtectedRoute>
+            <ProtectedRoute roles={ALL_ROLES}>
+              <FormGuard formKey="HOUSE_HOLD"><HouseHold /></FormGuard>
+            </ProtectedRoute>
           } />
           <Route path="/surveys/biannual" element={
-            <ProtectedRoute roles={ALL_ROLES}><BiAnnual /></ProtectedRoute>
+            <ProtectedRoute roles={ALL_ROLES}>
+              <FormGuard formKey="BI_ANNUAL"><BiAnnual /></FormGuard>
+            </ProtectedRoute>
           } />
           <Route path="/surveys/followup" element={
-            <ProtectedRoute roles={ALL_ROLES}><Followup /></ProtectedRoute>
+            <ProtectedRoute roles={ALL_ROLES}>
+              <FormGuard formKey="FOLLOWUP"><Followup /></FormGuard>
+            </ProtectedRoute>
           } />
 
           {/* Users */}
@@ -201,6 +273,19 @@ function AppRoutes() {
             <ProtectedRoute roles={ALL_ROLES}><MySubmissions /></ProtectedRoute>
           } />
 
+          {/* Settings — admin only */}
+          <Route path="/settings" element={
+            <ProtectedRoute roles={ADMIN_ROLES}><Settings /></ProtectedRoute>
+          } />
+
+          {/* Location Management */}
+          <Route path="/locations/villages" element={
+            <ProtectedRoute roles={ADMIN_ROLES}><VillageManagement /></ProtectedRoute>
+          } />
+          <Route path="/locations/form-locations" element={
+            <ProtectedRoute roles={ADMIN_ROLES}><FormLocationManagement /></ProtectedRoute>
+          } />
+
           {/* Profile */}
           <Route path="/profile" element={
             <ProtectedRoute roles={ALL_ROLES}><Profile /></ProtectedRoute>
@@ -220,7 +305,9 @@ export default function App() {
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <ConfigProvider theme={antdTheme}>
           <AuthProvider>
-            <AppRoutes />
+            <FormConfigProvider>
+              <AppRoutes />
+            </FormConfigProvider>
           </AuthProvider>
         </ConfigProvider>
       </LocalizationProvider>

@@ -17,12 +17,16 @@ import { useTranslation } from "react-i18next";
 import apiService from '../../services/api';
 import Loader from "components/ui/Loader";
 import { ArrowBack, ArrowForward, Check } from "@mui/icons-material";
-import { getStateOptions, getDistrictOptions, getBlockOptions } from "constants";
+// Section of the Routine Monitoring form -> uses ROUTINE_MONITORING per-form locations.
+import { getFormLocationHelpers } from "utils/formLocations";
 import { filterNumberKeyDown } from 'utils'
 import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import { styled } from '@mui/material/styles';
 import { useCheckboxGroupWithOthers } from 'utils/formUtils';
+
+const { getStateOptions, getDistrictOptions, getBlockOptions } =
+  getFormLocationHelpers("ROUTINE_MONITORING");
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({

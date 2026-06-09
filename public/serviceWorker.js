@@ -1,7 +1,7 @@
 /* eslint-disable */
 /* SAM v2 Service Worker — cache-first offline support with /v2 base-path awareness */
 
-const CACHE_VERSION = 'sam-v2-cache-v1';
+const CACHE_VERSION = 'sam-v2-cache-v2';
 
 // Detect base path from where the SW file is served
 const SW_PATH = self.location.pathname; // e.g. /v2/serviceWorker.js or /serviceWorker.js
@@ -102,9 +102,14 @@ self.addEventListener('fetch', event => {
   if (url.pathname.includes('.hot-update.')) return;
   if (request.url.includes('chrome-extension')) return;
 
-  // Skip external APIs — always network
+  // Skip anything that isn't this app's own origin — always go to network.
+  // NOTE: compare origin (protocol+host+PORT), not hostname. The backend API
+  // runs on a different origin (e.g. localhost:8082 vs the app on :3000, or an
+  // api.* subdomain in prod). Comparing only hostname let same-host/different-port
+  // API GETs fall through to the cache-first branch below, which then served
+  // stale API responses forever (e.g. removed locations still showing up).
   const isExternal =
-    url.hostname !== self.location.hostname ||
+    url.origin !== self.location.origin ||
     url.pathname.includes('/api/') ||
     url.pathname.startsWith('/auth/') ||
     url.hostname.includes('openstreetmap.org');

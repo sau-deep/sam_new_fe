@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Row, Col, Card, Table, Select, DatePicker, Button, Space, Tag, Typography, Tabs, Progress, Statistic, Timeline, Alert, Spin } from "antd";
+import { Row, Col, Card, Table, Select, Button, Tag, Typography, Progress, Statistic, Timeline, Alert } from "antd";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  TeamOutlined, FileTextOutlined, GlobalOutlined, CheckCircleOutlined,
-  SyncOutlined, DownloadOutlined, FilterOutlined, ReloadOutlined,
+  TeamOutlined, FileTextOutlined, GlobalOutlined,
+  SyncOutlined, DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import StatCard from "../../components/dashboard/StatCard";
@@ -14,12 +14,9 @@ import ChartCard from "../../components/charts/ChartCard";
 import IndiaMap from "../../components/dashboard/IndiaMap";
 import api from "../../services/axiosInstance";
 import { CHART_COLORS, UNICEF_COLORS } from "../../theme/unicef";
-import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "react-i18next";
 
-const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
-const { TabPane } = Tabs;
 
 // Demo fallback data when API is not available
 const DEMO_STATS = {
@@ -76,15 +73,6 @@ const STATE_TABLE_COLS = [
   },
 ];
 
-function SectionHeader({ title, subtitle }) {
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <Title level={5} style={{ margin: 0, color: "#111827" }}>{title}</Title>
-      {subtitle && <Text style={{ color: "#6B7280", fontSize: 13 }}>{subtitle}</Text>}
-    </div>
-  );
-}
-
 export default function AdminDashboard() {
   const [stats, setStats] = useState(DEMO_STATS);
   const [trend, setTrend] = useState(DEMO_TREND);
@@ -92,16 +80,14 @@ export default function AdminDashboard() {
   const [mapData, setMapData] = useState(DEMO_MAP_DATA);
   const [formDist, setFormDist] = useState(DEMO_FORM_DIST);
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState([dayjs().subtract(6, "month"), dayjs()]);
   const [selectedState, setSelectedState] = useState(null);
-  const { isAdmin } = useAuth();
   const { t } = useTranslation();
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const startDate = dateRange[0].format("YYYY-MM-DD");
-      const endDate = dateRange[1].format("YYYY-MM-DD");
+      const startDate = dayjs().subtract(6, "month").format("YYYY-MM-DD");
+      const endDate = dayjs().format("YYYY-MM-DD");
 
       const [dashRes, pendingCountRes, unicefStatsRes, mapDataRes] = await Promise.allSettled([
         api.get("/form/routine-monitoring/dashboard", { params: { startDate, endDate } }),
@@ -147,7 +133,7 @@ export default function AdminDashboard() {
         const pendingCount = pendingCountRes.value.data;
         setStats((prev) => ({
           ...prev,
-          pendingNotifications: typeof pendingCount === "number" ? pendingCount : (pendingCount?.count ?? prev.pendingNotifications),
+          pendingNotifications: typeof pendingCount === "number" ? pendingCount : (pendingCount?.count ?? pendingCount?.data ?? prev.pendingNotifications),
         }));
       }
 
@@ -176,7 +162,7 @@ export default function AdminDashboard() {
     } catch { /* fallback to demo data on error */ } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
@@ -210,26 +196,9 @@ export default function AdminDashboard() {
   return (
     <div style={{ padding: "24px", background: "#F5F7FA", minHeight: "100vh" }}>
       {/* Page header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <Title level={3} style={{ margin: 0, color: "#002147" }}>{t("adminDashboard")}</Title>
-          <Text style={{ color: "#6B7280" }}>{t("realTimeOverview")} · {t("allStates")} · {t("allForms")}</Text>
-        </div>
-        <Space>
-          <RangePicker
-            value={dateRange}
-            onChange={setDateRange}
-            style={{ borderRadius: 8 }}
-            format="MMM YYYY"
-            picker="month"
-          />
-          <Button icon={<ReloadOutlined />} onClick={fetchDashboard} loading={loading}>
-            Refresh
-          </Button>
-          <Button type="primary" icon={<DownloadOutlined />} onClick={() => window.location.href = "/data/export"}>
-            Export Data
-          </Button>
-        </Space>
+      <div style={{ marginBottom: 24 }}>
+        <Title level={3} style={{ margin: 0, color: "#002147" }}>{t("adminDashboard")}</Title>
+        <Text style={{ color: "#6B7280" }}>{t("realTimeOverview")} · {t("allStates")} · {t("allForms")}</Text>
       </div>
 
       {/* Stat Cards */}

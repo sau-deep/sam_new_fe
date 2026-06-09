@@ -1,21 +1,12 @@
-import { useState } from "react";
-import { Row, Col, Card, Button, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { Row, Col, Card, Button, Tag, Typography, Skeleton } from "antd";
 import { BarChartOutlined, FormOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { SURVEY_FORMS, ROLES } from "../../config";
+import { useFormConfig } from "../../context/FormConfigContext";
+import { ROLES } from "../../config";
 
 const { Title, Text } = Typography;
-
-const FORM_CONFIG_KEY = "formConfig";
-
-function getFormConfig() {
-  try {
-    const stored = localStorage.getItem(FORM_CONFIG_KEY);
-    if (stored) return { ...SURVEY_FORMS, ...JSON.parse(stored) };
-  } catch { /* ignore */ }
-  return { ...SURVEY_FORMS };
-}
 
 const FORM_CARD_DEFINITIONS = [
   {
@@ -42,7 +33,7 @@ const FORM_CARD_DEFINITIONS = [
     key: "BI_ANNUAL",
     title: "Concurrent Assessment",
     subtitle: "Bi-annual child health and nutrition assessment",
-    path: "/surveys/bi-annual",
+    path: "/surveys/biannual",
     color: "#5B21B6",
     gradient: "linear-gradient(135deg, #1E1B4B 0%, #5B21B6 100%)",
     icon: "📊",
@@ -63,9 +54,18 @@ const FORM_CARD_DEFINITIONS = [
 export default function SurveyHome() {
   const navigate = useNavigate();
   const { user, getPrimaryRole } = useAuth();
+  const { formConfig, refreshFormConfig } = useFormConfig();
   const role = getPrimaryRole();
   const isSurveyor = role === ROLES.SURVEYOR;
-  const [formConfig] = useState(getFormConfig);
+
+  // Block all card interactions until the backend has confirmed the current
+  // config. Without this gate, a user could click an "enabled" card that was
+  // actually disabled — they'd just be clicking a stale cached value.
+  const [configLoading, setConfigLoading] = useState(true);
+
+  useEffect(() => {
+    refreshFormConfig().finally(() => setConfigLoading(false));
+  }, [refreshFormConfig]);
 
   const FORM_CARDS = FORM_CARD_DEFINITIONS.map((def) => ({
     ...def,
@@ -86,97 +86,109 @@ export default function SurveyHome() {
         </Text>
       </div>
 
-      {/* Form Cards */}
-      <Row gutter={[20, 20]}>
-        {FORM_CARDS.map((form) => (
-          <Col xs={24} sm={12} xl={12} key={form.key}>
-            <Card
-              style={{
-                borderRadius: 20, border: "none", overflow: "hidden",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-                cursor: form.enabled ? "pointer" : "not-allowed",
-                transition: "transform 0.2s, box-shadow 0.2s",
-              }}
-              bodyStyle={{ padding: 0 }}
-              onClick={() => form.enabled && navigate(form.path)}
-              onMouseEnter={(e) => { if (form.enabled) { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(0,0,0,0.14)"; } }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; }}
-            >
-              {/* Gradient header */}
-              <div style={{
-                background: form.gradient, padding: "24px 28px 28px",
-                position: "relative", overflow: "hidden",
-                filter: form.enabled ? "none" : "grayscale(60%) brightness(0.75)",
-              }}>
+      {/* Form Cards — show skeleton while config is being confirmed from backend */}
+      {configLoading ? (
+        <Row gutter={[20, 20]}>
+          {FORM_CARD_DEFINITIONS.map((def) => (
+            <Col xs={24} sm={12} xl={12} key={def.key}>
+              <Card style={{ borderRadius: 20, border: "none", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }} bodyStyle={{ padding: 24 }}>
+                <Skeleton active paragraph={{ rows: 3 }} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      ) : (
+        <Row gutter={[20, 20]}>
+          {FORM_CARDS.map((form) => (
+            <Col xs={24} sm={12} xl={12} key={form.key}>
+              <Card
+                style={{
+                  borderRadius: 20, border: "none", overflow: "hidden",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+                  cursor: form.enabled ? "pointer" : "not-allowed",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                }}
+                bodyStyle={{ padding: 0 }}
+                onClick={() => form.enabled && navigate(form.path)}
+                onMouseEnter={(e) => { if (form.enabled) { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 8px 28px rgba(0,0,0,0.14)"; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.08)"; }}
+              >
+                {/* Gradient header */}
                 <div style={{
-                  position: "absolute", top: -20, right: -20, width: 120, height: 120,
-                  borderRadius: "50%", background: "rgba(255,255,255,0.1)",
-                }} />
-                <div style={{
-                  position: "absolute", bottom: -30, right: 30, width: 80, height: 80,
-                  borderRadius: "50%", background: "rgba(255,255,255,0.06)",
-                }} />
+                  background: form.gradient, padding: "24px 28px 28px",
+                  position: "relative", overflow: "hidden",
+                  filter: form.enabled ? "none" : "grayscale(60%) brightness(0.75)",
+                }}>
+                  <div style={{
+                    position: "absolute", top: -20, right: -20, width: 120, height: 120,
+                    borderRadius: "50%", background: "rgba(255,255,255,0.1)",
+                  }} />
+                  <div style={{
+                    position: "absolute", bottom: -30, right: 30, width: 80, height: 80,
+                    borderRadius: "50%", background: "rgba(255,255,255,0.06)",
+                  }} />
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontSize: 36, marginBottom: 8 }}>{form.icon}</div>
-                    <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>{form.title}</div>
-                    <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, marginTop: 4 }}>{form.subtitle}</div>
-                  </div>
-                  <div>
-                    {form.enabled
-                      ? <Tag style={{ background: "rgba(255,255,255,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20 }}>Active</Tag>
-                      : <Tag style={{ background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 20 }}>Disabled</Tag>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div style={{ padding: "20px 28px 24px", background: "white" }}>
-                <div style={{ marginBottom: 16 }}>
-                  <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>SECTIONS COVERED</Text>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {form.sections.map((s) => (
-                      <Tag key={s} style={{ borderRadius: 12, fontSize: 11, background: "#F5F7FA", border: "1px solid #E5E7EB", color: "#374151" }}>
-                        {s}
-                      </Tag>
-                    ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: 36, marginBottom: 8 }}>{form.icon}</div>
+                      <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>{form.title}</div>
+                      <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, marginTop: 4 }}>{form.subtitle}</div>
+                    </div>
+                    <div>
+                      {form.enabled
+                        ? <Tag style={{ background: "rgba(255,255,255,0.2)", color: "white", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 20 }}>Active</Tag>
+                        : <Tag style={{ background: "rgba(0,0,0,0.2)", color: "rgba(255,255,255,0.6)", border: "none", borderRadius: 20 }}>Disabled</Tag>}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <div style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
-                        {form.key === "ROUTINE_MONITORING" ? "8,240" : form.key === "HOUSE_HOLD" ? "2,180" : form.key === "BI_ANNUAL" ? "1,320" : "740"}
-                      </div>
-                      <div style={{ fontSize: 10, color: "#9CA3AF" }}>Submitted</div>
+                {/* Content */}
+                <div style={{ padding: "20px 28px 24px", background: "white" }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>SECTIONS COVERED</Text>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                      {form.sections.map((s) => (
+                        <Tag key={s} style={{ borderRadius: 12, fontSize: 11, background: "#F5F7FA", border: "1px solid #E5E7EB", color: "#374151" }}>
+                          {s}
+                        </Tag>
+                      ))}
                     </div>
                   </div>
 
-                  {form.enabled ? (
-                    <Button
-                      type="primary"
-                      icon={<FormOutlined />}
-                      style={{
-                        background: form.color, borderColor: form.color,
-                        borderRadius: 10, fontWeight: 600, height: 40,
-                      }}
-                      onClick={(e) => { e.stopPropagation(); navigate(form.path); }}
-                    >
-                      Fill Form
-                    </Button>
-                  ) : (
-                    <Button disabled style={{ borderRadius: 10, height: 40 }}>
-                      {isSurveyor ? "Not Available" : "Disabled"}
-                    </Button>
-                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+                          {form.key === "ROUTINE_MONITORING" ? "8,240" : form.key === "HOUSE_HOLD" ? "2,180" : form.key === "BI_ANNUAL" ? "1,320" : "740"}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#9CA3AF" }}>Submitted</div>
+                      </div>
+                    </div>
+
+                    {form.enabled ? (
+                      <Button
+                        type="primary"
+                        icon={<FormOutlined />}
+                        style={{
+                          background: form.color, borderColor: form.color,
+                          borderRadius: 10, fontWeight: 600, height: 40,
+                        }}
+                        onClick={(e) => { e.stopPropagation(); navigate(form.path); }}
+                      >
+                        Fill Form
+                      </Button>
+                    ) : (
+                      <Button disabled style={{ borderRadius: 10, height: 40 }}>
+                        {isSurveyor ? "Not Available" : "Disabled"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
 
       {/* Admin quick links */}
       {!isSurveyor && (

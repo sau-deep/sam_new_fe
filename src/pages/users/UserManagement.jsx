@@ -8,8 +8,9 @@ import {
   StopOutlined, PlayCircleOutlined, TeamOutlined, SearchOutlined, SettingOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
+import { useFormConfig } from "../../context/FormConfigContext";
 import api from "../../services/axiosInstance";
-import { ROLES, SURVEY_FORMS } from "../../config";
+import { ROLES } from "../../config";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -17,42 +18,31 @@ const { Option } = Select;
 
 const STATES = ["Rajasthan", "Odisha", "Madhya Pradesh", "Chhattisgarh", "Jharkhand", "Telangana"];
 
-const FORM_CONFIG_KEY = "formConfig";
-
-function getFormConfig() {
-  try {
-    const stored = localStorage.getItem(FORM_CONFIG_KEY);
-    if (stored) return { ...SURVEY_FORMS, ...JSON.parse(stored) };
-  } catch { /* ignore */ }
-  return { ...SURVEY_FORMS };
-}
-
-function saveFormConfig(config) {
-  localStorage.setItem(FORM_CONFIG_KEY, JSON.stringify(config));
-}
+const FORM_LABELS = [
+  { key: "ROUTINE_MONITORING", label: "Routine Monitoring (RMC)", description: "AWC, VHSND, CBE, Household sections" },
+  { key: "HOUSE_HOLD", label: "Household Questionnaire", description: "Complete household assessment" },
+  { key: "BI_ANNUAL", label: "Concurrent Assessment (Bi-Annual)", description: "Bi-annual child health and nutrition" },
+  { key: "FOLLOWUP", label: "Follow-Up Assessment", description: "Track progress of assessed children" },
+];
 
 function FormSettingsTab() {
-  const [config, setConfig] = useState(getFormConfig());
+  const { formConfig: config, updateFormConfig } = useFormConfig();
+  const { user } = useAuth();
 
-  const handleToggle = (key, value) => {
-    const updated = { ...config, [key]: value };
-    setConfig(updated);
-    saveFormConfig(updated);
-    message.success(`${key.replace(/_/g, " ")} ${value ? "enabled" : "disabled"}`);
+  const handleToggle = async (key, value) => {
+    try {
+      await updateFormConfig(key, value, user?.username || "admin");
+      const label = FORM_LABELS.find((f) => f.key === key)?.label ?? key;
+      message.success(`${label} ${value ? "enabled" : "disabled"}`);
+    } catch {
+      message.error("Failed to save setting. Please try again.");
+    }
   };
-
-  const FORM_LABELS = [
-    { key: "ROUTINE_MONITORING", label: "Routine Monitoring (RMC)", description: "AWC, VHSND, CBE, Household sections" },
-    { key: "HOUSE_HOLD", label: "Household Questionnaire", description: "Complete household assessment" },
-    { key: "BI_ANNUAL", label: "Concurrent Assessment (Bi-Annual)", description: "Bi-annual child health and nutrition" },
-    { key: "FOLLOWUP", label: "Follow-Up Assessment", description: "Track progress of assessed children" },
-  ];
 
   return (
     <div style={{ padding: "8px 0" }}>
       <Text style={{ color: "#6B7280", fontSize: 13, display: "block", marginBottom: 16 }}>
-        Toggle survey forms on or off. Changes take effect immediately for surveyors.
-        Settings are stored locally on this device.
+        Toggle survey forms on or off. Disabled forms are hidden from all users and cannot be accessed.
       </Text>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {FORM_LABELS.map(({ key, label, description }) => (
