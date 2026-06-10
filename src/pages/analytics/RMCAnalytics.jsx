@@ -69,6 +69,195 @@ const DISTRICT_COLS = [
 ];
 
 
+// ─── Key Indicator Chart Helpers ─────────────────────────────────────────────
+const KI_CHART_COLORS = ["#1CABE2", "#374EA2", "#52C41A", "#F26A21", "#9B59B6", "#00BCD4", "#FF7043"];
+const KI_STACK_COLORS = ["#52C41A", "#FF4D4F", "#1CABE2", "#F26A21"];
+
+const isKIMultiSeries = (d) => d != null && Array.isArray(d?.categories) && Array.isArray(d?.series);
+
+// Abbreviate multi-word names to initials: "Mohla-Manpur-Ambagarh Chouki" → "MMAC"
+const shortLabel = (name) => {
+  const s = String(name ?? "").trim();
+  if (!s) return "";
+  const tokens = s.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (tokens.length <= 1) return s;
+  return tokens.map(t => t.charAt(0)).join("").toUpperCase();
+};
+
+function KISingleChart({ data }) {
+  const safe = Array.isArray(data) ? data : [];
+  if (!safe.length) return <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
+  const maxRaw = Math.max(...safe.map(d => Number(d.value ?? d.percentage ?? 0)), 0);
+  const isRatio = maxRaw > 0 && maxRaw <= 1;
+  const pts = safe.map(d => ({
+    full: d.name || d.district || "",
+    name: shortLabel(d.name || d.district || ""),
+    v: Number(d.value ?? d.percentage ?? 0) * (isRatio ? 100 : 1),
+  }));
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={pts} margin={{ top: 4, right: 8, left: -18, bottom: 58 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+        <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-40} textAnchor="end" height={68} interval={0} />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
+        <Tooltip
+          formatter={v => [`${Number(v).toFixed(1)}%`, "Value"]}
+          labelFormatter={(_, payload) => payload?.[0]?.payload?.full || ""}
+          contentStyle={{ fontSize: 11, borderRadius: 8 }}
+        />
+        <Bar dataKey="v" name="%" fill="#1CABE2" radius={[3, 3, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function KIClusteredChart({ categories, series }) {
+  if (!categories?.length || !series?.length) return <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
+  const pts = categories.map((cat, i) => {
+    const p = { full: cat, name: shortLabel(cat) };
+    series.forEach(s => { p[s.name] = Array.isArray(s.data) ? Number(s.data[i] ?? 0) : 0; });
+    return p;
+  });
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={pts} margin={{ top: 4, right: 8, left: -18, bottom: 58 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+        <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-40} textAnchor="end" height={68} interval={0} />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
+        <Tooltip
+          formatter={v => `${Number(v).toFixed(1)}%`}
+          labelFormatter={(_, payload) => payload?.[0]?.payload?.full || ""}
+          contentStyle={{ fontSize: 11, borderRadius: 8 }}
+        />
+        <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
+        {series.map((s, idx) => (
+          <Bar key={s.name} dataKey={s.name} fill={KI_CHART_COLORS[idx % KI_CHART_COLORS.length]} radius={[3, 3, 0, 0]} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function KIStackedChart({ categories, series }) {
+  if (!categories?.length || !series?.length) return <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
+  const sorted = [...series].sort((a, b) => {
+    const r = n => { const l = (n || "").toLowerCase(); return l === "yes" ? 0 : l === "no" ? 1 : 2; };
+    return r(a.name) - r(b.name);
+  });
+  const pts = categories.map((cat, i) => {
+    const p = { full: cat, name: shortLabel(cat) }; let sum = 0;
+    sorted.forEach(s => { const v = Number(Array.isArray(s.data) ? (s.data[i] ?? 0) : 0); p[s.name] = v; sum += v; });
+    if (sum > 0 && Math.abs(sum - 100) > 0.01) sorted.forEach(s => { p[s.name] = Math.round((p[s.name] / sum) * 1e4) / 100; });
+    return p;
+  });
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={pts} margin={{ top: 4, right: 8, left: -18, bottom: 58 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+        <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-40} textAnchor="end" height={68} interval={0} />
+        <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
+        <Tooltip
+          formatter={v => `${Number(v).toFixed(1)}%`}
+          labelFormatter={(_, payload) => payload?.[0]?.payload?.full || ""}
+          contentStyle={{ fontSize: 11, borderRadius: 8 }}
+        />
+        <Legend wrapperStyle={{ fontSize: 9, paddingTop: 4 }} />
+        {sorted.map((s, idx) => (
+          <Bar key={s.name} dataKey={s.name} stackId="s" fill={KI_STACK_COLORS[idx % KI_STACK_COLORS.length]}
+            radius={idx === sorted.length - 1 ? [3, 3, 0, 0] : 0} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function KIAutoChart({ data }) {
+  if (!data) return <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
+  if (isKIMultiSeries(data)) {
+    const hasYesNo = data.series.some(s => ["yes", "no"].includes((s.name || "").toLowerCase()));
+    return hasYesNo
+      ? <KIStackedChart categories={data.categories} series={data.series} />
+      : <KIClusteredChart categories={data.categories} series={data.series} />;
+  }
+  return Array.isArray(data)
+    ? <KISingleChart data={data} />
+    : <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
+}
+
+const KI_SECTIONS = [
+  {
+    key: "awc", title: "AWC Level Monitoring", color: "#1CABE2", bg: "#E6F7FF", border: "#91D5FF",
+    indicators: [
+      { field: "functionalMeasuringInstrument", label: "AWC with availability of functional measuring instrument (child)" },
+      { field: "athrAndThrAvailableSAM", label: "AWCs that have A-THR and THR available for SAM children as per state protocol" },
+      { field: "awwTrainingCMAM", label: "AWWs received training on CMAM" },
+      { field: "awwCorrectlyMeasureChild", label: "AWWs able to correctly measure the child" },
+      { field: "awwKnowledgeScore100", label: "AWWs with knowledge score of 100% (6 out of 6)" },
+    ],
+  },
+  {
+    key: "anm", title: "ANM Level Monitoring", color: "#52C41A", bg: "#F6FFED", border: "#B7EB8F",
+    indicators: [
+      { field: "medicinesAvailableSAM", label: "ANMs that have medicines available for SAM children" },
+      { field: "anmTrainingCMAMAndCriteria", label: "ANMs received training on CMAM and aware of criteria to identify SAM child" },
+      { field: "anmKnowledgeScore100", label: "ANMs with knowledge score of 100% (4 out of 4)" },
+    ],
+  },
+  {
+    key: "samChild", title: "SAM Child Level Monitoring", color: "#F26A21", bg: "#FFF7E6", border: "#FFD591",
+    indicators: [
+      { field: "scheduledHomeVisits", label: "Enrolled SAM children receiving scheduled home visits (as per state protocol)" },
+      { field: "counsellingFeedingQuality", label: "Households received counselling on improving feeding / nutritional quality" },
+      { field: "adviceDuringHomeVisits", label: "Different advice received during home visits" },
+      { field: "antibioticConsumed", label: "Enrolled SAM children that consumed antibiotic (as per state protocol)" },
+      { field: "thr25DaysPastMonth", label: "Enrolled SAM children who received THR for at least 25 days in past one month" },
+      { field: "thrFedExclusivelyToSAM", label: "Households that reported feeding THR exclusively to enrolled SAM children" },
+      { field: "thrRecommendedQuantityDaily", label: "Enrolled SAM children who consumed recommended quantity of THR everyday" },
+      { field: "weightMeasuredByAWW", label: "Enrolled SAM children whose weight was measured by AWW during follow up" },
+    ],
+  },
+  {
+    key: "child0To23Months", title: "Child Level Monitoring (0–23 months)", color: "#9B59B6", bg: "#F9F0FF", border: "#D3ADF7",
+    indicators: [
+      { field: "exclusiveBreastfeeding0To6", label: "0–6-month children who received exclusive breastfeeding in the previous 24 hours" },
+      { field: "solidSemiSolidAndBreastmilk6To8", label: "6–8-month children received solid or semi-solid food and breastmilk" },
+      { field: "minAcceptableDietAndIFA6To23", label: "6–23-month children consumed minimum acceptable diet and received IFA syrup" },
+      { field: "vitaminALast6Months9To23", label: "9–23-month children received vitamin A in last 6 months" },
+    ],
+  },
+];
+
+function computeKISectionStatus(sectionKey, kiData, indicators) {
+  const sd = (kiData || {})[sectionKey] || {};
+  let above = 0, below = 0, noData = 0;
+  indicators.forEach(ind => {
+    const d = sd[ind.field];
+    if (!d) { noData++; return; }
+    let avg = null;
+    if (isKIMultiSeries(d)) {
+      const yesS = d.series.find(s => (s.name || "").toLowerCase() === "yes");
+      const noS = d.series.find(s => (s.name || "").toLowerCase() === "no");
+      if (yesS || noS) {
+        const yT = (yesS?.data || []).reduce((a, v) => a + Number(v || 0), 0);
+        const nT = (noS?.data || []).reduce((a, v) => a + Number(v || 0), 0);
+        avg = yT + nT > 0 ? (yT / (yT + nT)) * 100 : null;
+      } else {
+        let sum = 0, cnt = 0;
+        d.series.forEach(s => (s.data || []).forEach(v => { sum += Number(v || 0); cnt++; }));
+        avg = cnt > 0 ? sum / cnt : null;
+      }
+    } else if (Array.isArray(d) && d.length) {
+      const maxRaw = Math.max(...d.map(x => Number(x.value ?? x.percentage ?? 0)));
+      const scale = maxRaw > 0 && maxRaw <= 1 ? 100 : 1;
+      avg = d.reduce((a, x) => a + Number(x.value ?? x.percentage ?? 0) * scale, 0) / d.length;
+    }
+    if (avg === null) noData++;
+    else if (avg >= 80) above++;
+    else below++;
+  });
+  return { above, below, noData };
+}
+
 export default function RMCAnalytics() {
   const [indicatorsLoading, setIndicatorsLoading] = useState(false);
   const [districtLoading, setDistrictLoading] = useState(false);
@@ -82,6 +271,8 @@ export default function RMCAnalytics() {
   // Secondary: full dashboard for trend chart only
   const [dashStats, setDashStats] = useState(null);
   const { isAdmin, isUnicef, isStateAdmin, user } = useAuth();
+  const [keyIndicatorLoading, setKeyIndicatorLoading] = useState(false);
+  const [keyIndicatorData, setKeyIndicatorData] = useState(null);
 
   // State admin is locked to their own state; others can pick freely.
   const userState = user?.state || null;
@@ -229,12 +420,26 @@ export default function RMCAnalytics() {
     } catch { setDistrictData(DEMO_DISTRICT); } finally { setDistrictLoading(false); }
   }, [selectedState, dateRange]);
 
+  const fetchKeyIndicatorData = useCallback(async () => {
+    if (!selectedState || selectedState === "All States") { setKeyIndicatorData(null); return; }
+    setKeyIndicatorLoading(true);
+    try {
+      const { data } = await api.post("/form/routine-monitoring/key-indicator-dashboard", {
+        state: selectedState,
+        startDate: dateRange[0].format("YYYY-MM-DD"),
+        endDate: dateRange[1].format("YYYY-MM-DD"),
+      });
+      setKeyIndicatorData(data?.data || data || null);
+    } catch { setKeyIndicatorData(null); } finally { setKeyIndicatorLoading(false); }
+  }, [selectedState, dateRange]);
+
   useEffect(() => {
     fetchIndicators();
     fetchStateWiseSummary();
     fetchDashStats();
     fetchDistrictData();
-  }, [fetchIndicators, fetchStateWiseSummary, fetchDashStats, fetchDistrictData]);
+    fetchKeyIndicatorData();
+  }, [fetchIndicators, fetchStateWiseSummary, fetchDashStats, fetchDistrictData, fetchKeyIndicatorData]);
 
   const filtered = selectedSection === "ALL"
     ? indicators
@@ -395,119 +600,69 @@ export default function RMCAnalytics() {
         ))}
       </Row>
 
-      {/* Section filter */}
-      <div style={{ marginBottom: 20 }}>
-        <Segmented
-          options={[{ label: "All Sections", value: "ALL" }, ...SECTION_TYPES]}
-          value={selectedSection}
-          onChange={setSelectedSection}
-        />
-      </div>
-
       <Tabs defaultActiveKey="indicators">
         <TabPane tab="Key Indicators" key="indicators">
-          <Spin spinning={indicatorsLoading} tip="Loading indicators...">
-          <Row gutter={[16, 16]}>
-            {/* Indicator progress list */}
-            <Col xs={24} lg={15}>
-              <Card
-                style={{ borderRadius: 16 }}
-                title={
-                  <span style={{ fontWeight: 600, color: "#002147" }}>
-                    Indicator Achievement vs Target
-                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400, marginLeft: 8 }}>
-                      ({filtered.length} indicator{filtered.length !== 1 ? "s" : ""})
-                    </Text>
-                  </span>
-                }
-                bodyStyle={{ padding: "8px 16px" }}
-              >
-                <div style={{ maxHeight: 480, overflowY: "auto", paddingRight: 4 }}>
-                  {filtered.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "32px 0", color: "#9CA3AF" }}>
-                      No indicator data available for the selected filters.
+          {selectedState === "All States" ? (
+            <Alert
+              type="info" showIcon
+              message="Select a specific state above to view Key Indicator monitoring charts."
+              style={{ borderRadius: 8 }}
+            />
+          ) : (
+            <Spin spinning={keyIndicatorLoading} tip="Loading key indicators...">
+              {KI_SECTIONS.map((section) => {
+                const sd = keyIndicatorData?.[section.key] || {};
+                return (
+                  <div key={section.key} style={{ marginBottom: 32 }}>
+                    {/* Section header */}
+                    <div style={{
+                      background: section.bg,
+                      border: `1px solid ${section.border}`,
+                      borderRadius: "14px 14px 0 0",
+                      padding: "12px 20px",
+                      display: "flex", alignItems: "center", gap: 12,
+                    }}>
+                      <div style={{ width: 5, height: 24, background: section.color, borderRadius: 3 }} />
+                      <Text style={{ fontSize: 15, fontWeight: 700, color: section.color, flex: 1 }}>
+                        {section.title}
+                      </Text>
+                      <Tag style={{ background: section.color, color: "#fff", border: "none", fontSize: 11, borderRadius: 10 }}>
+                        {section.indicators.length} indicators
+                      </Tag>
                     </div>
-                  ) : (
-                    filtered.map((ind, idx) => {
-                      const pct = Math.min(100, Math.max(0, ind.value));
-                      const onTarget = pct >= ind.target;
-                      const color = pct >= ind.target ? "#52C41A" : pct >= 60 ? UNICEF_COLORS.primary : "#FF4D4F";
-                      return (
-                        <div
-                          key={ind.code || idx}
-                          style={{
-                            padding: "10px 0",
-                            borderBottom: idx < filtered.length - 1 ? "1px solid #F3F4F6" : "none",
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                            <Text style={{ fontSize: 12.5, color: "#374151", lineHeight: "1.4", flex: 1, paddingRight: 12 }}>
-                              {ind.name}
-                            </Text>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                              <Tag color={onTarget ? "success" : "default"} style={{ fontSize: 11, margin: 0 }}>
-                                Target: {ind.target}%
-                              </Tag>
-                              <Text strong style={{ fontSize: 13, color, minWidth: 36, textAlign: "right" }}>
-                                {pct}%
-                              </Text>
-                            </div>
-                          </div>
-                          <Progress
-                            percent={pct}
-                            showInfo={false}
-                            strokeColor={color}
-                            trailColor="#F3F4F6"
-                            size="small"
-                            style={{ margin: 0 }}
-                          />
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </Card>
-            </Col>
 
-            {/* Right column: pie + summary stats */}
-            <Col xs={24} lg={9}>
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <ChartCard title="Submissions by Section" height={260}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={sectionDistData} cx="50%" cy="48%" outerRadius={80} innerRadius={48}
-                        dataKey="value" paddingAngle={3}
-                        label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ""}
-                        labelLine={false}>
-                        {sectionDistData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                      </Pie>
-                      <Tooltip formatter={(v) => v.toLocaleString()} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-
-                {/* On-target summary */}
-                <Card style={{ borderRadius: 12, background: "linear-gradient(135deg, #F0F9FF, #E0F2FE)" }} bodyStyle={{ padding: "12px 16px" }}>
-                  <Row gutter={16}>
-                    <Col span={12} style={{ textAlign: "center" }}>
-                      <Text style={{ fontSize: 28, fontWeight: 700, color: "#52C41A", display: "block" }}>
-                        {filtered.filter((i) => i.value >= i.target).length}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: "#6B7280" }}>On Target</Text>
-                    </Col>
-                    <Col span={12} style={{ textAlign: "center" }}>
-                      <Text style={{ fontSize: 28, fontWeight: 700, color: "#FF4D4F", display: "block" }}>
-                        {filtered.filter((i) => i.value < i.target).length}
-                      </Text>
-                      <Text style={{ fontSize: 11, color: "#6B7280" }}>Below Target</Text>
-                    </Col>
-                  </Row>
-                </Card>
-              </Space>
-            </Col>
-          </Row>
-          </Spin>
+                    {/* Section body */}
+                    <div style={{
+                      border: `1px solid ${section.border}`,
+                      borderTop: "none",
+                      borderRadius: "0 0 14px 14px",
+                      background: "#FAFAFA",
+                      overflow: "hidden",
+                    }}>
+                      {/* Charts grid */}
+                      <div style={{ padding: 16 }}>
+                        <Row gutter={[16, 16]}>
+                          {section.indicators.map((ind) => (
+                            <Col xs={24} lg={12} key={ind.field}>
+                              <Card
+                                style={{ borderRadius: 10, border: "1px solid #F0F0F0", height: "100%" }}
+                                bodyStyle={{ padding: "14px 16px" }}
+                              >
+                                <Text style={{ fontSize: 11.5, fontWeight: 600, color: "#1F2937", display: "block", marginBottom: 12, lineHeight: 1.5 }}>
+                                  {ind.label}
+                                </Text>
+                                <KIAutoChart data={sd[ind.field]} />
+                              </Card>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </Spin>
+          )}
         </TabPane>
 
         <TabPane tab="Trends" key="trends">

@@ -67,12 +67,22 @@ const WHZAutoCalculator = () => {
   useEffect(() => {
     const wt = values.current_wt;
     const ht = values.currentHt;
-    // 999 = not measured — skip
-    if (wt === '999' || String(wt) === '999' || ht === '999' || String(ht) === '999') return;
+    // 999 = not measured — skip entirely
+    if (wt === '999' || String(wt) === '999' || ht === '999' || String(ht) === '999') {
+      setFieldValue('whzOutOfRange', false);
+      return;
+    }
     const whz = calculateWHZ(wt, ht, values.childAgeMonths, values.childSex);
-    if (whz !== null) {
+    if (whz !== null && (whz < -6 || whz > 6)) {
+      // Out of valid range — flag error, clear auto-selection
+      setFieldValue('whzOutOfRange', true);
+      setFieldValue('nutritionalCategory', '');
+    } else if (whz !== null) {
+      setFieldValue('whzOutOfRange', false);
       const cls = classifyWHZ(whz);
       if (cls) setFieldValue('nutritionalCategory', cls);
+    } else {
+      setFieldValue('whzOutOfRange', false);
     }
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     values.current_wt, values.currentHt,
@@ -328,6 +338,11 @@ const step1ValidationSchema = Yup.object({
         .required("This is a required field"),
   presentBilateralOedema: Yup.string().required("This is required field"),
   nutritionalCategory: Yup.string().required("This is required field"),
+  whzOutOfRange: Yup.boolean().test(
+    'whz-range-check',
+    'WHZ is out of valid range (−6 to +6). Please enter correct weight and height values.',
+    value => !value
+  ),
   childEnrollCmam: Yup.string().test(
     'conditional-required',
     'This is a required field',
@@ -774,6 +789,7 @@ const BiAnnual = () => {
     currentMuac: '',
     reasonNotMeasuing: '',
     nutritionalCategory: '',
+    whzOutOfRange: false,
     childEnrollCmam: '',
     reasonNotEnrollCmam: '',
     daysChildTreated: '',
@@ -4134,9 +4150,23 @@ const BiAnnual = () => {
                                 values.current_wt, values.currentHt,
                                 values.childAgeMonths, values.childSex
                               );
+                              const outOfRange = whz !== null && (whz < -6 || whz > 6);
+                              const autoSet = whz !== null && !outOfRange;
                               return (
                                 <>
-                                  {whz !== null && (
+                                  {/* Out-of-range error */}
+                                  {outOfRange && (
+                                    <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#fdecea', borderRadius: 1, border: '1px solid #e57373' }}>
+                                      <Typography variant="body2" sx={{ color: '#c62828', fontWeight: 600 }}>
+                                        ⚠ WHZ: {whz.toFixed(2)} — out of valid range (−6 to +6)
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: '#c62828', display: 'block', mt: 0.25 }}>
+                                        Data is incorrect. Please enter the correct weight and height values.
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  {/* Normal WHZ badge */}
+                                  {autoSet && (
                                     <Box sx={{
                                       display: 'inline-flex', alignItems: 'center', gap: 1,
                                       mb: 1, mt: 0.5, px: 1.5, py: 0.75, borderRadius: 1,
@@ -4156,7 +4186,7 @@ const BiAnnual = () => {
                                     id="nutritionalCategory" value={values.nutritionalCategory}
                                     onChange={handleChange}
                                     onBlur={handleBlur} error={touched.nutritionalCategory && !!errors.nutritionalCategory}
-                                    sx={{ pointerEvents: whz !== null ? 'none' : 'auto' }}>
+                                    sx={{ pointerEvents: autoSet ? 'none' : 'auto' }}>
                                     <FormControlLabel value="SAM" control={<Radio />} label={
                                       <Typography variant="body2">{t('sam')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ &lt; -3)</Typography></Typography>
                                     } />

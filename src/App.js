@@ -27,6 +27,9 @@ const SurveyHome = lazy(() => import("./pages/surveys/SurveyHome"));
 const UserManagement = lazy(() => import("./pages/users/UserManagement"));
 const RMCAnalytics = lazy(() => import("./pages/analytics/RMCAnalytics"));
 const Notifications = lazy(() => import("./pages/notifications/Notifications"));
+const MyIssues = lazy(() => import("./pages/notifications/MyIssues"));
+const ReportIssue = lazy(() => import("./pages/notifications/ReportIssue"));
+const RecordSearchEdit = lazy(() => import("./pages/survey/RecordSearchEdit"));
 const ResourceMaterials = lazy(() => import("./pages/resources/ResourceMaterials"));
 const DataExport = lazy(() => import("./pages/data/DataExport"));
 const KeyIndicatorDashboard = lazy(() => import("./pages/dashboards/KeyIndicatorDashboard"));
@@ -197,6 +200,9 @@ function AppRoutes() {
 
           {/* Surveys */}
           <Route path="/surveys" element={<SurveyHome />} />
+          <Route path="/surveys/record-edit" element={
+            <ProtectedRoute roles={ALL_ROLES}><RecordSearchEdit /></ProtectedRoute>
+          } />
           <Route path="/surveys/routine-monitoring" element={
             <ProtectedRoute roles={ALL_ROLES}>
               <FormGuard formKey="ROUTINE_MONITORING"><RoutineMonitoring /></FormGuard>
@@ -227,8 +233,15 @@ function AppRoutes() {
           } />
 
           {/* Notifications */}
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/notifications/my-issues" element={<Notifications />} />
+          <Route path="/notifications" element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.IEG]}><Notifications /></ProtectedRoute>
+          } />
+          <Route path="/notifications/report-issue" element={
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.IEG]}><ReportIssue /></ProtectedRoute>
+          } />
+          <Route path="/notifications/my-issues" element={
+            <ProtectedRoute roles={[ROLES.SURVEYOR]}><MyIssues /></ProtectedRoute>
+          } />
 
           {/* Resources */}
           <Route path="/resources" element={<ResourceMaterials />} />

@@ -219,13 +219,15 @@ const SkillAssessment = forwardRef((props, ref) => {
     const [nutritionalStatusXScorecard, setNutritionalStatusXScorecard] = useState('');
     const [screeningSamChildren, setScreeningSamChildren] = useState('');
     const [calculatedWHZ, setCalculatedWHZ] = useState(null);
+    // true when calculated WHZ falls outside the physiologically valid window −6 … +6
+    const [whzOutOfRange, setWhzOutOfRange] = useState(false);
 
     // Auto-calculate WHZ whenever any of the 5 relevant inputs change.
     // Runs both on mount and whenever sex, age, weight, height, or the Q4.17 method changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         if (formValues.classifyWastingAww !== 'Used WFL / WFH z-score chart') {
             setCalculatedWHZ(null);
+            setWhzOutOfRange(false);
             return;
         }
         const whz = calculateWHZ(
@@ -235,13 +237,20 @@ const SkillAssessment = forwardRef((props, ref) => {
             formValues.childSex
         );
         setCalculatedWHZ(whz);
-        if (whz !== null) {
+        if (whz !== null && (whz < -6 || whz > 6)) {
+            // Out of valid range — flag error and clear auto-selection
+            setWhzOutOfRange(true);
+            setFormValues(prev => ({ ...prev, nutritionalStatusXScorecard: '' }));
+            setNutritionalStatusXScorecard('');
+        } else if (whz !== null) {
+            setWhzOutOfRange(false);
             const classification = classifyWHZ(whz);
             if (classification) {
                 setFormValues(prev => ({ ...prev, nutritionalStatusXScorecard: classification }));
                 setNutritionalStatusXScorecard(classification);
             }
         } else {
+            setWhzOutOfRange(false);
             setFormValues(prev => ({ ...prev, nutritionalStatusXScorecard: '' }));
             setNutritionalStatusXScorecard('');
         }
@@ -312,6 +321,17 @@ const SkillAssessment = forwardRef((props, ref) => {
         // Add conditional required field for 4.18 based on 4.17 selection
         if (formValues.classifyWastingAww === 'Used WFL / WFH z-score chart') {
             requiredFields.push('nutritionalStatusXScorecard');
+        }
+
+        // Block submission if WHZ is out of the valid physiological range (−6 to +6)
+        if (formValues.classifyWastingAww === 'Used WFL / WFH z-score chart' && whzOutOfRange) {
+            setTimeout(() => {
+                const element = document.querySelector('[name="nutritionalStatusXScorecard"]');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+            return false;
         }
 
         // Check conditional other fields
@@ -1545,21 +1565,32 @@ const SkillAssessment = forwardRef((props, ref) => {
                                 {t('section418NutritionalStatusXScorecard')} <span className={styles.requiredStar}>*</span>
                             </label>
 
-                            {/* WHZ result badge */}
+                            {/* WHZ result badge — or out-of-range error */}
                             {calculatedWHZ !== null && (
-                                <Box sx={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 1,
-                                    mb: 1.5, px: 1.5, py: 0.75, borderRadius: 1,
-                                    backgroundColor: calculatedWHZ < -3 ? '#fdecea' : calculatedWHZ < -2 ? '#fff8e1' : '#e8f5e9',
-                                    border: '1px solid', borderColor: calculatedWHZ < -3 ? '#e57373' : calculatedWHZ < -2 ? '#ffb300' : '#66bb6a',
-                                }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                        WHZ: {calculatedWHZ.toFixed(2)} ({classifyWHZ(calculatedWHZ)})
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ color: '#555', fontStyle: 'italic' }}>
-                                        — auto-selected
-                                    </Typography>
-                                </Box>
+                                whzOutOfRange ? (
+                                    <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#fdecea', borderRadius: 1, border: '1px solid #e57373' }}>
+                                        <Typography variant="body2" sx={{ color: '#c62828', fontWeight: 600 }}>
+                                            ⚠ WHZ: {calculatedWHZ.toFixed(2)} — out of valid range (−6 to +6)
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: '#c62828', display: 'block', mt: 0.25 }}>
+                                            Data is incorrect. Please enter the correct weight and height values.
+                                        </Typography>
+                                    </Box>
+                                ) : (
+                                    <Box sx={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 1,
+                                        mb: 1.5, px: 1.5, py: 0.75, borderRadius: 1,
+                                        backgroundColor: calculatedWHZ < -3 ? '#fdecea' : calculatedWHZ < -2 ? '#fff8e1' : '#e8f5e9',
+                                        border: '1px solid', borderColor: calculatedWHZ < -3 ? '#e57373' : calculatedWHZ < -2 ? '#ffb300' : '#66bb6a',
+                                    }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                            WHZ: {calculatedWHZ.toFixed(2)} ({classifyWHZ(calculatedWHZ)})
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: '#555', fontStyle: 'italic' }}>
+                                            — auto-selected
+                                        </Typography>
+                                    </Box>
+                                )
                             )}
 
                             <RadioGroup
@@ -1567,7 +1598,7 @@ const SkillAssessment = forwardRef((props, ref) => {
                                 name="nutritionalStatusXScorecard"
                                 value={formValues.nutritionalStatusXScorecard}
                                 onChange={() => {}}
-                                sx={{ pointerEvents: calculatedWHZ !== null ? 'none' : 'auto' }}
+                                sx={{ pointerEvents: calculatedWHZ !== null && !whzOutOfRange ? 'none' : 'auto' }}
                             >
                                 <FormControlLabel value="SAM" control={<Radio />} label={
                                     <Typography variant="body2">{t('SAM')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ &lt; -3)</Typography></Typography>

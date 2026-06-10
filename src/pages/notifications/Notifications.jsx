@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import {
   Table, Button, Tag, Modal, Descriptions, Space, Card, Typography,
-  Badge, message, Popconfirm, Input, Tabs, Empty,
+  Badge, message, Popconfirm, Input, Tabs, Empty, Alert,
 } from "antd";
 import {
   CheckOutlined, CloseOutlined, EyeOutlined, BellOutlined,
   SyncOutlined, ClockCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
 
@@ -27,41 +28,31 @@ export default function Notifications() {
   const [detailModal, setDetailModal] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [activeTab, setActiveTab] = useState("PENDING");
-  const { isAdmin, isIEG, isSurveyor } = useAuth();
+  const { isAdmin, isIEG } = useAuth();
+  const navigate = useNavigate();
+
+  const unwrap = (res) =>
+    Array.isArray(res?.value?.data) ? res.value.data : (res?.value?.data?.data || []);
 
   const fetchNotifications = async () => {
     setLoading(true);
     try {
-      if (isSurveyor()) {
-        // Surveyors see their own submissions — no specific endpoint listed, show pending as fallback
-        const { data } = await api.get("/form/routine-monitoring/edit-notifications/pending");
-        const arr = Array.isArray(data) ? data : (data?.data || []);
-        setNotifications(arr);
-      } else {
-        // Fetch all three statuses in parallel
-        const [pendingRes, approvedRes, rejectedRes] = await Promise.allSettled([
-          api.get("/form/routine-monitoring/edit-notifications/pending"),
-          api.get("/form/routine-monitoring/edit-notifications/approved"),
-          api.get("/form/routine-monitoring/edit-notifications/rejected"),
-        ]);
-        const pendingArr = pendingRes.status === "fulfilled"
-          ? (Array.isArray(pendingRes.value.data) ? pendingRes.value.data : (pendingRes.value.data?.data || []))
-          : [];
-        const approvedArr = approvedRes.status === "fulfilled"
-          ? (Array.isArray(approvedRes.value.data) ? approvedRes.value.data : (approvedRes.value.data?.data || []))
-          : [];
-        const rejectedArr = rejectedRes.status === "fulfilled"
-          ? (Array.isArray(rejectedRes.value.data) ? rejectedRes.value.data : (rejectedRes.value.data?.data || []))
-          : [];
+      // Admin review screen — fetch pending + history in parallel.
+      const [pendingRes, approvedRes, rejectedRes] = await Promise.allSettled([
+        api.get("/form/routine-monitoring/edit-notifications/pending", { noCache: true }),
+        api.get("/form/routine-monitoring/edit-notifications/approved", { noCache: true }),
+        api.get("/form/routine-monitoring/edit-notifications/rejected", { noCache: true }),
+      ]);
+      const pendingArr = pendingRes.status === "fulfilled" ? unwrap(pendingRes) : [];
+      const approvedArr = approvedRes.status === "fulfilled" ? unwrap(approvedRes) : [];
+      const rejectedArr = rejectedRes.status === "fulfilled" ? unwrap(rejectedRes) : [];
 
-        // Normalise status fields
-        const withStatus = [
-          ...pendingArr.map((n) => ({ ...n, status: n.status || "PENDING" })),
-          ...approvedArr.map((n) => ({ ...n, status: n.status || "APPROVED" })),
-          ...rejectedArr.map((n) => ({ ...n, status: n.status || "REJECTED" })),
-        ];
-        setNotifications(withStatus);
-      }
+      const withStatus = [
+        ...pendingArr.map((n) => ({ ...n, status: n.status || "PENDING" })),
+        ...approvedArr.map((n) => ({ ...n, status: n.status || "APPROVED" })),
+        ...rejectedArr.map((n) => ({ ...n, status: n.status || "REJECTED" })),
+      ];
+      setNotifications(withStatus);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -69,23 +60,79 @@ export default function Notifications() {
 
   useEffect(() => { fetchNotifications(); }, [activeTab]);
 
+  // For these endpoints the SAMResponse wrapper uses success===true / statusCode 200 to mean OK.
+  const isOk = (res) => {
+    const d = res?.data;
+    return d?.success === true || d?.statusCode === 200 || d?.statusCode === 201;
+  };
+
   const handleApprove = async (id) => {
     try {
-      await api.put(`/form/routine-monitoring/edit-notifications/${id}/approve`);
-      message.success("Edit approved and applied");
-      fetchNotifications();
-    } catch { message.error("Failed to approve"); }
+      const res = await api.post(`/form/routine-monitoring/edit-notifications/${id}/approve`);
+      if (isOk(res)) {
+        message.success(res.data?.message || "Edit approved and applied");
+        fetchNotifications();
+      } else {
+        message.error(res.data?.message || "Failed to approve");
+      }
+    } catch (e) { message.error(e.response?.data?.message || "Failed to approve"); }
   };
 
   const handleReject = async (id) => {
     try {
-      await api.put(`/form/routine-monitoring/edit-notifications/${id}/reject`, { rejectionReason: rejectComment });
-      message.success("Edit rejected");
-      setDetailModal(false);
-      setRejectComment("");
-      fetchNotifications();
-    } catch { message.error("Failed to reject"); }
+      const res = await api.post(
+        `/form/routine-monitoring/edit-notifications/${id}/reject`,
+        { reason: rejectComment }
+      );
+      if (isOk(res)) {
+        message.success(res.data?.message || "Edit rejected");
+        setDetailModal(false);
+        setRejectComment("");
+        fetchNotifications();
+      } else {
+        message.error(res.data?.message || "Failed to reject");
+      }
+    } catch (e) { message.error(e.response?.data?.message || "Failed to reject"); }
   };
+
+  // ---- Field-level diff (original vs updated form data) ----
+  const computeChanges = (original, updated, prefix = "") => {
+    const changes = [];
+    if (!original || !updated || typeof original !== "object" || typeof updated !== "object") return changes;
+    const keys = new Set([...Object.keys(original), ...Object.keys(updated)]);
+    keys.forEach((key) => {
+      if (key === "id" || /error/i.test(key)) return;
+      const ov = original[key];
+      const uv = updated[key];
+      const path = prefix ? `${prefix}.${key}` : key;
+      const bothObj = ov && uv && typeof ov === "object" && !Array.isArray(ov)
+        && typeof uv === "object" && !Array.isArray(uv);
+      if (bothObj) {
+        changes.push(...computeChanges(ov, uv, path));
+      } else {
+        const os = ov === null || ov === undefined ? "" : String(ov).trim();
+        const us = uv === null || uv === undefined ? "" : String(uv).trim();
+        if (os !== us) changes.push({ field: path, original: os || "(empty)", updated: us || "(empty)" });
+      }
+    });
+    return changes;
+  };
+
+  const parseFormData = (v) => {
+    if (!v) return null;
+    if (typeof v === "string") { try { return JSON.parse(v); } catch { return null; } }
+    return v;
+  };
+
+  const getChanges = (n) => {
+    if (!n) return [];
+    return computeChanges(parseFormData(n.originalFormData), parseFormData(n.updatedFormData));
+  };
+
+  const formatField = (path) =>
+    path.split(".").map((p) =>
+      p.replace(/_/g, " ").replace(/([a-z\d])([A-Z])/g, "$1 $2").replace(/\b\w/g, (c) => c.toUpperCase()).trim()
+    ).join(" → ");
 
   const filtered = notifications.filter((n) => activeTab === "ALL" || n.status === activeTab);
 
@@ -155,10 +202,17 @@ export default function Notifications() {
             )}
           </div>
           <Text style={{ color: "#6B7280" }}>
-            {isSurveyor() ? "Your reported issues and edit requests" : "RMC edit notifications requiring review"}
+            RMC edit requests submitted by surveyors for review
           </Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={fetchNotifications} loading={loading}>Refresh</Button>
+        <Space>
+          {(isAdmin() || isIEG()) && (
+            <Button type="primary" icon={<BellOutlined />} onClick={() => navigate("/notifications/report-issue")}>
+              Report Issue
+            </Button>
+          )}
+          <Button icon={<SyncOutlined />} onClick={fetchNotifications} loading={loading}>Refresh</Button>
+        </Space>
       </div>
 
       <Card style={{ borderRadius: 16 }}>
@@ -220,10 +274,11 @@ export default function Notifications() {
       >
         {selected && (
           <>
-            <Descriptions column={2} size="small" style={{ marginBottom: 16 }}>
+            <Descriptions column={2} size="small" style={{ marginBottom: 16 }} bordered>
               <Descriptions.Item label="Notification ID">#{selected.id}</Descriptions.Item>
+              <Descriptions.Item label="Record ID">{selected.recordId ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="Status">
-                <Badge status={STATUS_CONFIG[selected.status]?.color === "success" ? "success" : "warning"} text={selected.status} />
+                <Badge status={STATUS_CONFIG[selected.status]?.color === "success" ? "success" : selected.status === "REJECTED" ? "error" : "warning"} text={selected.status} />
               </Descriptions.Item>
               <Descriptions.Item label="Submitted By">{selected.surveyorName || selected.submittedBy || "—"}</Descriptions.Item>
               <Descriptions.Item label="Submitted At">
@@ -234,6 +289,43 @@ export default function Notifications() {
               {selected.block && <Descriptions.Item label="Block">{selected.block}</Descriptions.Item>}
               {selected.village && <Descriptions.Item label="Village">{selected.village}</Descriptions.Item>}
             </Descriptions>
+
+            {/* Field-level diff */}
+            {(() => {
+              const changes = getChanges(selected);
+              return (
+                <>
+                  <Text strong style={{ display: "block", marginBottom: 8, color: "#1565c0" }}>
+                    Form Changes {changes.length > 0 ? `(${changes.length} field${changes.length > 1 ? "s" : ""} changed)` : ""}
+                  </Text>
+                  {changes.length === 0 ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No field changes detected" style={{ padding: 16 }} />
+                  ) : (
+                    <Table
+                      dataSource={changes.map((c, i) => ({ key: i, ...c }))}
+                      pagination={false}
+                      size="small"
+                      scroll={{ y: 320 }}
+                      columns={[
+                        { title: "Field", dataIndex: "field", render: (v) => formatField(v), width: "34%" },
+                        { title: "Original", dataIndex: "original", render: (v) => <span style={{ background: "#fff3cd", padding: "2px 6px", borderRadius: 4, wordBreak: "break-word" }}>{v}</span> },
+                        { title: "Updated", dataIndex: "updated", render: (v) => <span style={{ background: "#d1ecf1", padding: "2px 6px", borderRadius: 4, fontWeight: 500, wordBreak: "break-word" }}>{v}</span> },
+                      ]}
+                    />
+                  )}
+                </>
+              );
+            })()}
+
+            {selected.status === "REJECTED" && selected.rejectionReason && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginTop: 16 }}
+                message="Rejection Reason"
+                description={selected.rejectionReason}
+              />
+            )}
 
             {selected.status === "PENDING" && (
               <div style={{ marginTop: 16 }}>

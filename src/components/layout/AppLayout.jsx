@@ -4,6 +4,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import AppHeader from "./Header";
 import Footer from "../../layouts/footer/Footer";
+import OfflineDrawer from "../offline/OfflineDrawer";
 import { useAuth } from "../../context/AuthContext";
 import { useNetworkStatus } from "../../utils/networkState";
 import api from "../../services/axiosInstance";
@@ -97,6 +98,7 @@ export default function AppLayout() {
             <Footer />
           </Content>
         </Layout>
+        <OfflineDrawer />
       </Layout>
     );
   }
@@ -124,6 +126,7 @@ export default function AppLayout() {
           <Footer />
         </Content>
       </Layout>
+      <OfflineDrawer />
     </Layout>
   );
 }

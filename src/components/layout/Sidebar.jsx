@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layout, Menu } from "antd";
+import { Layout, Menu, Badge } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { ROLES } from "../../config";
@@ -9,7 +9,7 @@ import {
   BellOutlined, FolderOpenOutlined, DownloadOutlined, AuditOutlined,
   UserOutlined, SettingOutlined, GlobalOutlined, HomeOutlined,
   PieChartOutlined, LineChartOutlined, HeatMapOutlined, AppstoreOutlined,
-  EnvironmentOutlined,
+  EnvironmentOutlined, FlagOutlined,
 } from "@ant-design/icons";
 
 const { Sider } = Layout;
@@ -103,21 +103,22 @@ function buildMenuItems(role, notifCount) {
   // Notifications
   if (isAdmin || isIEG) {
     items.push({
-      key: "/notifications",
-      icon: <BellOutlined />,
-      label: (
-        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          Notifications
-          {notifCount > 0 && (
-            <span style={{
-              background: "#E2231A", color: "white", borderRadius: 10,
-              padding: "1px 7px", fontSize: 11, fontWeight: 700,
-            }}>
-              {notifCount}
-            </span>
-          )}
-        </span>
+      key: "notifications",
+      icon: (
+        <Badge
+          count={notifCount}
+          size="small"
+          offset={[4, -2]}
+          style={{ backgroundColor: "#E2231A", boxShadow: "0 2px 6px rgba(226,35,26,0.5)", fontSize: 10, fontWeight: 700 }}
+        >
+          <BellOutlined />
+        </Badge>
       ),
+      label: "Notifications",
+      children: [
+        { key: "/notifications", icon: <BellOutlined />, label: "Edit Approvals" },
+        { key: "/notifications/report-issue", icon: <FlagOutlined />, label: "Report Issue" },
+      ],
     });
   }
 
@@ -164,6 +165,7 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
     if (path.startsWith("/data")) return ["data"];
     if (path.startsWith("/users")) return ["users"];
     if (path.startsWith("/locations")) return ["locations"];
+    if (path.startsWith("/notifications")) return ["notifications"];
     return [];
   };
 
@@ -200,7 +202,7 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
         </div>
         {!collapsed && (
           <div>
-            <div style={{ color: "white", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>CMAM programme</div>
+            <div style={{ color: "white", fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>CMAM Programme</div>
             <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 10 }}>IEG</div>
           </div>
         )}

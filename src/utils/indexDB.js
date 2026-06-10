@@ -36,34 +36,55 @@ function openDB() {
 
 // ── Offline form submissions ──────────────────────────────────────────────────
 
-export async function saveOfflineForm(formType, data) {
+// Survey pages call this with a single object: saveOfflineForm({ url, data }).
+// Records are stored as { id, url, data, timestamp, synced } so the offline
+// drawer can replay them with apiService.post(form.url, form.data).
+export async function saveOfflineForm(payload) {
+  const { url, data } = payload || {};
+  const record = { url, data, timestamp: Date.now(), synced: false };
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_FORMS, 'readwrite');
-      tx.objectStore(STORE_FORMS).add({ formType, data, timestamp: Date.now(), synced: false });
+      tx.objectStore(STORE_FORMS).add(record);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    return lsFallback.set(`samv2_form_${Date.now()}`, { formType, data });
+    return lsFallback.set(`samv2_form_${Date.now()}`, record);
   }
+}
+
+// Older builds stored records via a two-arg saveOfflineForm(formType, data),
+// which nested the real payload as { formType: { url, data }, data: undefined }.
+// Normalize every record to a flat { ...record, url, data } so the drawer and
+// the uploader work regardless of when the form was saved.
+function normalizeForm(rec) {
+  if (!rec || typeof rec !== 'object') return rec;
+  if (rec.url && rec.data) return rec;
+  const ft = rec.formType;
+  if (ft && typeof ft === 'object' && (ft.url || ft.data)) {
+    return { ...rec, url: ft.url, data: ft.data };
+  }
+  return rec;
 }
 
 export async function getOfflineForms() {
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    const result = await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_FORMS, 'readonly');
       const req = tx.objectStore(STORE_FORMS).getAll();
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+    return (result || []).map(normalizeForm);
   } catch {
     return lsFallback.keys()
       .filter(k => k.startsWith('samv2_form_'))
       .map(k => lsFallback.get(k))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map(normalizeForm);
   }
 }
 

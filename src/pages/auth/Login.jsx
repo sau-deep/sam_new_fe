@@ -101,7 +101,7 @@ export default function Login() {
 
         {/* Title */}
         <div style={{ position: "relative", zIndex: 1, marginBottom: 12 }}>
-          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.2, letterSpacing: -0.5 }}>CMAM programme</div>
+          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.2, letterSpacing: -0.5 }}>CMAM Programme</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginTop: 6, lineHeight: 1.5 }}>
             Hot-Spot Identification & Micro-Targeting<br />for Child Malnutrition Interventions
           </div>
@@ -148,7 +148,7 @@ export default function Login() {
               <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
             </div>
             <div>
-              <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>CMAM programme</div>
+              <div style={{ color: "white", fontWeight: 800, fontSize: 18, lineHeight: 1.2 }}>CMAM Programme</div>
               <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 3 }}>IEG · Hot-Spot Identification</div>
             </div>
           </div>
@@ -275,7 +275,7 @@ export default function Login() {
             borderLeft: "4px solid #1CABE2",
           }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#1CABE2", marginBottom: 4, letterSpacing: 0.5 }}>PLATFORM</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>CMAM programme</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#002147" }}>CMAM Programme</div>
             <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Secure · Encrypted</div>
           </div>
           <a href={SUPPORT_WA} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
@@ -299,7 +299,7 @@ export default function Login() {
         {/* Footer */}
         <div style={{ textAlign: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid #E5EDF8" }}>
           <span style={{ fontSize: 11, color: "#C3D4E8" }}>
-            CMAM programme v2.0 · IEG · All rights reserved
+            CMAM Programme v2.0 · IEG · All rights reserved
           </span>
         </div>
       </div>

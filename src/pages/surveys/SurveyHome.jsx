@@ -7,6 +7,7 @@ import { useFormConfig } from "../../context/FormConfigContext";
 import { ROLES } from "../../config";
 import apiService from "../../services/api";
 import DailyCountCalendar from "../../components/ui/DailyCountCalendar";
+import SurveyorIssuesBanner from "../../components/surveyor/SurveyorIssuesBanner";
 
 const { Title, Text } = Typography;
 
@@ -114,11 +115,11 @@ export default function SurveyHome() {
   };
 
   return (
-    <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
+    <div style={{ padding: isSurveyor ? 16 : 24, background: "#F5F7FA", minHeight: "100%" }}>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: isSurveyor ? 16 : 24 }}>
         <div style={{ marginBottom: 8 }}>
-          <Title level={3} style={{ margin: 0, color: "#002147" }}>
+          <Title level={isSurveyor ? 4 : 3} style={{ margin: 0, color: "#002147" }}>
             {isSurveyor ? "My Survey Forms" : "Survey Forms"}
           </Title>
         </div>
@@ -127,11 +128,14 @@ export default function SurveyHome() {
         </Text>
       </div>
 
+      {/* Surveyor: records the admin flagged for correction */}
+      {isSurveyor && <SurveyorIssuesBanner />}
+
       {/* Form Cards — show skeleton while config is being confirmed from backend */}
       {configLoading ? (
         <Row gutter={[20, 20]}>
           {FORM_CARD_DEFINITIONS.map((def) => (
-            <Col xs={24} sm={12} xl={12} key={def.key}>
+            <Col xs={24} sm={isSurveyor ? 24 : 12} xl={isSurveyor ? 24 : 12} key={def.key}>
               <Card style={{ borderRadius: 20, border: "none", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }} bodyStyle={{ padding: 24 }}>
                 <Skeleton active paragraph={{ rows: 3 }} />
               </Card>
@@ -141,7 +145,7 @@ export default function SurveyHome() {
       ) : (
         <Row gutter={[20, 20]}>
           {FORM_CARDS.map((form) => (
-            <Col xs={24} sm={12} xl={12} key={form.key}>
+            <Col xs={24} sm={isSurveyor ? 24 : 12} xl={isSurveyor ? 24 : 12} key={form.key}>
               <Card
                 style={{
                   borderRadius: 20, border: "none", overflow: "hidden",

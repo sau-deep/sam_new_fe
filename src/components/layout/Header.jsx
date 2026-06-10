@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip } from "antd";
 import {
   MenuFoldOutlined, MenuUnfoldOutlined, BellOutlined, UserOutlined,
@@ -8,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useNetworkStatus } from "../../utils/networkState";
 import { ROLES } from "../../config";
+import api from "../../services/axiosInstance";
 import { LANGUAGES } from "../../constants";
 import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
 
@@ -21,10 +23,27 @@ const ROLE_COLORS = {
   [ROLES.IEG]:      { bg: "#F3E8FF", color: "#7C3AED", label: "IEG" },
 };
 
-// Compact mobile header for surveyor role — no sidebar toggle, no language, no notifs
+// Compact mobile header for surveyor role — no sidebar toggle, no language
 function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
+  const navigate = useNavigate();
+  const [issueCount, setIssueCount] = useState(0);
   const initials = (user?.name || user?.username || "U")
     .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+
+  // Poll the surveyor's open issues so the bell badge reflects flagged records
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCount = async () => {
+      try {
+        const res = await api.get("/form/routine-monitoring/issues/my-issues", { noCache: true });
+        const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        if (!cancelled) setIssueCount(list.filter((i) => i.status !== "CLOSED").length);
+      } catch { /* ignore */ }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   return (
     <div style={{
@@ -41,7 +60,7 @@ function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
         }}>
           <img src={IEGLogo} alt="IEG" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
         </div>
-        <span style={{ color: "white", fontWeight: 700, fontSize: 13 }}>CMAM programme</span>
+        <span style={{ color: "white", fontWeight: 700, fontSize: 13 }}>CMAM Programme</span>
       </div>
 
       {/* Prominent network signal pill */}
@@ -63,6 +82,18 @@ function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
           {isOnline ? "Online" : "Offline"}
         </span>
       </div>
+
+      {/* My reported issues */}
+      <Tooltip title="My Reported Issues">
+        <Badge count={issueCount} size="small" offset={[-2, 2]}>
+          <Button
+            type="text"
+            icon={<BellOutlined style={{ color: "white", fontSize: 18 }} />}
+            onClick={() => navigate("/notifications/my-issues")}
+            style={{ width: 36, height: 36, borderRadius: 8 }}
+          />
+        </Badge>
+      </Tooltip>
 
       {/* User avatar with dropdown */}
       <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={["click"]}>
@@ -102,6 +133,14 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
       label: "Profile",
       onClick: () => navigate("/profile"),
     },
+    ...(role === ROLES.SURVEYOR
+      ? [{
+          key: "my-issues",
+          icon: <BellOutlined />,
+          label: "My Reported Issues",
+          onClick: () => navigate("/notifications/my-issues"),
+        }]
+      : []),
     { type: "divider" },
     {
       key: "logout",

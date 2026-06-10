@@ -89,11 +89,12 @@ export default function AdminDashboard() {
       const startDate = dayjs().subtract(6, "month").format("YYYY-MM-DD");
       const endDate = dayjs().format("YYYY-MM-DD");
 
-      const [dashRes, pendingCountRes, unicefStatsRes, mapDataRes] = await Promise.allSettled([
+      const [dashRes, pendingCountRes, unicefStatsRes, mapDataRes, userStatsRes] = await Promise.allSettled([
         api.get("/form/routine-monitoring/dashboard", { params: { startDate, endDate } }),
         api.get("/form/routine-monitoring/edit-notifications/pending/count"),
         api.get("/unicef/dashboard/stats"),
         api.get("/unicef/dashboard/map-data"),
+        api.get("/user-management/stats"),
       ]);
 
       if (dashRes.status === "fulfilled") {
@@ -102,7 +103,6 @@ export default function AdminDashboard() {
           ...prev,
           totalSurveys: d.totalSubmissions ?? prev.totalSurveys,
           totalStates: d.stateCount ?? prev.totalStates,
-          activeSurveyors: d.activeSurveyors ?? prev.activeSurveyors,
         }));
 
         // Monthly trend — API returns [{month, count}], map to chart shape
@@ -144,6 +144,14 @@ export default function AdminDashboard() {
           totalDistricts: d.totalDistricts ?? prev.totalDistricts,
           totalBlocks: d.totalBlocks ?? prev.totalBlocks,
           totalVillages: d.totalVillages ?? prev.totalVillages,
+        }));
+      }
+
+      if (userStatsRes.status === "fulfilled") {
+        const d = userStatsRes.value.data?.data ?? userStatsRes.value.data;
+        setStats((prev) => ({
+          ...prev,
+          activeSurveyors: d.activeSurveyors ?? prev.activeSurveyors,
           totalSurveyors: d.totalSurveyors ?? prev.totalSurveyors,
         }));
       }
