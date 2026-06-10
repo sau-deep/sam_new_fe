@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useFormConfig } from "../../context/FormConfigContext";
 import { ROLES } from "../../config";
+import apiService from "../../services/api";
+import DailyCountCalendar from "../../components/ui/DailyCountCalendar";
 
 const { Title, Text } = Typography;
 
@@ -51,6 +53,20 @@ const FORM_CARD_DEFINITIONS = [
   },
 ];
 
+const FORM_KEY_TO_TYPE = {
+  ROUTINE_MONITORING: "routine",
+  HOUSE_HOLD: "household",
+  BI_ANNUAL: "concurrent",
+  FOLLOWUP: "followup",
+};
+
+const FORM_TYPE_TO_BACKEND = {
+  routine: "Routine Monitoring Common Checklist",
+  household: "Household Checklist",
+  concurrent: "Concurrent Assessment",
+  followup: "Followup Assessment",
+};
+
 export default function SurveyHome() {
   const navigate = useNavigate();
   const { user, getPrimaryRole } = useAuth();
@@ -62,15 +78,40 @@ export default function SurveyHome() {
   // config. Without this gate, a user could click an "enabled" card that was
   // actually disabled — they'd just be clicking a stale cached value.
   const [configLoading, setConfigLoading] = useState(true);
+  const [submissionCounts, setSubmissionCounts] = useState({});
+  const [countsLoading, setCountsLoading] = useState(false);
+  const [calendarDialog, setCalendarDialog] = useState({ open: false, formType: null });
 
   useEffect(() => {
     refreshFormConfig().finally(() => setConfigLoading(false));
   }, [refreshFormConfig]);
 
+  useEffect(() => {
+    const fetchCounts = async () => {
+      setCountsLoading(true);
+      try {
+        const response = await apiService.get("/survey/daily-submissions-count");
+        if (response?.success && response?.data) {
+          setSubmissionCounts(response.data.formCounts || {});
+        }
+      } catch (error) {
+        console.error("Error fetching submission counts:", error);
+      } finally {
+        setCountsLoading(false);
+      }
+    };
+    fetchCounts();
+  }, []);
+
   const FORM_CARDS = FORM_CARD_DEFINITIONS.map((def) => ({
     ...def,
     enabled: !!formConfig[def.key],
   }));
+
+  const getCount = (formKey) => {
+    const backendName = FORM_TYPE_TO_BACKEND[FORM_KEY_TO_TYPE[formKey]];
+    return submissionCounts[backendName] || 0;
+  };
 
   return (
     <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
@@ -157,12 +198,25 @@ export default function SurveyHome() {
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", gap: 16 }}>
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
-                          {form.key === "ROUTINE_MONITORING" ? "8,240" : form.key === "HOUSE_HOLD" ? "2,180" : form.key === "BI_ANNUAL" ? "1,320" : "740"}
+                      {isSurveyor ? (
+                        <Button
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCalendarDialog({ open: true, formType: FORM_KEY_TO_TYPE[form.key] });
+                          }}
+                          style={{ borderColor: form.color, color: form.color, fontSize: 12, height: 32 }}
+                        >
+                          Today: {countsLoading ? "…" : getCount(form.key)}
+                        </Button>
+                      ) : (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+                            {countsLoading ? "…" : getCount(form.key)}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#9CA3AF" }}>Today</div>
                         </div>
-                        <div style={{ fontSize: 10, color: "#9CA3AF" }}>Submitted</div>
-                      </div>
+                      )}
                     </div>
 
                     {form.enabled ? (
@@ -189,6 +243,12 @@ export default function SurveyHome() {
           ))}
         </Row>
       )}
+
+      <DailyCountCalendar
+        open={calendarDialog.open}
+        formType={calendarDialog.formType}
+        onClose={() => setCalendarDialog({ open: false, formType: null })}
+      />
 
       {/* Admin quick links */}
       {!isSurveyor && (
