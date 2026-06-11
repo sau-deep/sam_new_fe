@@ -628,10 +628,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="District Code" name="customDistrictCode"
                           rules={[
                             { required: true, message: "Enter district code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 3, message: "Max 3 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. D001" maxLength={10} disabled={!customStateName} />
+                          <Input placeholder="e.g. D01" maxLength={3} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -642,10 +642,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Block Code" name="customBlockCode"
                           rules={[
                             { required: true, message: "Enter block code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 4, message: "Max 4 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. B001" maxLength={10} disabled={!customStateName} />
+                          <Input placeholder="e.g. B001" maxLength={4} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -656,10 +656,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 2, message: "Max 2 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V001" maxLength={10} disabled={!customStateName} />
+                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -718,10 +718,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Block Code" name="customBlockCode"
                           rules={[
                             { required: true, message: "Enter block code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 4, message: "Max 4 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. B001" maxLength={10} disabled={!customSelDistrict} />
+                          <Input placeholder="e.g. B001" maxLength={4} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -732,10 +732,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 2, message: "Max 2 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V001" maxLength={10} disabled={!customSelDistrict} />
+                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -819,10 +819,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 10, message: "Max 10 characters" },
+                            { max: 2, message: "Max 2 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V001" maxLength={10} disabled={!customSelBlock} />
+                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customSelBlock} />
                         </Form.Item>
                       </Col>
                     </>)}
