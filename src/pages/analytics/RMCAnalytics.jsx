@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Row, Col, Card, Select, DatePicker, Button, Table, Tag, Tabs,
   Typography, Segmented, Space, Progress, Statistic, Spin, Alert,
@@ -279,6 +279,7 @@ export default function RMCAnalytics() {
   const [selectedState, setSelectedState] = useState(
     () => (isStateAdmin() && userState ? userState : "All States")
   );
+  const defaultStateApplied = useRef(false);
 
   // Catch the case where auth loads asynchronously after mount
   useEffect(() => {
@@ -287,6 +288,18 @@ export default function RMCAnalytics() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userState]);
+
+  // Auto-select the first available state on initial load for non-state-admin users
+  useEffect(() => {
+    if (!isStateAdmin() && !defaultStateApplied.current && stateWiseSummary.length > 0) {
+      const firstState = stateWiseSummary.map((s) => s.state).filter(Boolean).sort()[0];
+      if (firstState) {
+        defaultStateApplied.current = true;
+        setSelectedState(firstState);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateWiseSummary]);
 
   const fetchIndicators = useCallback(async () => {
     setIndicatorsLoading(true);

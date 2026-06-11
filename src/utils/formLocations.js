@@ -23,16 +23,27 @@ import {
 // by loadFormLocations(). Module-scoped so helpers work outside React too.
 const cache = {};
 
-const num = (v) => (v != null && v !== "" ? Number(v) : null);
+/**
+ * Drop the in-memory cache for one form. Call this from the admin UI after any
+ * add / deactivate / remove so the next getBlocks() call re-hydrates from the
+ * fresh localStorage data (which is separately cleared by clearFormLocationCache
+ * in formLocationService).
+ */
+export function clearFormLocationsCache(formKey) {
+  delete cache[formKey];
+}
 
 function normalize(rows) {
   return (rows || []).map((r) => ({
-    state: r.state,
-    state_code: num(r.stateCode),
-    district: r.district,
-    district_code: num(r.districtCode),
-    block: r.block,
-    block_code: num(r.blockCode),
+    state:         r.state,
+    state_code:    r.stateCode    ?? null,
+    district:      r.district,
+    district_code: r.districtCode ?? null,
+    block:         r.block,
+    block_code:    r.blockCode    ?? null,
+    village:       r.village      || null,
+    village_code:  r.villageCode  || null,
+    entry_type:    r.entryType    || "BLOCK",
   }));
 }
 
@@ -115,7 +126,7 @@ export function getFormLocationHelpers(formKey) {
     const all = deriveStates(formKey);
     if (value == null || value === "") return all;
     if (typeof value === "string") return all.filter((e) => e.text === value);
-    if (typeof value === "number") return all.filter((e) => e.state_code === value);
+    if (typeof value === "number") return all.filter((e) => String(e.state_code) === String(value));
     return all;
   };
 
@@ -125,9 +136,19 @@ export function getFormLocationHelpers(formKey) {
   const getBlockOptions = (districtCode) =>
     deriveBlocks(formKey).filter((e) => e.district_code === districtCode);
 
-  // Villages are reference data (not form-specific) - filtered by the chosen block.
-  const getVillageOptions = (blockCode) =>
-    VillageList.filter((e) => e.block_code === blockCode);
+  const getVillageOptions = (blockCode) => {
+    const formVillages = (cache[formKey] || []).filter(
+      (loc) => loc.entry_type === "VILLAGE" && loc.block_code === blockCode
+    );
+    if (formVillages.length > 0) {
+      return formVillages.map((loc) => ({
+        text: loc.village,
+        village_code: loc.village_code,
+        block_code: loc.block_code,
+      }));
+    }
+    return VillageList.filter((e) => e.block_code === blockCode);
+  };
 
   const getDistrictOptionsByStateName = (stateName) => {
     const st = deriveStates(formKey).find((s) => s.text === stateName);
@@ -150,7 +171,18 @@ export function getFormLocationHelpers(formKey) {
     const b = deriveBlocks(formKey).find(
       (x) => x.text === blockName && x.district_code === d?.district_code
     );
-    return b ? VillageList.filter((v) => v.block_code === b.block_code) : [];
+    if (!b) return [];
+    const formVillages = (cache[formKey] || []).filter(
+      (loc) => loc.entry_type === "VILLAGE" && loc.block_code === b.block_code
+    );
+    if (formVillages.length > 0) {
+      return formVillages.map((loc) => ({
+        text: loc.village,
+        village_code: loc.village_code,
+        block_code: loc.block_code,
+      }));
+    }
+    return VillageList.filter((v) => v.block_code === b.block_code);
   };
 
   return {

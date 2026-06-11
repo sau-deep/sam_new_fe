@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Row, Col, Card, Select, DatePicker, Space, Tag, Typography, Spin, Alert, Segmented,
 } from "antd";
@@ -189,6 +189,7 @@ export default function KeyIndicatorDashboard() {
   const [selectedState, setSelectedState] = useState(
     () => (isStateAdmin() && userState ? userState : null)
   );
+  const defaultStateApplied = useRef(false);
 
   useEffect(() => {
     if (isStateAdmin() && userState && !selectedState) setSelectedState(userState);
@@ -203,8 +204,15 @@ export default function KeyIndicatorDashboard() {
       },
     }).then(({ data }) => {
       const list = Array.isArray(data?.data) ? data.data : [];
-      setAvailableStates(list.map(s => s.state).filter(Boolean).sort());
+      const states = list.map(s => s.state).filter(Boolean).sort();
+      setAvailableStates(states);
+      // Auto-select the first state on initial load for non-state-admin users
+      if (!isStateAdmin() && !defaultStateApplied.current && states.length > 0) {
+        defaultStateApplied.current = true;
+        setSelectedState(states[0]);
+      }
     }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange]);
 
   const fetchKIData = useCallback(async () => {
