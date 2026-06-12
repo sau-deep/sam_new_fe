@@ -65,6 +65,12 @@ const {
 const WHZAutoCalculator = () => {
   const { values, setFieldValue } = useFormikContext();
   useEffect(() => {
+    // Bilateral oedema present → SAM regardless of WHZ (ANTH3=Yes → ANTH4=SAM)
+    if (values.presentBilateralOedema === 'Yes') {
+      setFieldValue('whzOutOfRange', false);
+      setFieldValue('nutritionalCategory', 'SAM');
+      return;
+    }
     const wt = values.current_wt;
     const ht = values.currentHt;
     // 999 = not measured — skip entirely
@@ -87,6 +93,7 @@ const WHZAutoCalculator = () => {
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     values.current_wt, values.currentHt,
     values.childAgeMonths, values.childSex,
+    values.presentBilateralOedema,
   ]);
   return null;
 };
@@ -4143,15 +4150,16 @@ const BiAnnual = () => {
                             </label>
                             <em>{t('anth4_note')}</em>
                             {(() => {
+                              const oedemaYes = values.presentBilateralOedema === 'Yes';
                               const skip =
                                 values.current_wt === '999' || String(values.current_wt) === '999' ||
                                 values.currentHt === '999' || String(values.currentHt) === '999';
-                              const whz = skip ? null : calculateWHZ(
+                              const whz = (skip || oedemaYes) ? null : calculateWHZ(
                                 values.current_wt, values.currentHt,
                                 values.childAgeMonths, values.childSex
                               );
                               const outOfRange = whz !== null && (whz < -6 || whz > 6);
-                              const autoSet = whz !== null && !outOfRange;
+                              const autoSet = oedemaYes || (whz !== null && !outOfRange);
                               return (
                                 <>
                                   {/* Out-of-range error */}
@@ -4165,8 +4173,24 @@ const BiAnnual = () => {
                                       </Typography>
                                     </Box>
                                   )}
-                                  {/* Normal WHZ badge */}
-                                  {autoSet && (
+                                  {/* Bilateral oedema badge — ANTH3=Yes forces SAM */}
+                                  {oedemaYes && (
+                                    <Box sx={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 1,
+                                      mb: 1, mt: 0.5, px: 1.5, py: 0.75, borderRadius: 1,
+                                      backgroundColor: '#fdecea',
+                                      border: '1px solid #e57373',
+                                    }}>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        Bilateral oedema present — SAM
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: '#555', fontStyle: 'italic' }}>
+                                        — auto-selected
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  {/* WHZ badge */}
+                                  {!oedemaYes && autoSet && (
                                     <Box sx={{
                                       display: 'inline-flex', alignItems: 'center', gap: 1,
                                       mb: 1, mt: 0.5, px: 1.5, py: 0.75, borderRadius: 1,

@@ -239,7 +239,9 @@ export default function DataExport({ defaultForm }) {
     </Row>
   );
 
-  const tabItems = FORM_CATEGORIES.map((cat) => ({
+  const householdCat = FORM_CATEGORIES.find((c) => c.key === "household");
+
+  const tabItems = FORM_CATEGORIES.filter((cat) => cat.key !== "household").map((cat) => ({
     key: cat.key,
     label: (
       <span style={{ fontWeight: activeTab === cat.key ? 700 : 400 }}>
@@ -252,6 +254,25 @@ export default function DataExport({ defaultForm }) {
           <Text type="secondary">{cat.description}</Text>
         </div>
         <ExportGrid exports={cat.exports} />
+
+        {cat.key === "rmc" && householdCat && (
+          <div style={{ marginTop: 36 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              marginBottom: 12, paddingBottom: 10,
+              borderBottom: "1px solid #F3F4F6",
+            }}>
+              <div style={{ width: 4, height: 20, borderRadius: 2, background: householdCat.color }} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: householdCat.color }}>
+                  {householdCat.label}
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>{householdCat.description}</Text>
+              </div>
+            </div>
+            <ExportGrid exports={householdCat.exports} />
+          </div>
+        )}
       </div>
     ),
   }));

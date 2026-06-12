@@ -74,8 +74,7 @@ function buildMenuItems(role, notifCount) {
       ...(isAdmin || isState
         ? [{ key: "/data/response-summary", icon: <PieChartOutlined />, label: "Response Summary" }]
         : []),
-      { key: "/data/export/rmc",       icon: <DownloadOutlined />, label: "RMC Data" },
-      { key: "/data/export/household", icon: <DownloadOutlined />, label: "Household Data" },
+      { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "RMC Data" },
       { key: "/data/export/followup",  icon: <DownloadOutlined />, label: "Follow-Up Data" },
       { key: "/data/export/biannual",  icon: <DownloadOutlined />, label: "Bi-Annual Data" },
     ];
