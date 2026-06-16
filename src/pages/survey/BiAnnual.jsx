@@ -89,6 +89,13 @@ const WHZAutoCalculator = () => {
       if (cls) setFieldValue('nutritionalCategory', cls);
     } else {
       setFieldValue('whzOutOfRange', false);
+      // Clear any stale manually-entered category when real measurements are
+      // present but WHZ still can't be computed (e.g. sex/age not yet filled).
+      const wNum = parseFloat(wt);
+      const hNum = parseFloat(ht);
+      if (wt && ht && wNum > 0 && hNum > 0) {
+        setFieldValue('nutritionalCategory', '');
+      }
     }
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     values.current_wt, values.currentHt,
@@ -4162,6 +4169,18 @@ const BiAnnual = () => {
                               const autoSet = oedemaYes || (whz !== null && !outOfRange);
                               return (
                                 <>
+                                  {/* WHZ could not be calculated — measurements present but age/sex missing or out of range */}
+                                  {!skip && !oedemaYes && whz === null &&
+                                    parseFloat(values.current_wt) > 0 && parseFloat(values.currentHt) > 0 && (
+                                    <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#fff8e1', borderRadius: 1, border: '1px solid #ffb300' }}>
+                                      <Typography variant="body2" sx={{ color: '#e65100', fontWeight: 600 }}>
+                                        ⚠ WHZ score could not be calculated
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: '#e65100', display: 'block', mt: 0.25 }}>
+                                        Please ensure the child's sex and date of birth are correctly entered (valid age: 0–60 months).
+                                      </Typography>
+                                    </Box>
+                                  )}
                                   {/* Out-of-range error */}
                                   {outOfRange && (
                                     <Box sx={{ mb: 1.5, p: 1.5, backgroundColor: '#fdecea', borderRadius: 1, border: '1px solid #e57373' }}>
@@ -4210,7 +4229,7 @@ const BiAnnual = () => {
                                     id="nutritionalCategory" value={values.nutritionalCategory}
                                     onChange={handleChange}
                                     onBlur={handleBlur} error={touched.nutritionalCategory && !!errors.nutritionalCategory}
-                                    sx={{ pointerEvents: autoSet ? 'none' : 'auto' }}>
+                                    sx={{ pointerEvents: 'none' }}>
                                     <FormControlLabel value="SAM" control={<Radio />} label={
                                       <Typography variant="body2">{t('sam')} <Typography component="span" variant="caption" sx={{ color: '#888' }}>(WHZ &lt; -3)</Typography></Typography>
                                     } />
