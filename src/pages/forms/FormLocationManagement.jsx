@@ -172,7 +172,15 @@ export default function FormLocationManagement() {
 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
-  const postEntry = (fk, payload) => api.post(`/admin/form-location/${fk}`, payload);
+  const postEntry = (fk, payload) =>
+    api.post(`/admin/form-location/${fk}`, payload).then((res) => {
+      if (res.data?.success === false) {
+        const err = new Error(res.data?.message || "Request failed");
+        err.response = { data: res.data };
+        throw err;
+      }
+      return res;
+    });
 
   const handleSubmit = async () => {
     try {
@@ -230,7 +238,13 @@ export default function FormLocationManagement() {
       const ok     = results.filter(r => r.status === "fulfilled").length;
       const failed = results.length - ok;
       if (ok > 0)     message.success(`Added ${ok} entr${ok > 1 ? "ies" : "y"} successfully.`);
-      if (failed > 0) message.warning(`${failed} entr${failed > 1 ? "ies" : "y"} skipped (already assigned).`);
+      if (failed > 0) {
+        const reason = results
+          .filter(r => r.status === "rejected")
+          .map(r => r.reason?.response?.data?.message || r.reason?.message)
+          .find(Boolean);
+        message.warning(reason || `${failed} entr${failed > 1 ? "ies" : "y"} skipped.`);
+      }
 
       selectedForms.forEach(invalidateFormCache);
       form.resetFields();
@@ -341,7 +355,13 @@ export default function FormLocationManagement() {
       const ok      = results.filter(r => r.status === "fulfilled").length;
       const failed  = results.length - ok;
       if (ok > 0)     message.success(`Custom location added to ${ok} form(s).`);
-      if (failed > 0) message.warning(`${failed} form(s) skipped (already assigned).`);
+      if (failed > 0) {
+        const reason = results
+          .filter(r => r.status === "rejected")
+          .map(r => r.reason?.response?.data?.message || r.reason?.message)
+          .find(Boolean);
+        message.warning(reason || `${failed} form(s) skipped.`);
+      }
 
       customForms.forEach(invalidateFormCache);
       customForm.resetFields();
