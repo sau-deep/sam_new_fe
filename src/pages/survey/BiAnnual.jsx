@@ -73,9 +73,11 @@ const WHZAutoCalculator = () => {
     }
     const wt = values.current_wt;
     const ht = values.currentHt;
-    // 999 = not measured — skip entirely
+    // 999 = not measured — no basis for a category. Clear any stale auto-selection
+    // (e.g. SAM previously forced by oedema=Yes) so it does not linger.
     if (wt === '999' || String(wt) === '999' || ht === '999' || String(ht) === '999') {
       setFieldValue('whzOutOfRange', false);
+      setFieldValue('nutritionalCategory', '');
       return;
     }
     const whz = calculateWHZ(wt, ht, values.childAgeMonths, values.childSex);
@@ -88,14 +90,10 @@ const WHZAutoCalculator = () => {
       const cls = classifyWHZ(whz);
       if (cls) setFieldValue('nutritionalCategory', cls);
     } else {
+      // WHZ can't be computed (measurements missing/incomplete) and oedema is not
+      // 'Yes' — clear any stale auto-selection (the category is always derived).
       setFieldValue('whzOutOfRange', false);
-      // Clear any stale manually-entered category when real measurements are
-      // present but WHZ still can't be computed (e.g. sex/age not yet filled).
-      const wNum = parseFloat(wt);
-      const hNum = parseFloat(ht);
-      if (wt && ht && wNum > 0 && hNum > 0) {
-        setFieldValue('nutritionalCategory', '');
-      }
+      setFieldValue('nutritionalCategory', '');
     }
   }, [ // eslint-disable-line react-hooks/exhaustive-deps
     values.current_wt, values.currentHt,
