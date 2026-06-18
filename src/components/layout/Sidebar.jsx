@@ -9,7 +9,7 @@ import {
   BellOutlined, FolderOpenOutlined, DownloadOutlined, AuditOutlined,
   UserOutlined, SettingOutlined, GlobalOutlined, HomeOutlined,
   PieChartOutlined, LineChartOutlined, HeatMapOutlined, AppstoreOutlined,
-  EnvironmentOutlined, FlagOutlined,
+  EnvironmentOutlined, FlagOutlined, UnorderedListOutlined,
 } from "@ant-design/icons";
 
 const { Sider } = Layout;
@@ -56,7 +56,7 @@ function buildMenuItems(role, notifCount) {
       icon: <BarChartOutlined />,
       label: "Analytics",
       children: [
-        { key: "/analytics/rmc", icon: <PieChartOutlined />, label: "RMC Analytics" },
+        ...(!isState ? [{ key: "/analytics/rmc", icon: <PieChartOutlined />, label: "RMC Analytics" }] : []),
         { key: "/analytics/key-indicators", icon: <LineChartOutlined />, label: "Key Indicators" },
       ],
     });
@@ -69,7 +69,7 @@ function buildMenuItems(role, notifCount) {
   if (isAdmin || isUnicef || isState || isIEG) {
     const dataChildren = [
       { key: "/data/state-wise-summary", icon: <BarChartOutlined />, label: "State-Wise Summary" },
-      { key: "/data/complete-response",  icon: <DownloadOutlined />, label: "Complete Response" },
+      ...(!isState ? [{ key: "/data/complete-response", icon: <DownloadOutlined />, label: "Complete Response" }] : []),
       // Response Summary: admin + state only
       ...(isAdmin || isState
         ? [{ key: "/data/response-summary", icon: <PieChartOutlined />, label: "Response Summary" }]
@@ -77,6 +77,7 @@ function buildMenuItems(role, notifCount) {
       { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "RMC Data" },
       { key: "/data/export/followup",  icon: <DownloadOutlined />, label: "Follow-Up Data" },
       { key: "/data/export/biannual",  icon: <DownloadOutlined />, label: "Bi-Annual Data" },
+      { key: "/data/household-child-list", icon: <UnorderedListOutlined />, label: "Household Child List" },
     ];
     items.push({
       key: "data",

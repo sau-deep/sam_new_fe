@@ -255,7 +255,7 @@ export default function SurveyHome() {
       />
 
       {/* Admin quick links */}
-      {!isSurveyor && (
+      {!isSurveyor && role !== ROLES.STATE && (
         <Card style={{ borderRadius: 16, marginTop: 24, background: "linear-gradient(135deg, #002147, #1CABE2)", border: "none" }} bodyStyle={{ padding: "20px 24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>

@@ -46,6 +46,7 @@ const CompleteResponse = lazy(() => import("./pages/data/CompleteResponse"));
 const Settings = lazy(() => import("./pages/settings/Settings"));
 const VillageManagement = lazy(() => import("./pages/locations/VillageManagement"));
 const FormLocationManagement = lazy(() => import("./pages/forms/FormLocationManagement"));
+const HouseholdChildList = lazy(() => import("./pages/data/HouseholdChildList"));
 
 const PageLoader = () => (
   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -191,7 +192,7 @@ function AppRoutes() {
 
           {/* Analytics */}
           <Route path="/analytics/rmc" element={
-            <ProtectedRoute roles={VIEWER_ROLES}><RMCAnalytics /></ProtectedRoute>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.UNICEF, ROLES.IEG]}><RMCAnalytics /></ProtectedRoute>
           } />
           <Route path="/analytics/key-indicators" element={
             <ProtectedRoute roles={VIEWER_ROLES}><KeyIndicatorDashboard /></ProtectedRoute>
@@ -270,7 +271,10 @@ function AppRoutes() {
             <ProtectedRoute roles={MANAGE_ROLES}><ResponseSummary /></ProtectedRoute>
           } />
           <Route path="/data/complete-response" element={
-            <ProtectedRoute roles={VIEWER_ROLES}><CompleteResponse /></ProtectedRoute>
+            <ProtectedRoute roles={[ROLES.ADMIN, ROLES.UNICEF, ROLES.IEG]}><CompleteResponse /></ProtectedRoute>
+          } />
+          <Route path="/data/household-child-list" element={
+            <ProtectedRoute roles={VIEWER_ROLES}><HouseholdChildList /></ProtectedRoute>
           } />
           <Route path="/dashboard/key-indicators" element={
             <ProtectedRoute roles={VIEWER_ROLES}><KeyIndicatorDashboard /></ProtectedRoute>

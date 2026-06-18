@@ -306,44 +306,48 @@ export default function StateWiseSummary() {
         </Spin>
       </Card>
 
-      {/* Routine Monitoring Download */}
-      <Divider orientation="left">
-        <Text strong style={{ fontSize: 15 }}>Routine Monitoring Download</Text>
-      </Divider>
-      <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-        Download routine monitoring forms with section-wise data. Date range and state filter above apply.
-      </Text>
-      <Row gutter={[16, 16]}>
-        {SECTION_DOWNLOADS.map((sec) => (
-          <Col xs={24} sm={12} lg={6} key={sec.key}>
-            <Card
-              style={{
-                borderRadius: 12,
-                border: `1px solid ${sec.isFull ? sec.color + "50" : "#E5E7EB"}`,
-                background: sec.isFull ? `${sec.color}08` : "white",
-              }}
-              bodyStyle={{ padding: 18 }}
-            >
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 6 }}>{sec.label}</div>
-              <Button
-                type={sec.isFull ? "primary" : "default"}
-                icon={<FileExcelOutlined />}
-                loading={dlLoading[sec.key]}
-                onClick={() => handleSectionDownload(sec)}
-                block
-                style={{
-                  height: 36, borderRadius: 8,
-                  ...(sec.isFull
-                    ? { background: sec.color, borderColor: sec.color }
-                    : { borderColor: sec.color, color: sec.color }),
-                }}
-              >
-                Download Excel
-              </Button>
-            </Card>
-          </Col>
-        ))}
-      </Row>
+      {/* Routine Monitoring Download — hidden for State Admin */}
+      {!isStateAdmin() && (
+        <>
+          <Divider orientation="left">
+            <Text strong style={{ fontSize: 15 }}>Routine Monitoring Download</Text>
+          </Divider>
+          <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+            Download routine monitoring forms with section-wise data. Date range and state filter above apply.
+          </Text>
+          <Row gutter={[16, 16]}>
+            {SECTION_DOWNLOADS.map((sec) => (
+              <Col xs={24} sm={12} lg={6} key={sec.key}>
+                <Card
+                  style={{
+                    borderRadius: 12,
+                    border: `1px solid ${sec.isFull ? sec.color + "50" : "#E5E7EB"}`,
+                    background: sec.isFull ? `${sec.color}08` : "white",
+                  }}
+                  bodyStyle={{ padding: 18 }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 6 }}>{sec.label}</div>
+                  <Button
+                    type={sec.isFull ? "primary" : "default"}
+                    icon={<FileExcelOutlined />}
+                    loading={dlLoading[sec.key]}
+                    onClick={() => handleSectionDownload(sec)}
+                    block
+                    style={{
+                      height: 36, borderRadius: 8,
+                      ...(sec.isFull
+                        ? { background: sec.color, borderColor: sec.color }
+                        : { borderColor: sec.color, color: sec.color }),
+                    }}
+                  >
+                    Download Excel
+                  </Button>
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </>
+      )}
     </div>
   );
 }
