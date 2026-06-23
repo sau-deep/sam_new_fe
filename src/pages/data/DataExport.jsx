@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Card, Row, Col, Button, Select, DatePicker, Table, Tag,
   Typography, Space, Alert, Tabs, message,
@@ -27,7 +28,7 @@ const STATES = [
 const FORM_CATEGORIES = [
   {
     key: "rmc",
-    label: "RMC Data",
+    label: "Data Download",
     description: "Routine Monitoring Common Checklist exports",
     color: "#16a085",
     exports: [
@@ -116,8 +117,8 @@ const FORM_CATEGORIES = [
   },
   {
     key: "biannual",
-    label: "Bi-Annual Data",
-    description: "Concurrent / Bi-Annual Assessment exports",
+    label: "Concurrent Assessment",
+    description: "Concurrent Assessment exports and summaries",
     color: "#3498db",
     exports: [
       {
@@ -148,7 +149,27 @@ const AUDIT_COLUMNS = [
   },
 ];
 
+const CA_NAV_ITEMS = [
+  {
+    key: "response-summary",
+    label: "Response Summary",
+    description: "Village-wise response counts for Household Checklist and Concurrent Assessment",
+    icon: "📊",
+    path: "/data/response-summary",
+    color: "#8e44ad",
+  },
+  {
+    key: "household-child-list",
+    label: "Household Child List",
+    description: "Filter and export household survey records by location and date range",
+    icon: "🏠",
+    path: "/data/household-child-list",
+    color: "#16a085",
+  },
+];
+
 export default function DataExport({ defaultForm }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState({});
   const [dateRange, setDateRange] = useState([dayjs().subtract(1, "month"), dayjs()]);
   const [selectedState, setSelectedState] = useState("All States");
@@ -271,6 +292,46 @@ export default function DataExport({ defaultForm }) {
               </div>
             </div>
             <ExportGrid exports={householdCat.exports} />
+          </div>
+        )}
+
+        {cat.key === "biannual" && (
+          <div style={{ marginTop: 36 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              marginBottom: 12, paddingBottom: 10,
+              borderBottom: "1px solid #F3F4F6",
+            }}>
+              <div style={{ width: 4, height: 20, borderRadius: 2, background: "#3498db" }} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#3498db" }}>Summaries &amp; Lists</div>
+                <Text type="secondary" style={{ fontSize: 12 }}>View detailed response summaries and child lists</Text>
+              </div>
+            </div>
+            <Row gutter={[16, 16]}>
+              {CA_NAV_ITEMS.map((item) => (
+                <Col xs={24} sm={12} lg={8} key={item.key}>
+                  <Card
+                    style={{ borderRadius: 14, border: "1px solid #F3F4F6", background: "white", height: "100%" }}
+                    bodyStyle={{ padding: 20, display: "flex", flexDirection: "column", height: "100%" }}
+                  >
+                    <div style={{ fontSize: 28, marginBottom: 12 }}>{item.icon}</div>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>{item.label}</div>
+                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 1.5, flex: 1 }}>
+                      {item.description}
+                    </div>
+                    <Button
+                      icon={<DownloadOutlined />}
+                      onClick={() => navigate(item.path)}
+                      block
+                      style={{ borderRadius: 8, height: 38, borderColor: item.color, color: item.color }}
+                    >
+                      Open
+                    </Button>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
           </div>
         )}
       </div>

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Row, Col, Card, Typography, Tag, Progress, Table, Button, Spin, Empty } from "antd";
+import { Row, Col, Card, Typography, Tag, Progress, Table, Button, Spin, Empty, DatePicker } from "antd";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import { TeamOutlined, FileTextOutlined, EnvironmentOutlined, ReloadOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { useAuth } from "../../context/AuthContext";
 import StatCard from "../../components/dashboard/StatCard";
 import ChartCard from "../../components/charts/ChartCard";
@@ -12,6 +13,15 @@ import { CHART_COLORS, UNICEF_COLORS } from "../../theme/unicef";
 import axiosInstance from "../../services/axiosInstance";
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+
+const DATE_PRESETS = [
+  { label: "Last 7 days", value: [dayjs().subtract(6, "day"), dayjs()] },
+  { label: "Last 30 days", value: [dayjs().subtract(29, "day"), dayjs()] },
+  { label: "Last 3 months", value: [dayjs().subtract(3, "month"), dayjs()] },
+  { label: "Last 6 months", value: [dayjs().subtract(6, "month"), dayjs()] },
+  { label: "This year", value: [dayjs().startOf("year"), dayjs()] },
+];
 
 const DISTRICT_COLS = [
   { title: "District", dataIndex: "district", sorter: (a, b) => a.district.localeCompare(b.district) },
@@ -81,6 +91,8 @@ export default function StateDashboard() {
   const [trendData, setTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState([dayjs().subtract(6, "month"), dayjs()]);
+  const [loadedRange, setLoadedRange] = useState("");
 
   const fetchAll = useCallback(async () => {
     if (!stateName) return;
@@ -88,11 +100,13 @@ export default function StateDashboard() {
     setError(null);
     try {
       const stateQuery = encodeURIComponent(stateName);
+      const startDate = dateRange[0].format("YYYY-MM-DD");
+      const endDate = dateRange[1].format("YYYY-MM-DD");
 
       const [statsRes, districtRes, trendsRes, userStatsRes] = await Promise.allSettled([
-        axiosInstance.get(`/unicef/dashboard/state-stats?stateCode=${stateQuery}`),
-        axiosInstance.get(`/form/routine-monitoring/indicators/district-wise?state=${stateQuery}`),
-        axiosInstance.get(`/unicef/dashboard/trends`),
+        axiosInstance.get(`/unicef/dashboard/state-stats?stateCode=${stateQuery}&startDate=${startDate}&endDate=${endDate}`),
+        axiosInstance.get(`/form/routine-monitoring/indicators/district-wise?state=${stateQuery}&startDate=${startDate}&endDate=${endDate}`),
+        axiosInstance.get(`/unicef/dashboard/trends?startDate=${startDate}&endDate=${endDate}`),
         axiosInstance.get(`/user-management/stats`),
       ]);
 
@@ -114,8 +128,9 @@ export default function StateDashboard() {
       setError("Failed to load dashboard data.");
     } finally {
       setLoading(false);
+      setLoadedRange(`${dateRange[0].format("DD MMM YYYY")} – ${dateRange[1].format("DD MMM YYYY")}`);
     }
-  }, [stateName]);
+  }, [stateName, dateRange]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -131,7 +146,7 @@ export default function StateDashboard() {
   return (
     <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
             <Tag color="green" icon={<EnvironmentOutlined />}>{displayState}</Tag>
@@ -140,7 +155,21 @@ export default function StateDashboard() {
           <Title level={3} style={{ margin: 0, color: "#002147" }}>State Dashboard</Title>
           <Text style={{ color: "#6B7280" }}>State-scoped data · Manage your surveyors</Text>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Data Period</div>
+            <RangePicker
+              value={dateRange}
+              onChange={(val) => val && setDateRange(val)}
+              presets={DATE_PRESETS}
+              format="DD MMM YYYY"
+              disabledDate={(d) => d && d > dayjs()}
+              style={{ borderRadius: 8 }}
+            />
+            {loadedRange && (
+              <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>Showing: {loadedRange}</div>
+            )}
+          </div>
           <Button icon={<ReloadOutlined />} onClick={fetchAll} loading={loading}>Refresh</Button>
           <Button type="primary" icon={<TeamOutlined />} onClick={() => (window.location.href = "/users/surveyors")}>
             Manage Surveyors

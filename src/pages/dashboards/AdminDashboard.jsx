@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Row, Col, Card, Table, Select, Button, Tag, Typography, Progress, Statistic, Timeline, Alert } from "antd";
+import { Row, Col, Card, Table, Select, Button, Tag, Typography, Progress, Statistic, Timeline, Alert, DatePicker } from "antd";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -17,6 +17,7 @@ import { CHART_COLORS, UNICEF_COLORS } from "../../theme/unicef";
 import { useTranslation } from "react-i18next";
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
 
 // Demo fallback data when API is not available
 const DEMO_STATS = {
@@ -60,17 +61,19 @@ const ACTIVITY_FEED = [
 
 const STATE_TABLE_COLS = [
   { title: "State", dataIndex: "state", key: "state", render: (v) => <Tag color="blue">{v}</Tag> },
-  { title: "Surveys", dataIndex: "surveys", key: "surveys", sorter: (a, b) => a.surveys - b.surveys, render: (v) => v.toLocaleString() },
-  { title: "Surveyors", dataIndex: "surveyors", key: "surveyors" },
-  {
-    title: "Completion", dataIndex: "completion", key: "completion",
-    render: (v) => (
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Progress percent={v} size="small" strokeColor={UNICEF_COLORS.primary} style={{ flex: 1, margin: 0 }} />
-        <span style={{ fontSize: 12, color: "#6B7280", minWidth: 32 }}>{v}%</span>
-      </div>
-    ),
-  },
+  { title: "Total", dataIndex: "surveys", key: "surveys", sorter: (a, b) => a.surveys - b.surveys, render: (v) => v.toLocaleString() },
+  { title: "AWC", dataIndex: "awc", key: "awc", render: (v) => (v ?? 0).toLocaleString() },
+  { title: "VHSND", dataIndex: "vhsnd", key: "vhsnd", render: (v) => (v ?? 0).toLocaleString() },
+  { title: "CBE", dataIndex: "cbe", key: "cbe", render: (v) => (v ?? 0).toLocaleString() },
+  { title: "Household", dataIndex: "household", key: "household", render: (v) => (v ?? 0).toLocaleString() },
+];
+
+const DATE_PRESETS = [
+  { label: "Last 7 days", value: [dayjs().subtract(6, "day"), dayjs()] },
+  { label: "Last 30 days", value: [dayjs().subtract(29, "day"), dayjs()] },
+  { label: "Last 3 months", value: [dayjs().subtract(3, "month"), dayjs()] },
+  { label: "Last 6 months", value: [dayjs().subtract(6, "month"), dayjs()] },
+  { label: "This year", value: [dayjs().startOf("year"), dayjs()] },
 ];
 
 export default function AdminDashboard() {
@@ -81,51 +84,77 @@ export default function AdminDashboard() {
   const [formDist, setFormDist] = useState(DEMO_FORM_DIST);
   const [loading, setLoading] = useState(false);
   const [selectedState, setSelectedState] = useState(null);
+  const [dateRange, setDateRange] = useState([dayjs().subtract(6, "month"), dayjs()]);
+  const [loadedRange, setLoadedRange] = useState("");
   const { t } = useTranslation();
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const startDate = dayjs().subtract(6, "month").format("YYYY-MM-DD");
-      const endDate = dayjs().format("YYYY-MM-DD");
+      const startDate = dateRange[0].format("YYYY-MM-DD");
+      const endDate = dateRange[1].format("YYYY-MM-DD");
 
-      const [dashRes, pendingCountRes, unicefStatsRes, mapDataRes, userStatsRes] = await Promise.allSettled([
-        api.get("/form/routine-monitoring/dashboard", { params: { startDate, endDate } }),
+      const [stateWiseRes, trendsRes, pendingCountRes, unicefStatsRes, mapDataRes, userStatsRes] = await Promise.allSettled([
+        // Primary date-filtered source: state-wise-summary is confirmed working
+        api.get("/form/routine-monitoring/state-wise-summary", { params: { startDate, endDate } }),
+        // Monthly trend with date range
+        api.get("/unicef/dashboard/trends", { params: { startDate, endDate } }),
         api.get("/form/routine-monitoring/edit-notifications/pending/count"),
         api.get("/unicef/dashboard/stats"),
-        api.get("/unicef/dashboard/map-data"),
+        api.get("/unicef/dashboard/map-data", { params: { startDate, endDate } }),
         api.get("/user-management/stats"),
       ]);
 
-      if (dashRes.status === "fulfilled") {
-        const d = dashRes.value.data;
-        setStats((prev) => ({
-          ...prev,
-          totalSurveys: d.totalSubmissions ?? prev.totalSurveys,
-          totalStates: d.stateCount ?? prev.totalStates,
-        }));
+      // State-wise summary → totalSurveys, totalStates, stateData table, form distribution
+      if (stateWiseRes.status === "fulfilled") {
+        const raw = stateWiseRes.value.data;
+        const arr = Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+        if (arr.length > 0) {
+          const totalSurveys = arr.reduce((s, r) => s + (r.overall ?? 0), 0);
+          setStats((prev) => ({
+            ...prev,
+            totalSurveys,
+            totalStates: arr.length,
+          }));
 
-        // Monthly trend — API returns [{month, count}], map to chart shape
-        if (Array.isArray(d.monthlyTrend) && d.monthlyTrend.length > 0) {
-          const mappedTrend = d.monthlyTrend.map((item) => ({
-            month: item.month,
-            rmc: item.count || 0,
+          setStateData(arr.map((r) => ({
+            state: r.state,
+            surveys: r.overall ?? 0,
+            awc: r.awcSection1to4 ?? 0,
+            vhsnd: r.vhsndSection6to7 ?? 0,
+            cbe: r.cbeSection5 ?? 0,
+            household: (r.section8 ?? 0) + (r.section9 ?? 0) + (r.section10 ?? 0) + (r.section11 ?? 0),
+          })));
+
+          const totals = arr.reduce(
+            (acc, r) => ({
+              awc: acc.awc + (r.awcSection1to4 ?? 0),
+              vhsnd: acc.vhsnd + (r.vhsndSection6to7 ?? 0),
+              cbe: acc.cbe + (r.cbeSection5 ?? 0),
+              household: acc.household + (r.section8 ?? 0) + (r.section9 ?? 0) + (r.section10 ?? 0) + (r.section11 ?? 0),
+            }),
+            { awc: 0, vhsnd: 0, cbe: 0, household: 0 }
+          );
+          setFormDist([
+            { name: "AWC", value: totals.awc, color: CHART_COLORS[0] },
+            { name: "VHSND", value: totals.vhsnd, color: CHART_COLORS[1] },
+            { name: "CBE", value: totals.cbe, color: CHART_COLORS[2] },
+            { name: "Household", value: totals.household, color: CHART_COLORS[3] },
+          ]);
+        }
+      }
+
+      // Monthly trend chart
+      if (trendsRes.status === "fulfilled") {
+        const monthly = trendsRes.value.data?.monthlyTrends || trendsRes.value.data?.data?.monthlyTrends || [];
+        if (monthly.length > 0) {
+          setTrend(monthly.map((item) => ({
+            month: dayjs((item.month || "") + "-01").format("MMM YY"),
+            rmc: item.totalResponses || item.count || 0,
             household: 0,
             biannual: 0,
             followup: 0,
-          }));
-          setTrend(mappedTrend);
-        }
-
-        // Form distribution — API returns {AWC, VHSND, CBE, HH}
-        if (d.formDistribution) {
-          const fd = d.formDistribution;
-          setFormDist([
-            { name: "Routine Monitoring (AWC)", value: fd.AWC || 0, color: CHART_COLORS[0] },
-            { name: "VHSND", value: fd.VHSND || 0, color: CHART_COLORS[1] },
-            { name: "CBE", value: fd.CBE || 0, color: CHART_COLORS[2] },
-            { name: "Household", value: fd.HH || 0, color: CHART_COLORS[3] },
-          ]);
+          })));
         }
       }
 
@@ -169,8 +198,9 @@ export default function AdminDashboard() {
       }
     } catch { /* fallback to demo data on error */ } finally {
       setLoading(false);
+      setLoadedRange(`${dateRange[0].format("DD MMM YYYY")} – ${dateRange[1].format("DD MMM YYYY")}`);
     }
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
@@ -204,9 +234,27 @@ export default function AdminDashboard() {
   return (
     <div style={{ padding: "24px", background: "#F5F7FA", minHeight: "100vh" }}>
       {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0, color: "#002147" }}>{t("adminDashboard")}</Title>
-        <Text style={{ color: "#6B7280" }}>{t("realTimeOverview")} · {t("allStates")} · {t("allForms")}</Text>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+        <div>
+          <Title level={3} style={{ margin: 0, color: "#002147" }}>{t("adminDashboard")}</Title>
+          <Text style={{ color: "#6B7280" }}>
+            {t("realTimeOverview")} · {t("allStates")} · {t("allForms")}
+          </Text>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Data Period</div>
+          <RangePicker
+            value={dateRange}
+            onChange={(val) => val && setDateRange(val)}
+            presets={DATE_PRESETS}
+            format="DD MMM YYYY"
+            disabledDate={(d) => d && d > dayjs()}
+            style={{ borderRadius: 8 }}
+          />
+          {loadedRange && (
+            <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>Showing: {loadedRange}</div>
+          )}
+        </div>
       </div>
 
       {/* Stat Cards */}
@@ -388,20 +436,21 @@ export default function AdminDashboard() {
       {/* State-wise bar chart */}
       <Card style={{ borderRadius: 16, marginTop: 16 }} title={
         <div>
-          <div style={{ fontWeight: 700 }}>State Comparison</div>
-          <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>Survey count vs. active surveyors per state</div>
+          <div style={{ fontWeight: 700 }}>State Comparison — Section Breakdown</div>
+          <div style={{ fontWeight: 400, color: "#6B7280", fontSize: 12 }}>Submissions by section type per state for selected period</div>
         </div>
       }>
         <ResponsiveContainer width="100%" height={250}>
           <BarChart data={stateData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
             <XAxis dataKey="state" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 12 }} />
             <Tooltip contentStyle={{ borderRadius: 8 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar yAxisId="left" dataKey="surveys" name="Surveys" fill={UNICEF_COLORS.primary} radius={[4, 4, 0, 0]} />
-            <Bar yAxisId="right" dataKey="surveyors" name="Surveyors" fill={UNICEF_COLORS.navy} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="awc" name="AWC" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="vhsnd" name="VHSND" fill={CHART_COLORS[1]} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="cbe" name="CBE" fill={CHART_COLORS[2]} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="household" name="Household" fill={CHART_COLORS[3]} radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </Card>

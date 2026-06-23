@@ -9,7 +9,7 @@ import {
   BellOutlined, FolderOpenOutlined, DownloadOutlined, AuditOutlined,
   UserOutlined, SettingOutlined, GlobalOutlined, HomeOutlined,
   PieChartOutlined, LineChartOutlined, HeatMapOutlined, AppstoreOutlined,
-  EnvironmentOutlined, FlagOutlined, UnorderedListOutlined,
+  EnvironmentOutlined, FlagOutlined, UnorderedListOutlined, CalendarOutlined,
 } from "@ant-design/icons";
 
 const { Sider } = Layout;
@@ -70,14 +70,20 @@ function buildMenuItems(role, notifCount) {
     const dataChildren = [
       { key: "/data/state-wise-summary", icon: <BarChartOutlined />, label: "State-Wise Summary" },
       ...(!isState ? [{ key: "/data/complete-response", icon: <DownloadOutlined />, label: "Complete Response" }] : []),
-      // Response Summary: admin + state only
-      ...(isAdmin || isState
-        ? [{ key: "/data/response-summary", icon: <PieChartOutlined />, label: "Response Summary" }]
-        : []),
-      { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "RMC Data" },
-      { key: "/data/export/followup",  icon: <DownloadOutlined />, label: "Follow-Up Data" },
-      { key: "/data/export/biannual",  icon: <DownloadOutlined />, label: "Bi-Annual Data" },
-      { key: "/data/household-child-list", icon: <UnorderedListOutlined />, label: "Household Child List" },
+      { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "Data Download" },
+      { key: "/data/export/followup", icon: <DownloadOutlined />, label: "Follow-Up Data" },
+      {
+        key: "concurrent-assessment",
+        icon: <CalendarOutlined />,
+        label: "Concurrent Assessment",
+        children: [
+          { key: "/data/export/biannual", icon: <DownloadOutlined />, label: "CA Export" },
+          ...(isAdmin || isState
+            ? [{ key: "/data/response-summary", icon: <PieChartOutlined />, label: "Response Summary" }]
+            : []),
+          { key: "/data/household-child-list", icon: <UnorderedListOutlined />, label: "Household Child List" },
+        ],
+      },
     ];
     items.push({
       key: "data",
@@ -162,7 +168,11 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
   const getOpenKeys = () => {
     const path = location.pathname;
     if (path.startsWith("/dashboard") || path.startsWith("/analytics")) return ["analytics"];
-    if (path.startsWith("/data")) return ["data"];
+    if (path.startsWith("/data")) {
+      const concurrentPaths = ["/data/export/biannual", "/data/response-summary", "/data/household-child-list"];
+      if (concurrentPaths.some((p) => path.startsWith(p))) return ["data", "concurrent-assessment"];
+      return ["data"];
+    }
     if (path.startsWith("/users")) return ["users"];
     if (path.startsWith("/locations")) return ["locations"];
     if (path.startsWith("/notifications")) return ["notifications"];

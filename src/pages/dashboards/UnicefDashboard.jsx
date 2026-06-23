@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Row, Col, Card, Select, Typography, Tag, Table, Progress, Spin, Empty, Alert } from "antd";
+import { Row, Col, Card, Select, Typography, Tag, Table, Progress, Spin, Empty, Alert, DatePicker } from "antd";
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -15,6 +15,15 @@ import { CHART_COLORS, UNICEF_COLORS } from "../../theme/unicef";
 import dayjs from "dayjs";
 
 const { Title, Text } = Typography;
+const { RangePicker } = DatePicker;
+
+const DATE_PRESETS = [
+  { label: "Last 7 days", value: [dayjs().subtract(6, "day"), dayjs()] },
+  { label: "Last 30 days", value: [dayjs().subtract(29, "day"), dayjs()] },
+  { label: "Last 3 months", value: [dayjs().subtract(3, "month"), dayjs()] },
+  { label: "Last 6 months", value: [dayjs().subtract(6, "month"), dayjs()] },
+  { label: "This year", value: [dayjs().startOf("year"), dayjs()] },
+];
 
 const ALL_STATES = [
   "All States",
@@ -37,6 +46,8 @@ export default function UnicefDashboard() {
   const [indicators, setIndicators] = useState([]);
   const [districtData, setDistrictData] = useState([]);
   const [trends, setTrends] = useState([]);
+  const [dateRange, setDateRange] = useState([dayjs().subtract(3, "month"), dayjs()]);
+  const [loadedRange, setLoadedRange] = useState("");
 
   const fetchStateData = useCallback(async () => {
     if (!selectedState || selectedState === "All States") {
@@ -47,9 +58,11 @@ export default function UnicefDashboard() {
     setLoading(true);
     try {
       const stateQuery = encodeURIComponent(selectedState);
+      const startDate = dateRange[0].format("YYYY-MM-DD");
+      const endDate = dateRange[1].format("YYYY-MM-DD");
       const [statsRes, districtRes] = await Promise.allSettled([
-        api.get(`/unicef/dashboard/state-stats?stateCode=${stateQuery}`),
-        api.get(`/form/routine-monitoring/indicators/district-wise?state=${stateQuery}`),
+        api.get(`/unicef/dashboard/state-stats?stateCode=${stateQuery}&startDate=${startDate}&endDate=${endDate}`),
+        api.get(`/form/routine-monitoring/indicators/district-wise?state=${stateQuery}&startDate=${startDate}&endDate=${endDate}`),
       ]);
 
       if (statsRes.status === "fulfilled") {
@@ -73,14 +86,15 @@ export default function UnicefDashboard() {
       /* ignore */
     } finally {
       setLoading(false);
+      setLoadedRange(`${dateRange[0].format("DD MMM YYYY")} – ${dateRange[1].format("DD MMM YYYY")}`);
     }
-  }, [selectedState]);
+  }, [selectedState, dateRange]);
 
   const fetchIndicators = useCallback(async () => {
     try {
       const payload = {
-        startDate: dayjs().subtract(3, "month").format("YYYY-MM-DD"),
-        endDate: dayjs().format("YYYY-MM-DD"),
+        startDate: dateRange[0].format("YYYY-MM-DD"),
+        endDate: dateRange[1].format("YYYY-MM-DD"),
         state: selectedState === "All States" ? undefined : selectedState,
         sectionType: "AWC",
       };
@@ -94,11 +108,13 @@ export default function UnicefDashboard() {
         })));
       }
     } catch { /* fallback: leave empty */ }
-  }, [selectedState]);
+  }, [selectedState, dateRange]);
 
   const fetchTrends = useCallback(async () => {
     try {
-      const { data } = await api.get("/unicef/dashboard/trends");
+      const startDate = dateRange[0].format("YYYY-MM-DD");
+      const endDate = dateRange[1].format("YYYY-MM-DD");
+      const { data } = await api.get(`/unicef/dashboard/trends?startDate=${startDate}&endDate=${endDate}`);
       const monthly = data?.monthlyTrends || data?.data?.monthlyTrends || [];
       if (monthly.length > 0) {
         setTrends(monthly.slice(-12).map((m) => ({
@@ -107,7 +123,7 @@ export default function UnicefDashboard() {
         })));
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => {
     fetchStateData();
@@ -172,7 +188,21 @@ export default function UnicefDashboard() {
               : `Filtered to: ${selectedState}`}
           </Text>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Data Period</div>
+            <RangePicker
+              value={dateRange}
+              onChange={(val) => val && setDateRange(val)}
+              presets={DATE_PRESETS}
+              format="DD MMM YYYY"
+              disabledDate={(d) => d && d > dayjs()}
+              style={{ borderRadius: 8 }}
+            />
+            {loadedRange && (
+              <div style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>Showing: {loadedRange}</div>
+            )}
+          </div>
           <Select
             value={selectedState}
             onChange={setSelectedState}
