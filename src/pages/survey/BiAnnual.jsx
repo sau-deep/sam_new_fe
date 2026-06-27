@@ -455,6 +455,336 @@ const step1ValidationSchema = Yup.object({
       return true;
     }
   ),
+  weightLastMonthAww: Yup.string().required("This is a required field"),
+  heightLastMonthAww: Yup.string().required("This is a required field"),
+  childUndernourished: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { weightLastMonthAww, heightLastMonthAww } = this.parent;
+      return !((weightLastMonthAww === 'Yes' || heightLastMonthAww === 'Yes') && (!value || value.trim() === ''));
+    }
+  ),
+  givingFluids: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childAgeMonths } = this.parent;
+      return !(childAgeMonths < 24 && (!value || value.trim() === ''));
+    }
+  ),
+  weightNotMeasuredReason: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { weightLastMonthAww } = this.parent;
+      return !(weightLastMonthAww === 'No' && (!value || value.trim() === ''));
+    }
+  ),
+  heightNotMeasuredReason: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { heightLastMonthAww } = this.parent;
+      return !(heightLastMonthAww === 'No' && (!value || value.trim() === ''));
+    }
+  ),
+  positionHtMeasured: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { currentHt } = this.parent;
+      return !(currentHt && currentHt !== '999' && String(currentHt) !== '999' && (!value || value.trim() === ''));
+    }
+  ),
+  reasonWtNotMeasuring: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { current_wt } = this.parent;
+      return !((current_wt === '999' || String(current_wt) === '999') && (!value || value.trim() === ''));
+    }
+  ),
+  reasonHtNotMeasuring: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { currentHt } = this.parent;
+      return !((currentHt === '999' || String(currentHt) === '999') && (!value || value.trim() === ''));
+    }
+  ),
+  reasonNotAssessing: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { presentBilateralOedema } = this.parent;
+      return !(presentBilateralOedema === 'Not assessed' && (!value || value.trim() === ''));
+    }
+  ),
+  adviceChildHealthFacility: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childUndernourished } = this.parent;
+      return !(childUndernourished === 'Yes' && (!value || value.trim() === ''));
+    }
+  ),
+  receivedTreatment: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childUndernourished } = this.parent;
+      return !(childUndernourished === 'Yes' && (!value || value.trim() === ''));
+    }
+  ),
+  childUndernourishedType: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childUndernourished } = this.parent;
+      return !(childUndernourished === 'Yes' && (!value || value.trim() === ''));
+    }
+  ),
+  childVisitHealthFacility: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { adviceChildHealthFacility } = this.parent;
+      return !(adviceChildHealthFacility === 'Yes' && (!value || value.trim() === ''));
+    }
+  ),
+  childVisitHealthFacility_reason: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childVisitHealthFacility } = this.parent;
+      return !(childVisitHealthFacility === 'No' && (!value || value.trim() === ''));
+    }
+  ),
+  medicineConsumed: Yup.array().test(
+    'conditional-required',
+    'At least one option must be selected',
+    function (value) {
+      const { receivedTreatment } = this.parent;
+      return !(receivedTreatment === 'Yes' && (!value || value.length === 0));
+    }
+  ),
+  ashaInform: Yup.array().test(
+    'conditional-required',
+    'At least one option must be selected',
+    function (value) {
+      const { homeVisitAsha } = this.parent;
+      return !(Number(homeVisitAsha) > 0 && (!value || value.length === 0));
+    }
+  ),
+  awwDiscussion: Yup.array().test(
+    'conditional-required',
+    'At least one option must be selected',
+    function (value) {
+      const { homeVisitAww } = this.parent;
+      return !(Number(homeVisitAww) > 0 && (!value || value.length === 0));
+    }
+  ),
+  otherThanMilkGivenPreviousDay: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childBreastfeed, childAgeMonths } = this.parent;
+      return !(childBreastfeed === 'Yes' && childAgeMonths < 6 && (!value || value.trim() === ''));
+    }
+  ),
+  otherThanMilkGivenReason: Yup.array().test(
+    'conditional-required',
+    'At least one option must be selected',
+    function (value) {
+      const { childBreastfeed, childAgeMonths, otherThanMilkGivenPreviousDay } = this.parent;
+      return !(childBreastfeed === 'Yes' && childAgeMonths < 6 && otherThanMilkGivenPreviousDay === 'Yes' && (!value || value.length === 0));
+    }
+  ),
+  stillBreastfeeding: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childBreastfeed, childAgeMonths } = this.parent;
+      return !(childBreastfeed === 'Yes' && childAgeMonths >= 6 && (!value || value.trim() === ''));
+    }
+  ),
+  breastFeedMonth: Yup.string().test(
+    'conditional-required',
+    'This is a required field',
+    function (value) {
+      const { childBreastfeed, childAgeMonths, stillBreastfeeding } = this.parent;
+      return !(childBreastfeed === 'Yes' && childAgeMonths >= 6 && stillBreastfeeding === 'No' && (!value || value.trim() === ''));
+    }
+  ),
+  reasonStoppedFeedingw: Yup.array().test(
+    'conditional-required',
+    'At least one option must be selected',
+    function (value) {
+      const { childBreastfeed, childAgeMonths, stillBreastfeeding } = this.parent;
+      const isVisible = childBreastfeed === 'No' ||
+        (childBreastfeed === 'Yes' && childAgeMonths >= 6 && stillBreastfeeding === 'No');
+      return !(isVisible && (!value || value.length === 0));
+    }
+  ),
+  foodYesterdayBreastmilk: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayPorridge: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayFortifiedFood: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayGrain: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayYellow: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayRoots: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayLeafy: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayFruits: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayOtherFruits: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayDryFruits: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayOrganMeat: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayChicken: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayEggs: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayFish: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayBeans: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayNuts: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayCheese: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayOil: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdaySugar: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  foodYesterdayOtherSweetened: Yup.string().test('conditional-required', 'This is a required field',
+    function (value) { const { childAgeMonths, givingFluids } = this.parent;
+      return !(childAgeMonths < 24 && givingFluids === 'Yes' && (!value || value.trim() === '')); }),
+  otherThanMilkGiven_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { otherThanMilkGiven } = this.parent;
+      return !(Array.isArray(otherThanMilkGiven) && otherThanMilkGiven.includes('Other') && (!value || value.trim() === ''));
+    }
+  ),
+  otherThanMilkGivenReason_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { otherThanMilkGivenReason } = this.parent;
+      return !(Array.isArray(otherThanMilkGivenReason) && otherThanMilkGivenReason.includes('Other') && (!value || value.trim() === ''));
+    }
+  ),
+  reasonStoppedFeedingw_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { reasonStoppedFeedingw } = this.parent;
+      return !(Array.isArray(reasonStoppedFeedingw) && reasonStoppedFeedingw.includes('Other') && (!value || value.trim() === ''));
+    }
+  ),
+  medicineConsumed_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { medicineConsumed } = this.parent;
+      return !(Array.isArray(medicineConsumed) && medicineConsumed.includes('Other') && (!value || value.trim() === ''));
+    }
+  ),
+  awwDiscussion_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { awwDiscussion } = this.parent;
+      return !(Array.isArray(awwDiscussion) && awwDiscussion.includes('other') && (!value || value.trim() === ''));
+    }
+  ),
+  awwCounsel_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { awwCounsel } = this.parent;
+      return !(Array.isArray(awwCounsel) && awwCounsel.includes('other') && (!value || value.trim() === ''));
+    }
+  ),
+  ashaInform_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { ashaInform } = this.parent;
+      return !(Array.isArray(ashaInform) && ashaInform.includes('other') && (!value || value.trim() === ''));
+    }
+  ),
+  ashaUsedtoInform_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { ashaUsedtoInform, homeVisitAsha } = this.parent;
+      return !(Number(homeVisitAsha) > 0 && Array.isArray(ashaUsedtoInform) && ashaUsedtoInform.includes('Other') && (!value || value.trim() === ''));
+    }
+  ),
+  weightNotMeasuredReason_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { weightNotMeasuredReason } = this.parent;
+      return !(weightNotMeasuredReason === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
+  heightNotMeasuredReason_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { heightNotMeasuredReason } = this.parent;
+      return !(heightNotMeasuredReason === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
+  childUndernourishedType_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { childUndernourishedType } = this.parent;
+      return !(childUndernourishedType === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
+  reasonWtNotMeasuring_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { reasonWtNotMeasuring } = this.parent;
+      return !(reasonWtNotMeasuring === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
+  reasonHtNotMeasuring_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { reasonHtNotMeasuring } = this.parent;
+      return !(reasonHtNotMeasuring === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
+  reasonNotAssessing_other: Yup.string().test(
+    'conditional-required', 'This is a required field',
+    function (value) {
+      const { reasonNotAssessing } = this.parent;
+      return !(reasonNotAssessing === 'Other' && (!value || value.trim() === ''));
+    }
+  ),
 });
 
 const step0ValidationSchema = Yup.object({
@@ -1907,6 +2237,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="N/A" control={<Radio />} label={t('refused_to_answer')} />
                               <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                             </RadioGroup>
+                            {touched.caregiversex && errors.caregiversex && (
+                              <div className={styles.error}>{errors.caregiversex}</div>
+                            )}
                           </Grid>
                           {values.caregiversex === 'Other' && (
                             <Grid item xs={7} className={{
@@ -1966,6 +2299,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="Higher Education (Graduate and above)" control={<Radio />} label={t('higher_education')} />
                               <FormControlLabel value="N/A" control={<Radio />} label={t('refused_to_answer')} />
                             </RadioGroup>
+                            {touched.caregiverEducation && errors.caregiverEducation && (
+                              <div className={styles.error}>{errors.caregiverEducation}</div>
+                            )}
                           </Grid>
                           <Grid item xs={12} className={{
                             [styles.invalid]: touched.childName && !!errors.childName,
@@ -2006,6 +2342,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="Female" control={<Radio />} label={t('female')} />
                               <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                             </RadioGroup>
+                            {touched.childSex && errors.childSex && (
+                              <div className={styles.error}>{errors.childSex}</div>
+                            )}
                           </Grid>
                           {values.childSex === 'Other' && (
                             <Grid item xs={7} className={{
@@ -2070,6 +2409,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                   <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 </RadioGroup>
+                                {touched.childBreastfeed && errors.childBreastfeed && (
+                                  <div className={styles.error}>{errors.childBreastfeed}</div>
+                                )}
                               </Grid>
                               {values.childBreastfeed === 'Yes' && (
                                 <>
@@ -2087,6 +2429,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="On the day of birth" control={<Radio />} label={t('on_the_day_of_birth')} />
                                       <FormControlLabel value="On second day after birth or later" control={<Radio />} label={t('on_second_day_after_birth_or_later')} />
                                     </RadioGroup>
+                                    {touched.childBreastfeedFirstTime && errors.childBreastfeedFirstTime && (
+                                      <div className={styles.error}>{errors.childBreastfeedFirstTime}</div>
+                                    )}
                                   </Grid>
                                   {(values.childBreastfeedFirstTime === 'On second day after birth or later') && (
                                     <Grid item xs={7} className={{
@@ -2164,6 +2509,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                       <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                     </RadioGroup>
+                                    {touched.firstMilk && errors.firstMilk && (
+                                      <div className={styles.error}>{errors.firstMilk}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={{
                                     [styles.invalid]: touched.otherThanMilk && !!errors.otherThanMilk,
@@ -2178,6 +2526,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                       <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                     </RadioGroup>
+                                    {touched.otherThanMilk && errors.otherThanMilk && (
+                                      <div className={styles.error}>{errors.otherThanMilk}</div>
+                                    )}
                                   </Grid>
                                   {values.otherThanMilk === 'Yes' && (
                                     <>
@@ -2267,9 +2618,12 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                     <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                   </RadioGroup>
+                                  {touched.otherThanMilkGivenPreviousDay && errors.otherThanMilkGivenPreviousDay && (
+                                    <div className={styles.error}>{errors.otherThanMilkGivenPreviousDay}</div>
+                                  )}
                                 </Grid>
                               )}
-                              
+
                               {/* BF7 - Only show if BF6 is Yes and BF1 is Yes */}
                               {values.childBreastfeed === 'Yes' && values.childAgeMonths < 6 && values.otherThanMilkGivenPreviousDay === 'Yes' && (
                                 <>
@@ -2356,6 +2710,9 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                     <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                   </RadioGroup>
+                                  {touched.stillBreastfeeding && errors.stillBreastfeeding && (
+                                    <div className={styles.error}>{errors.stillBreastfeeding}</div>
+                                  )}
                                 </Grid>
                               )}
                               {/* BF9 - Only show for children 6 months and older when stillBreastfeeding is No and BF1 is Yes */}
@@ -2475,6 +2832,9 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                     <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                   </RadioGroup>
+                                  {touched.givingFluids && errors.givingFluids && (
+                                    <div className={styles.error}>{errors.givingFluids}</div>
+                                  )}
                                 </Grid>
                               )}
                               {/* CF1.1, CF1.2, CF1.3 - Show if CF1 is Yes */}
@@ -2577,6 +2937,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayBreastmilk && errors.foodYesterdayBreastmilk && (
+                                      <div className={styles.error}>{errors.foodYesterdayBreastmilk}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayPorridge && errors.foodYesterdayPorridge ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayPorridge">
@@ -2592,6 +2955,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayPorridge && errors.foodYesterdayPorridge && (
+                                      <div className={styles.error}>{errors.foodYesterdayPorridge}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayFortifiedFood && errors.foodYesterdayFortifiedFood ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayFortifiedFood">
@@ -2607,6 +2973,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayFortifiedFood && errors.foodYesterdayFortifiedFood && (
+                                      <div className={styles.error}>{errors.foodYesterdayFortifiedFood}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayGrain && errors.foodYesterdayGrain ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayGrain">
@@ -2622,6 +2991,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayGrain && errors.foodYesterdayGrain && (
+                                      <div className={styles.error}>{errors.foodYesterdayGrain}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayYellow && errors.foodYesterdayYellow ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayYellow">
@@ -2637,6 +3009,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayYellow && errors.foodYesterdayYellow && (
+                                      <div className={styles.error}>{errors.foodYesterdayYellow}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayRoots && errors.foodYesterdayRoots ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayRoots">
@@ -2652,6 +3027,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayRoots && errors.foodYesterdayRoots && (
+                                      <div className={styles.error}>{errors.foodYesterdayRoots}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayLeafy && errors.foodYesterdayLeafy ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayLeafy">
@@ -2667,6 +3045,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayLeafy && errors.foodYesterdayLeafy && (
+                                      <div className={styles.error}>{errors.foodYesterdayLeafy}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayFruits && errors.foodYesterdayFruits ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayFruits">
@@ -2682,6 +3063,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayFruits && errors.foodYesterdayFruits && (
+                                      <div className={styles.error}>{errors.foodYesterdayFruits}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayOtherFruits && errors.foodYesterdayOtherFruits ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayOtherFruits">
@@ -2697,6 +3081,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayOtherFruits && errors.foodYesterdayOtherFruits && (
+                                      <div className={styles.error}>{errors.foodYesterdayOtherFruits}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayDryFruits && errors.foodYesterdayDryFruits ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayDryFruits">
@@ -2712,6 +3099,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayDryFruits && errors.foodYesterdayDryFruits && (
+                                      <div className={styles.error}>{errors.foodYesterdayDryFruits}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayOrganMeat && errors.foodYesterdayOrganMeat ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayOrganMeat">
@@ -2727,6 +3117,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayOrganMeat && errors.foodYesterdayOrganMeat && (
+                                      <div className={styles.error}>{errors.foodYesterdayOrganMeat}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayChicken && errors.foodYesterdayChicken ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayChicken">
@@ -2742,6 +3135,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayChicken && errors.foodYesterdayChicken && (
+                                      <div className={styles.error}>{errors.foodYesterdayChicken}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayEggs && errors.foodYesterdayEggs ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayEggs">
@@ -2757,6 +3153,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayEggs && errors.foodYesterdayEggs && (
+                                      <div className={styles.error}>{errors.foodYesterdayEggs}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayFish && errors.foodYesterdayFish ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayFish">
@@ -2772,6 +3171,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayFish && errors.foodYesterdayFish && (
+                                      <div className={styles.error}>{errors.foodYesterdayFish}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayBeans && errors.foodYesterdayBeans ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayBeans">
@@ -2787,6 +3189,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayBeans && errors.foodYesterdayBeans && (
+                                      <div className={styles.error}>{errors.foodYesterdayBeans}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayNuts && errors.foodYesterdayNuts ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayNuts">
@@ -2802,6 +3207,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayNuts && errors.foodYesterdayNuts && (
+                                      <div className={styles.error}>{errors.foodYesterdayNuts}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayCheese && errors.foodYesterdayCheese ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayCheese">
@@ -2817,6 +3225,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayCheese && errors.foodYesterdayCheese && (
+                                      <div className={styles.error}>{errors.foodYesterdayCheese}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayOil && errors.foodYesterdayOil ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayOil">
@@ -2832,6 +3243,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayOil && errors.foodYesterdayOil && (
+                                      <div className={styles.error}>{errors.foodYesterdayOil}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdaySugar && errors.foodYesterdaySugar ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdaySugar">
@@ -2847,6 +3261,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdaySugar && errors.foodYesterdaySugar && (
+                                      <div className={styles.error}>{errors.foodYesterdaySugar}</div>
+                                    )}
                                   </Grid>
                                   <Grid item xs={12} className={`${styles.multiRaio} ${touched.foodYesterdayOtherSweetened && errors.foodYesterdayOtherSweetened ? styles.invalid : ''}`}>
                                     <label className={styles.label} htmlFor="foodYesterdayOtherSweetened">
@@ -2862,6 +3279,9 @@ const BiAnnual = () => {
                                       <FormControlLabel value="3" control={<Radio />} />
                                       <FormControlLabel value="More then 3" control={<Radio />} />
                                     </RadioGroup>
+                                    {touched.foodYesterdayOtherSweetened && errors.foodYesterdayOtherSweetened && (
+                                      <div className={styles.error}>{errors.foodYesterdayOtherSweetened}</div>
+                                    )}
                                   </Grid>
                                 </>
                               )}
@@ -2904,6 +3324,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="Child is under 6 months" control={<Radio />} label={t('child_is_under_6_months')} />
                               <FormControlLabel value="Child is above 3 years" control={<Radio />} label={t('child_is_above_3_years')} />
                             </RadioGroup>
+                            {touched.receivedThr && errors.receivedThr && (
+                              <div className={styles.error}>{errors.receivedThr}</div>
+                            )}
                           </Grid>
 
                           {/* THR2-THR5 - Only show if THR1 is Yes */}
@@ -2979,6 +3402,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                   <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 </RadioGroup>
+                                {touched.likeConsumeThr && errors.likeConsumeThr && (
+                                  <div className={styles.error}>{errors.likeConsumeThr}</div>
+                                )}
                               </Grid>
 
                               {/* THR5 */}
@@ -2995,6 +3421,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                   <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 </RadioGroup>
+                                {touched.hhProvidedThr && errors.hhProvidedThr && (
+                                  <div className={styles.error}>{errors.hhProvidedThr}</div>
+                                )}
                               </Grid>
                             </>
                           )}
@@ -3033,6 +3462,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                               <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                             </RadioGroup>
+                            {touched.weightLastMonthAww && errors.weightLastMonthAww && (
+                              <div className={styles.error}>{errors.weightLastMonthAww}</div>
+                            )}
                           </Grid>
 
                           {/* GMT1.1 - Only show if GMT1 is No */}
@@ -3053,6 +3485,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Not willing to be measured" control={<Radio />} label={t('not_willing_to_be_measured')} />
                                   <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                 </RadioGroup>
+                                {touched.weightNotMeasuredReason && errors.weightNotMeasuredReason && (
+                                  <div className={styles.error}>{errors.weightNotMeasuredReason}</div>
+                                )}
                               </Grid>
 
                               {values.weightNotMeasuredReason === 'Other' && (
@@ -3092,6 +3527,9 @@ const BiAnnual = () => {
                               <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                               <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                             </RadioGroup>
+                            {touched.heightLastMonthAww && errors.heightLastMonthAww && (
+                              <div className={styles.error}>{errors.heightLastMonthAww}</div>
+                            )}
                           </Grid>
 
                           {/* GMT2.1 - Only show if GMT2 is No */}
@@ -3112,6 +3550,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Not willing to be measured" control={<Radio />} label={t('not_willing_to_be_measured')} />
                                   <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                 </RadioGroup>
+                                {touched.heightNotMeasuredReason && errors.heightNotMeasuredReason && (
+                                  <div className={styles.error}>{errors.heightNotMeasuredReason}</div>
+                                )}
                               </Grid>
 
                               {values.heightNotMeasuredReason === 'Other' && (
@@ -3172,6 +3613,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                 <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                               </RadioGroup>
+                              {touched.childUndernourished && errors.childUndernourished && (
+                                <div className={styles.error}>{errors.childUndernourished}</div>
+                              )}
                             </Grid>
 
                             {/* GMT4-GMT8 - Only show if GMT3 is Yes */}
@@ -3196,6 +3640,9 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Moderately Stunted" control={<Radio />} label={t('moderately_stunted')} />
                                     <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                   </RadioGroup>
+                                  {touched.childUndernourishedType && errors.childUndernourishedType && (
+                                    <div className={styles.error}>{errors.childUndernourishedType}</div>
+                                  )}
                                 </Grid>
 
                                 {values.childUndernourishedType === 'Other' && (
@@ -3233,6 +3680,9 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                     <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                   </RadioGroup>
+                                  {touched.adviceChildHealthFacility && errors.adviceChildHealthFacility && (
+                                    <div className={styles.error}>{errors.adviceChildHealthFacility}</div>
+                                  )}
                                 </Grid>
 
                                 {/* GMT6 - Only show if GMT5 is Yes */}
@@ -3251,6 +3701,9 @@ const BiAnnual = () => {
                                         <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                         <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                       </RadioGroup>
+                                      {touched.childVisitHealthFacility && errors.childVisitHealthFacility && (
+                                        <div className={styles.error}>{errors.childVisitHealthFacility}</div>
+                                      )}
                                     </Grid>
 
                                     {values.childVisitHealthFacility === 'No' && (
@@ -3290,6 +3743,9 @@ const BiAnnual = () => {
                                     <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                     <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                   </RadioGroup>
+                                  {touched.receivedTreatment && errors.receivedTreatment && (
+                                    <div className={styles.error}>{errors.receivedTreatment}</div>
+                                  )}
                                 </Grid>
 
                                 {/* GMT8 - Only show if GMT7 is Yes */}
@@ -3405,6 +3861,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 <FormControlLabel value="Don't Know" control={<Radio />} label={t('dont_know')} />
                               </RadioGroup>
+                              {touched.vitA6Months && errors.vitA6Months && (
+                                <div className={styles.error}>{errors.vitA6Months}</div>
+                              )}
                             </Grid>
                           )}
 
@@ -3425,6 +3884,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 <FormControlLabel value="Don't Know" control={<Radio />} label={t('dont_know')} />
                               </RadioGroup>
+                              {touched.medicineWorm && errors.medicineWorm && (
+                                <div className={styles.error}>{errors.medicineWorm}</div>
+                              )}
                             </Grid>
                           )}
 
@@ -3445,6 +3907,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                                 <FormControlLabel value="Don't Know" control={<Radio />} label={t('dont_know')} />
                               </RadioGroup>
+                              {touched.iron6Months && errors.iron6Months && (
+                                <div className={styles.error}>{errors.iron6Months}</div>
+                              )}
                             </Grid>
                           )}
 
@@ -3983,6 +4448,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Not willing to be measured" control={<Radio />} label={t('not_willing_to_be_measured')} />
                                   <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                 </RadioGroup>
+                                {touched.reasonWtNotMeasuring && errors.reasonWtNotMeasuring && (
+                                  <div className={styles.error}>{errors.reasonWtNotMeasuring}</div>
+                                )}
                               </Grid>
                               {values.reasonWtNotMeasuring === 'Other' && (
                                 <Grid item xs={7} className={{
@@ -4048,6 +4516,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Not willing to be measured" control={<Radio />} label={t('not_willing_to_be_measured')} />
                                   <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                 </RadioGroup>
+                                {touched.reasonHtNotMeasuring && errors.reasonHtNotMeasuring && (
+                                  <div className={styles.error}>{errors.reasonHtNotMeasuring}</div>
+                                )}
                               </Grid>
                               {values.reasonHtNotMeasuring === 'Other' && (
                                 <Grid item xs={7} className={{
@@ -4086,6 +4557,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value={t('standing_up')} control={<Radio />} label={t('standing_up')} />
                                 <FormControlLabel value={t('lying_down')} control={<Radio />} label={t('lying_down')} />
                               </RadioGroup>
+                              {touched.positionHtMeasured && errors.positionHtMeasured && (
+                                <div className={styles.error}>{errors.positionHtMeasured}</div>
+                              )}
                             </Grid>
                           )}
 
@@ -4105,6 +4579,9 @@ const BiAnnual = () => {
                               <FormControlLabel value={t('no')} control={<Radio />} label={t('no')} />
                               <FormControlLabel value={t('not_assessed')} control={<Radio />} label={t('not_assessed')} />
                             </RadioGroup>
+                            {touched.presentBilateralOedema && errors.presentBilateralOedema && (
+                              <div className={styles.error}>{errors.presentBilateralOedema}</div>
+                            )}
                           </Grid>
                           {/* ANTH3.1: Reason for not assessing oedema */}
                           {values.presentBilateralOedema === 'Not assessed' && (
@@ -4124,6 +4601,9 @@ const BiAnnual = () => {
                                   <FormControlLabel value="Not willing to be assessed" control={<Radio />} label={t('not_willing_to_be_assessed')} />
                                   <FormControlLabel value="Other" control={<Radio />} label={t('other')} />
                                 </RadioGroup>
+                                {touched.reasonNotAssessing && errors.reasonNotAssessing && (
+                                  <div className={styles.error}>{errors.reasonNotAssessing}</div>
+                                )}
                               </Grid>
                               {values.reasonNotAssessing === 'Other' && (
                                 <Grid item xs={7} className={{
@@ -4262,6 +4742,9 @@ const BiAnnual = () => {
                                 <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
                                 <FormControlLabel value="No" control={<Radio />} label={t('no')} />
                               </RadioGroup>
+                              {touched.childEnrollCmam && errors.childEnrollCmam && (
+                                <div className={styles.error}>{errors.childEnrollCmam}</div>
+                              )}
                             </Grid>
                           )}
                           {/* Show message if ANTH5 is No */}
