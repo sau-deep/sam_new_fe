@@ -164,9 +164,9 @@ const step1ValidationSchema = Yup.object({
       }
     )
     .test(
-      'max-3-digits',
-      'Must be at most 3 digits',
-      value => !value || /^\d{1,3}$/.test(value)
+      'max-hours',
+      'Hours cannot be more than 24',
+      value => !value || (/^\d+$/.test(value) && parseInt(value, 10) <= 24)
     ),
   noOfMins: Yup.string()
     .test(
@@ -182,9 +182,9 @@ const step1ValidationSchema = Yup.object({
       }
     )
     .test(
-      'max-4-digits',
-      'Must be at most 4 digits',
-      value => !value || /^\d{1,4}$/.test(value)
+      'max-minutes',
+      'Minutes cannot be more than 59',
+      value => !value || (/^\d+$/.test(value) && parseInt(value, 10) <= 59)
     ),
   firstMilk: Yup.string().test(
     'conditional-required',

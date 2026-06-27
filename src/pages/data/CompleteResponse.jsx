@@ -19,6 +19,7 @@ import { SearchOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/ic
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import api from "../../services/axiosInstance";
+import ExcelMappingService from "../../services/ExcelMappingService";
 import { useAuth } from "../../context/AuthContext";
 import { StateList } from "../../constants/locations";
 
@@ -76,19 +77,23 @@ function flattenRecord(record, formType) {
   return base;
 }
 
-function exportToExcel(data, formLabel) {
+function exportToExcel(data, formLabel, formType) {
   if (!data.length) { message.warning("No data to export."); return; }
-  // Flatten nested objects and remap keys to human-readable headers
-  const rows = data.map((record) => {
-    const row = {};
-    Object.entries(record).forEach(([k, v]) => {
-      if (v === null || v === undefined) return;
-      if (typeof v === "object") return; // skip nested objects
-      const title = FIELD_TITLES[k] || k;
-      row[title] = v;
+  let rows;
+  if (formType === "biannual") {
+    rows = ExcelMappingService.generateBiAnnualExcelData(data);
+  } else {
+    rows = data.map((record) => {
+      const row = {};
+      Object.entries(record).forEach(([k, v]) => {
+        if (v === null || v === undefined) return;
+        if (typeof v === "object") return;
+        const title = FIELD_TITLES[k] || k;
+        row[title] = v;
+      });
+      return row;
     });
-    return row;
-  });
+  }
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, formLabel.slice(0, 31));
@@ -291,7 +296,7 @@ export default function CompleteResponse() {
               {fetched && data.length > 0 && (
                 <Button
                   icon={<DownloadOutlined />}
-                  onClick={() => exportToExcel(data, formMeta?.label || selectedForm)}
+                  onClick={() => exportToExcel(data, formMeta?.label || selectedForm, selectedForm)}
                   style={{ borderColor: "#80BD41", color: "#80BD41" }}
                 >
                   Export
