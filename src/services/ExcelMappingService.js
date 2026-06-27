@@ -51,13 +51,20 @@ class ExcelMappingService {
       'district',
       'districtCode',
       'block',
+      'blockCode',
       'village',
       'villageCode',
+      'clusterCode',
+      'structureCode',
+      'householdNumber',
+      'childId',
       'primaryCaregiver',
       'careGiverInterview',
+      'caregiverName',
       'caregiversex',
       'caregiverAge',
       'caregiverEducation',
+      'childName',
       'childSex',
       'childDob',
       'childAgeDays',
@@ -161,6 +168,10 @@ class ExcelMappingService {
       'Paracetamol',
       'gmt8_other',
       'gmt8_other_text',
+      'mn1',
+      'mn2',
+      'mn3',
+      'mn4',
       'hv1',
       'hv2',
       'hv2_giv_col_new',
@@ -228,9 +239,6 @@ class ExcelMappingService {
       'hv5_nothing',
       'hv5_other',
       'hv5_other_text',
-      'hv5_imp_excl_bf',
-      'hv5_use_of_thr',
-      'hv5_vitaminA',
       'hv6',
       'hv6_verbal_couns',
       'hv6_demonstration',
@@ -240,10 +248,6 @@ class ExcelMappingService {
       'hv6_nothing',
       'hv6_other',
       'hv6_other_text',
-      'mn1',
-      'mn2',
-      'mn3',
-      'mn4',
       'anth1',
       'anth2_1',
       'anth2_2',
@@ -310,16 +314,48 @@ class ExcelMappingService {
       excelRow.district = safe(record.district);
       excelRow.districtCode = safe(record.districtCode);
       excelRow.block = safe(record.block);
+      excelRow.blockCode = safe(record.blockCode);
       excelRow.village = safe(record.village);
       excelRow.villageCode = safe(record.villageCode);
+      excelRow.clusterCode = safe(record.clusterCode);
+      excelRow.structureCode = safe(record.structureCode);
+      excelRow.householdNumber = safe(record.householdNumber);
+      const computeChildId = (r) => {
+        if (!r.districtCode && !r.blockCode) return '';
+        const dc = String(r.districtCode    || '').padStart(3, '0').slice(-3);
+        const bc = String(r.blockCode       || '').padStart(4, '0').slice(-4);
+        const vc = String(r.villageCode     || '').padStart(2, '0').slice(-2);
+        const cc = String(r.clusterCode     || '').padStart(2, '0').slice(-2);
+        const sc = String(r.structureCode   || '').padStart(2, '0').slice(-2);
+        const hh = String(r.householdNumber || '').padStart(3, '0').slice(-3);
+        return dc + bc + vc + cc + sc + hh;
+      };
+      excelRow.childId = record.childId || computeChildId(record);
       excelRow.primaryCaregiver = safe(record.primaryCaregiver);
       excelRow.careGiverInterview = safe(record.careGiverInterview);
+      excelRow.caregiverName = safe(record.caregiverName);
       excelRow.caregiversex = safe(record.caregiversex);
       excelRow.caregiverAge = safe(record.caregiverAge);
       excelRow.caregiverEducation = safe(record.caregiverEducation);
+      excelRow.childName = safe(record.childName);
       excelRow.childSex = safe(record.childSex);
       excelRow.childDob = formatMaybeDate(record.childDob);
-      excelRow.childAgeDays = safe(record.childAgeDays);
+      const parseAnyDate = (val) => {
+        if (!val && val !== 0) return null;
+        if (Array.isArray(val)) return new Date(val[0], val[1] - 1, val[2]);
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const computeAgeDays = (dob, visit) => {
+        const d1 = parseAnyDate(dob);
+        if (!d1) return '';
+        const d2 = parseAnyDate(visit) || new Date();
+        const diff = d2 - d1;
+        return diff >= 0 ? Math.floor(diff / 86400000) : '';
+      };
+      excelRow.childAgeDays = record.childAgeDays
+        ? safe(record.childAgeDays)
+        : computeAgeDays(record.childDob, record.visitDate);
       excelRow.childAgeMonths = safe(record.childAgeMonths);
 
       // BF (breastfeeding)

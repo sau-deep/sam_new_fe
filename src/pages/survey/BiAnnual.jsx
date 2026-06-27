@@ -408,6 +408,7 @@ const step1ValidationSchema = Yup.object({
     function (value) {
       const { givingFluids, childAgeMonths } = this.parent;
       if (childAgeMonths < 24 && givingFluids === 'Yes' && value) {
+        if (value === '99') return true;
         const age = Number(value);
         return age >= 0 && age <= 24;
       }
@@ -427,6 +428,7 @@ const step1ValidationSchema = Yup.object({
     function (value) {
       const { givingFluids, childAgeMonths } = this.parent;
       if (childAgeMonths < 24 && givingFluids === 'Yes' && value) {
+        if (value === '99') return true;
         const age = Number(value);
         return age >= 0 && age <= 24;
       }
@@ -446,6 +448,7 @@ const step1ValidationSchema = Yup.object({
     function (value) {
       const { givingFluids, childAgeMonths } = this.parent;
       if (childAgeMonths < 24 && givingFluids === 'Yes' && value) {
+        if (value === '99') return true;
         const age = Number(value);
         return age >= 0 && age <= 24;
       }
