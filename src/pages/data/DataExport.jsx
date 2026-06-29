@@ -8,8 +8,10 @@ import {
   DownloadOutlined, FileExcelOutlined, HistoryOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
+import ExcelMappingService from "../../services/ExcelMappingService";
 import { UNICEF_COLORS } from "../../theme/unicef";
 
 const { RangePicker } = DatePicker;
@@ -125,9 +127,10 @@ const FORM_CATEGORIES = [
         key: "biannual",
         label: "Bi-Annual Assessment",
         description: "All concurrent/bi-annual assessment records",
-        endpoint: "/excel-export/biannual-assessment",
+        endpoint: "/form/biannuals",
         icon: "📅",
         color: "#3498db",
+        clientSideExcel: true,
       },
     ],
   },
@@ -192,14 +195,27 @@ export default function DataExport({ defaultForm }) {
         endDate: dateRange[1].format("YYYY-MM-DD"),
         state: selectedState === "All States" ? undefined : selectedState,
       };
-      const { data } = await api.post(exportType.endpoint, payload, { responseType: "blob" });
-      const url = URL.createObjectURL(new Blob([data]));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${exportType.key}_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-      message.success(`${exportType.label} downloaded successfully`);
+
+      if (exportType.clientSideExcel) {
+        const { data: res } = await api.post(exportType.endpoint, payload);
+        const arr = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        if (!arr.length) { message.warning("No records found for the selected criteria."); return; }
+        const rows = ExcelMappingService.generateBiAnnualExcelData(arr);
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, exportType.label.slice(0, 31));
+        XLSX.writeFile(wb, `${exportType.key}_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`);
+        message.success(`${exportType.label} downloaded — ${arr.length.toLocaleString()} records`);
+      } else {
+        const { data } = await api.post(exportType.endpoint, payload, { responseType: "blob" });
+        const url = URL.createObjectURL(new Blob([data]));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${exportType.key}_${dayjs().format("YYYYMMDD_HHmm")}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+        message.success(`${exportType.label} downloaded successfully`);
+      }
     } catch (err) {
       message.error(`Download failed: ${err.response?.data?.message || err.message}`);
     } finally {

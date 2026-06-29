@@ -1238,8 +1238,9 @@ const BiAnnual = () => {
     const processArrayWithOther = (array, otherValue) => {
       if (!Array.isArray(array)) return array || '';
       const values = [...array];
-      if (otherValue && values.includes('Other')) {
-        values.splice(values.indexOf('Other'), 1);
+      const otherIndex = values.findIndex((v) => v.toLowerCase() === 'other');
+      if (otherValue && otherIndex !== -1) {
+        values.splice(otherIndex, 1);
         values.push(`Other - ${otherValue}`);
       }
       return values.join(',');
@@ -1258,6 +1259,11 @@ const BiAnnual = () => {
       ashaInform: processArrayWithOther(values.ashaInform, values.ashaInform_other),
       ashaUsedtoInform: processArrayWithOther(values.ashaUsedtoInform, values.ashaUsedtoInform_other)
     };
+
+    // DEBUG — remove after verifying other_text fix
+    console.log('[DEBUG] ashaInform raw:', values.ashaInform, '| other text:', values.ashaInform_other);
+    console.log('[DEBUG] ashaInform processed:', processedValues.ashaInform);
+    console.log('[DEBUG] awwDiscussion processed:', processedValues.awwDiscussion);
 
     // Always include coordinates in payload (either captured or fallback)
     const payload = { 
@@ -1409,8 +1415,9 @@ const BiAnnual = () => {
     const processArrayWithOther = (array, otherValue) => {
       if (!Array.isArray(array)) return array || '';
       const values = [...array];
-      if (otherValue && values.includes('Other')) {
-        values.splice(values.indexOf('Other'), 1);
+      const otherIndex = values.findIndex((v) => v.toLowerCase() === 'other');
+      if (otherValue && otherIndex !== -1) {
+        values.splice(otherIndex, 1);
         values.push(`Other - ${otherValue}`);
       }
       return values.join(',');

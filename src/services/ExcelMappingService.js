@@ -501,7 +501,7 @@ class ExcelMappingService {
       excelRow.hv2_deworming_chil = indicatorYesNo(hv2List.includes('section5igcv_deworming'));
       excelRow.hv2_vaccination_chil = indicatorYesNo(hv2List.includes('section5igcv_vaccination'));
       excelRow.hv2_care_sick_child = indicatorYesNo(hv2List.includes('section5igcv_sick_child'));
-      excelRow.hv2_other      = indicatorYesNo(hv2List.includes('other'));
+      excelRow.hv2_other      = indicatorYesNo(hv2List.some((v) => v.toLowerCase() === 'other' || v.toLowerCase().startsWith('other - ')));
       excelRow.hv2_other_text = getOtherText(record.awwDiscussion);
 
       excelRow.hv3 = safe(record.awwCounsel);
@@ -511,7 +511,7 @@ class ExcelMappingService {
       excelRow.hv3_vedio_mobile = indicatorYesNo(hv3List.includes('video_on_mobile_device'));
       excelRow.hv3_posters = indicatorYesNo(hv3List.includes('posters'));
       excelRow.hv3_nothing = indicatorYesNo(hv3List.includes('nothing'));
-      excelRow.hv3_other      = indicatorYesNo(hv3List.includes('other'));
+      excelRow.hv3_other      = indicatorYesNo(hv3List.some((v) => v.toLowerCase() === 'other' || v.toLowerCase().startsWith('other - ')));
       excelRow.hv3_other_text = getOtherText(record.awwCounsel);
 
       excelRow.hv4_home_visit_by_Asha = safe(record.homeVisitAsha);
@@ -545,7 +545,7 @@ class ExcelMappingService {
       excelRow.hv5_deworming_chil = indicatorYesNo(hv5List.includes('section5igcv_deworming'));
       excelRow.hv5_vaccination_chil = indicatorYesNo(hv5List.includes('section5igcv_vaccination'));
       excelRow.hv5_care_sick_child = indicatorYesNo(hv5List.includes('section5igcv_sick_child'));
-      excelRow.hv5_other      = indicatorYesNo(hv5List.includes('other'));
+      excelRow.hv5_other      = indicatorYesNo(hv5List.some((v) => v.toLowerCase() === 'other' || v.toLowerCase().startsWith('other - ')));
       excelRow.hv5_other_text = getOtherText(record.ashaInform);
 
       excelRow.hv6 = safe(record.ashaUsedtoInform);
