@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Table, Button, Modal, Form, Input, Select, Tag, Space, Popconfirm,
-  message, Card, Row, Col, Typography, Badge, Tabs, Statistic, Avatar, Switch, Divider,
+  message, Card, Row, Col, Typography, Badge, Tabs, Statistic, Avatar, Switch, Divider, Tooltip, Alert,
 } from "antd";
 import {
   UserAddOutlined, EditOutlined, DeleteOutlined, CheckOutlined,
-  StopOutlined, PlayCircleOutlined, TeamOutlined, SearchOutlined, SettingOutlined,
+  StopOutlined, PlayCircleOutlined, TeamOutlined, SearchOutlined, SettingOutlined, CopyOutlined, CheckCircleOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useFormConfig } from "../../context/FormConfigContext";
@@ -73,13 +74,27 @@ const STATUS_LABEL = { true: "Active", false: "Inactive" };
 
 export default function UserManagement() {
   const { isAdmin, isStateAdmin, user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const tabFromPath = location.pathname === "/users/state-admins" ? "state-admins" : "surveyors";
+
   const [surveyors, setSurveyors] = useState([]);
   const [stateUsers, setStateUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [createModal, setCreateModal] = useState({ open: false, type: "surveyor" });
-  const [editModal, setEditModal] = useState({ open: false, record: null });
+  const [editModal, setEditModal] = useState({ open: false, record: null, type: "surveyor" });
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, pending: 0 });
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState(tabFromPath);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [credentialsModal, setCredentialsModal] = useState({ open: false, username: "", password: "" });
+
+  // Keep activeTab in sync when user navigates via the sidebar
+  useEffect(() => {
+    setActiveTab(tabFromPath);
+    setStatusFilter(null);
+  }, [location.pathname]);
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
 
@@ -87,10 +102,11 @@ export default function UserManagement() {
     setLoading(true);
     try {
       if (isAdmin()) {
+        // Admin has no state — use admin-specific endpoints that skip state filtering
         const [sRes, suRes, statsRes] = await Promise.allSettled([
-          api.get("/user-management/surveyors"),
-          api.get("/user-management/state-users"),
-          api.get("/user-management/stats"),
+          api.get("/admin/user-management/surveyors"),
+          api.get("/admin/user-management/state-users"),
+          api.get("/admin/user-management/stats"),
         ]);
         if (sRes.status === "fulfilled") {
           const d = sRes.value.data;
@@ -105,7 +121,7 @@ export default function UserManagement() {
           const statsData = d?.totalSurveyors !== undefined ? d : (d?.data || {});
           setStats({
             total: statsData.totalSurveyors ?? 0,
-            active: statsData.activeSurveyors ?? 0,
+            active: statsData.activeSurveyors ?? statsData.activeStateUsers ?? 0,
             inactive: statsData.inactiveSurveyors ?? 0,
             pending: statsData.pendingApproval ?? 0,
           });
@@ -121,12 +137,15 @@ export default function UserManagement() {
         }
         if (statsRes.status === "fulfilled") {
           const d = statsRes.value.data;
-          const statsData = d?.totalSurveyors !== undefined ? d : (d?.data || {});
+          // Backend uses surveyorCount/activeSurveyorCount keys; handle both naming conventions
+          const raw = d?.totalSurveyors !== undefined ? d
+            : d?.surveyorCount !== undefined ? d
+            : (d?.data || {});
           setStats({
-            total: statsData.totalSurveyors ?? 0,
-            active: statsData.activeSurveyors ?? 0,
-            inactive: statsData.inactiveSurveyors ?? 0,
-            pending: statsData.pendingApproval ?? 0,
+            total: raw.totalSurveyors ?? raw.surveyorCount ?? 0,
+            active: raw.activeSurveyors ?? raw.activeSurveyorCount ?? 0,
+            inactive: raw.inactiveSurveyors ?? raw.inactiveSurveyorCount ?? 0,
+            pending: raw.pendingApproval ?? 0,
           });
         }
       }
@@ -139,21 +158,26 @@ export default function UserManagement() {
 
   const handleCreate = async (values) => {
     try {
-      const endpoint = createModal.type === "surveyor"
-        ? "/user-management/create-surveyor"
-        : "/user-management/create-state-user";
+      const isStateType = createModal.type === "state";
+      const endpoint = isStateType
+        ? "/admin/user-management/create-state-user"
+        : "/user-management/create-surveyor";
       await api.post(endpoint, values);
-      message.success("User created successfully");
       setCreateModal({ open: false });
       form.resetFields();
       fetchUsers();
+      if (isStateType) {
+        setCredentialsModal({ open: true, username: values.email, password: "password" });
+      } else {
+        message.success("Surveyor created successfully");
+      }
     } catch (err) {
       message.error(err.response?.data?.message || err.response?.data || "Error creating user");
     }
   };
 
-  const openEditModal = (record) => {
-    setEditModal({ open: true, record });
+  const openEditModal = (record, type = "surveyor") => {
+    setEditModal({ open: true, record, type });
     editForm.setFieldsValue({
       name: record.name,
       email: record.email,
@@ -167,14 +191,19 @@ export default function UserManagement() {
 
   const handleEditSurveyor = async (values) => {
     try {
-      const userId = editModal.record?.userId;
-      await api.put(`/user-management/surveyor/${userId}`, values);
-      message.success("Surveyor updated successfully");
-      setEditModal({ open: false, record: null });
+      const userId = editModal.record?.id;
+      // Admin has no state — must use the admin endpoint for all edits.
+      // STATE role uses the surveyor-specific endpoint which enforces state isolation.
+      const endpoint = (editModal.type === "state-admin" || isAdmin())
+        ? `/admin/user-management/user/${userId}`
+        : `/user-management/surveyor/${userId}`;
+      await api.put(endpoint, values);
+      message.success(`${editModal.type === "state-admin" ? "State Admin" : "Surveyor"} updated successfully`);
+      setEditModal({ open: false, record: null, type: "surveyor" });
       editForm.resetFields();
       fetchUsers();
     } catch (err) {
-      message.error(err.response?.data?.message || "Failed to update surveyor");
+      message.error(err.response?.data?.message || "Failed to update user");
     }
   };
 
@@ -183,7 +212,9 @@ export default function UserManagement() {
       const endpoints = {
         activate: `/user-management/activate/${userId}`,
         deactivate: `/user-management/deactivate/${userId}`,
-        delete: `/user-management/user/${userId}`,
+        delete: isAdmin()
+          ? `/admin/user-management/user/${userId}`
+          : `/user-management/surveyor/${userId}`,
       };
       const methods = { activate: "put", deactivate: "put", delete: "delete" };
       await api[methods[action]](endpoints[action]);
@@ -225,19 +256,19 @@ export default function UserManagement() {
       title: "Actions",
       render: (_, r) => (
         <Space size={4}>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(r)}>Edit</Button>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(r, "surveyor")}>Edit</Button>
           {!r.isActive && (
-            <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleAction("activate", r.userId)}>
+            <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleAction("activate", r.id)}>
               Activate
             </Button>
           )}
           {r.isActive && (
-            <Popconfirm title="Deactivate this user?" onConfirm={() => handleAction("deactivate", r.userId)}>
+            <Popconfirm title="Deactivate this user?" onConfirm={() => handleAction("deactivate", r.id)}>
               <Button size="small" danger icon={<StopOutlined />}>Deactivate</Button>
             </Popconfirm>
           )}
           {isAdmin() && (
-            <Popconfirm title="Permanently delete this user?" onConfirm={() => handleAction("delete", r.userId)}>
+            <Popconfirm title="Permanently delete this user?" onConfirm={() => handleAction("delete", r.id)}>
               <Button size="small" danger icon={<DeleteOutlined />} />
             </Popconfirm>
           )}
@@ -267,13 +298,32 @@ export default function UserManagement() {
       title: "Actions",
       render: (_, r) => (
         <Space size={4}>
-          <Button size="small" icon={<EditOutlined />}>Edit</Button>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openEditModal(r, "state-admin")}>Edit</Button>
           {r.isActive
-            ? <Popconfirm title="Deactivate?" onConfirm={() => handleAction("deactivate", r.userId)}><Button size="small" danger icon={<StopOutlined />} /></Popconfirm>
-            : <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleAction("activate", r.userId)} />}
+            ? <Popconfirm title="Deactivate?" onConfirm={() => handleAction("deactivate", r.id)}><Button size="small" danger icon={<StopOutlined />} /></Popconfirm>
+            : <Button size="small" icon={<PlayCircleOutlined />} onClick={() => handleAction("activate", r.id)} />}
         </Space>
       ),
     },
+  ];
+
+  const handleStatClick = (filter) => {
+    setActiveTab("surveyors");
+    setStatusFilter((prev) => (prev === filter ? null : filter));
+  };
+
+  const filteredSurveyors = surveyors.filter((s) => {
+    if (statusFilter === "active") return s.isActive;
+    if (statusFilter === "inactive") return !s.isActive;
+    if (statusFilter === "pending") return !s.isApproved;
+    return true;
+  });
+
+  const STAT_CARDS = [
+    { title: "Total Surveyors", filter: null,      color: "#1CABE2", value: stats.total    || surveyors.length },
+    { title: "Active",          filter: "active",  color: "#80BD41", value: stats.active   || surveyors.filter((s) => s.isActive).length },
+    { title: "Inactive",        filter: "inactive",color: "#E2231A", value: stats.inactive || surveyors.filter((s) => !s.isActive).length },
+    { title: "Pending Approval",filter: "pending", color: "#F26A21", value: stats.pending  || surveyors.filter((s) => !s.isApproved).length },
   ];
 
   return (
@@ -310,27 +360,66 @@ export default function UserManagement() {
 
       {/* Stats */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {[
-          { title: "Total Surveyors", value: stats.total || surveyors.length, color: "#1CABE2" },
-          { title: "Active", value: stats.active || surveyors.filter((s) => s.isActive).length, color: "#80BD41" },
-          { title: "Inactive", value: stats.inactive || surveyors.filter((s) => !s.isActive).length, color: "#E2231A" },
-          { title: "Pending Approval", value: stats.pending || surveyors.filter((s) => !s.isApproved).length, color: "#F26A21" },
-        ].map((s) => (
-          <Col xs={12} sm={6} key={s.title}>
-            <Card style={{ borderRadius: 12, textAlign: "center" }} bodyStyle={{ padding: 16 }}>
-              <Statistic title={s.title} value={s.value} valueStyle={{ color: s.color, fontWeight: 800 }} />
-            </Card>
-          </Col>
-        ))}
+        {STAT_CARDS.map((s) => {
+          const isActive = statusFilter === s.filter;
+          return (
+            <Col xs={12} sm={6} key={s.title}>
+              <Tooltip title={s.filter ? `Filter by ${s.title}` : "Show all surveyors"}>
+                <Card
+                  onClick={() => handleStatClick(s.filter)}
+                  style={{
+                    borderRadius: 12,
+                    textAlign: "center",
+                    cursor: "pointer",
+                    border: isActive ? `2px solid ${s.color}` : "1px solid #f0f0f0",
+                    boxShadow: isActive ? `0 0 0 3px ${s.color}22` : undefined,
+                    transition: "all 0.2s",
+                  }}
+                  bodyStyle={{ padding: 16 }}
+                >
+                  <Statistic title={s.title} value={s.value} valueStyle={{ color: s.color, fontWeight: 800 }} />
+                  {isActive && (
+                    <div style={{ fontSize: 11, color: s.color, marginTop: 4, fontWeight: 600 }}>● Filtered</div>
+                  )}
+                </Card>
+              </Tooltip>
+            </Col>
+          );
+        })}
       </Row>
 
       <Card style={{ borderRadius: 16 }}>
-        <Tabs defaultActiveKey="surveyors">
-          <TabPane tab={<span><TeamOutlined /> Surveyors ({surveyors.length})</span>} key="surveyors">
+        <Tabs
+          activeKey={activeTab}
+          onChange={(k) => {
+            setActiveTab(k);
+            setStatusFilter(null);
+            navigate(k === "state-admins" ? "/users/state-admins" : "/users/surveyors");
+          }}
+        >
+          <TabPane
+            tab={<span><TeamOutlined /> Surveyors ({surveyors.length})</span>}
+            key="surveyors"
+          >
+            {statusFilter && (
+              <div style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                <Tag
+                  color={STAT_CARDS.find((c) => c.filter === statusFilter)?.color}
+                  closable
+                  onClose={() => setStatusFilter(null)}
+                  style={{ borderRadius: 6, fontWeight: 600 }}
+                >
+                  {STAT_CARDS.find((c) => c.filter === statusFilter)?.title}
+                </Tag>
+                <span style={{ fontSize: 12, color: "#6B7280" }}>
+                  Showing {filteredSurveyors.length} of {surveyors.length} surveyors
+                </span>
+              </div>
+            )}
             <Table
-              dataSource={surveyors}
+              dataSource={filteredSurveyors}
               columns={surveyorColumns}
-              rowKey="userId"
+              rowKey="id"
               loading={loading}
               size="middle"
               pagination={{ pageSize: 15, showSizeChanger: true }}
@@ -341,7 +430,7 @@ export default function UserManagement() {
               <Table
                 dataSource={stateUsers}
                 columns={stateUserColumns}
-                rowKey="userId"
+                rowKey="id"
                 loading={loading}
                 size="middle"
                 pagination={{ pageSize: 15 }}
@@ -356,11 +445,11 @@ export default function UserManagement() {
         </Tabs>
       </Card>
 
-      {/* Edit Surveyor Modal */}
+      {/* Edit User Modal */}
       <Modal
         open={editModal.open}
-        title={`Edit Surveyor — ${editModal.record?.name || editModal.record?.username || ""}`}
-        onCancel={() => { setEditModal({ open: false, record: null }); editForm.resetFields(); }}
+        title={`Edit ${editModal.type === "state-admin" ? "State Admin" : "Surveyor"} — ${editModal.record?.name || editModal.record?.username || ""}`}
+        onCancel={() => { setEditModal({ open: false, record: null, type: "surveyor" }); editForm.resetFields(); }}
         onOk={() => editForm.submit()}
         okText="Save Changes"
         okButtonProps={{ style: { background: "#1CABE2" } }}
@@ -421,31 +510,35 @@ export default function UserManagement() {
       >
         <Form form={form} layout="vertical" onFinish={handleCreate} requiredMark="optional">
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={createModal.type === "state" ? 24 : 12}>
               <Form.Item name="name" label="Full Name" rules={[{ required: true }]}>
                 <Input placeholder="Enter full name" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="username" label="Username" rules={[{ required: true }]}>
-                <Input placeholder="Unique username" />
-              </Form.Item>
-            </Col>
+            {createModal.type === "surveyor" && (
+              <Col span={12}>
+                <Form.Item name="username" label="Username" rules={[{ required: true }]}>
+                  <Input placeholder="Unique username" />
+                </Form.Item>
+              </Col>
+            )}
           </Row>
           <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}>
             <Input placeholder="Email address" />
           </Form.Item>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={createModal.type === "state" ? 24 : 12}>
               <Form.Item name="phoneNumber" label="Phone Number" rules={[{ required: true }]}>
                 <Input placeholder="Mobile number" maxLength={10} />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}>
-                <Input.Password placeholder="Set password" />
-              </Form.Item>
-            </Col>
+            {createModal.type === "surveyor" && (
+              <Col span={12}>
+                <Form.Item name="password" label="Password" rules={[{ required: true, min: 6 }]}>
+                  <Input.Password placeholder="Set password" />
+                </Form.Item>
+              </Col>
+            )}
           </Row>
           {isAdmin() && (
             <Form.Item name="state" label="State" rules={[{ required: true }]}>
@@ -465,6 +558,55 @@ export default function UserManagement() {
             </>
           )}
         </Form>
+      </Modal>
+
+      {/* State Admin Credentials Modal */}
+      <Modal
+        open={credentialsModal.open}
+        title={<span><CheckCircleOutlined style={{ color: "#80BD41", marginRight: 8 }} />State Admin Created</span>}
+        onCancel={() => setCredentialsModal({ open: false, username: "", password: "" })}
+        footer={[
+          <Button
+            key="close"
+            type="primary"
+            style={{ background: "#1CABE2" }}
+            onClick={() => setCredentialsModal({ open: false, username: "", password: "" })}
+          >
+            Done
+          </Button>,
+        ]}
+        width={480}
+      >
+        <Alert
+          message="Share these login credentials with the new State Admin."
+          description="They should change their password after first login."
+          type="info"
+          showIcon
+          style={{ marginBottom: 20, borderRadius: 8 }}
+        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[
+            { label: "Username (Email)", value: credentialsModal.username },
+            { label: "Default Password", value: credentialsModal.password },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: "#F5F7FA", borderRadius: 8, padding: "12px 16px" }}>
+              <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {label}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontFamily: "monospace", fontSize: 15, fontWeight: 700, color: "#111827" }}>{value}</span>
+                <Button
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => { navigator.clipboard.writeText(value); message.success(`${label} copied`); }}
+                  style={{ borderRadius: 6 }}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );

@@ -58,6 +58,9 @@ export default function FormLocationManagement() {
   // Track which row id is currently being toggled to show per-row loading
   const [togglingId, setTogglingId] = useState(null);
 
+  // Track bulk activate/deactivate loading
+  const [bulkToggling, setBulkToggling] = useState(false);
+
   // ── Custom / new location add form ──────────────────────────────────────
   const [customEntryType,      setCustomEntryType]      = useState("DISTRICT");
   const [customStateCode,      setCustomStateCode]      = useState(null);
@@ -277,6 +280,31 @@ export default function FormLocationManagement() {
       message.error(err?.response?.data?.message || "Failed to update status.");
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  // ─── Bulk activate / deactivate all ──────────────────────────────────────
+
+  const handleToggleAll = async (activate) => {
+    const toChange = assigned.filter(r => r.isActive !== activate);
+    if (toChange.length === 0) {
+      message.info(`All locations are already ${activate ? "active" : "inactive"}.`);
+      return;
+    }
+    const previous = assigned.slice();
+    setAssigned(prev => prev.map(r => ({ ...r, isActive: activate })));
+    setBulkToggling(true);
+    try {
+      await Promise.all(
+        toChange.map(r => api.patch(`/admin/form-location/${r.id}/active?value=${activate}`))
+      );
+      invalidateFormCache(formKey);
+      message.success(`All ${toChange.length} location(s) ${activate ? "activated" : "deactivated"}.`);
+    } catch (err) {
+      setAssigned(previous);
+      message.error(err?.response?.data?.message || "Failed to update some locations.");
+    } finally {
+      setBulkToggling(false);
     }
   };
 
@@ -901,6 +929,31 @@ export default function FormLocationManagement() {
             <Tag color="geekblue">{activeCount} active</Tag>
             {inactiveCount > 0 && <Tag color="default">{inactiveCount} inactive</Tag>}
           </Space>
+        }
+        extra={
+          assigned.length > 0 && (
+            <Space>
+              <Button
+                size="small"
+                type="primary"
+                loading={bulkToggling}
+                disabled={activeCount === assigned.length || loadingList}
+                onClick={() => handleToggleAll(true)}
+              >
+                Activate All
+              </Button>
+              <Button
+                size="small"
+                danger
+                ghost
+                loading={bulkToggling}
+                disabled={inactiveCount === assigned.length || loadingList}
+                onClick={() => handleToggleAll(false)}
+              >
+                Deactivate All
+              </Button>
+            </Space>
+          )
         }
       >
         <Table

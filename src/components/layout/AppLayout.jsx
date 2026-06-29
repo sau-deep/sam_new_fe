@@ -71,7 +71,7 @@ export default function AppLayout() {
     return () => clearInterval(interval);
   }, [isAdmin, isIEG]);
 
-  const sidebarWidth = collapsed ? 70 : 260;
+  const sidebarWidth = collapsed ? 70 : 280;
 
   if (isSurveyor) {
     // Surveyor: no sidebar, mobile-centered layout

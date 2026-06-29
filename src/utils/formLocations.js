@@ -1,4 +1,3 @@
-import { StateList, DistrictList, BlockList, VillageList } from "../constants/locations";
 import {
   getCachedFormLocations,
   fetchFormLocations,
@@ -10,8 +9,8 @@ import {
  * Each survey form has its own set of active BLOCKS (managed by admins and served
  * by the backend, cached to localStorage for offline use). State / District / Block
  * dropdown options are derived from that per-form block set, so two forms can expose
- * different locations. Villages are NOT form-specific under block-level granularity -
- * they follow the selected block and come from the master VillageList reference data.
+ * different locations. Only active entries are shown; inactive or unconfigured locations
+ * are excluded — dropdowns are empty rather than falling back to a master list.
  *
  * The exported helpers intentionally mirror the signatures of the original
  * constants/locations helpers so wiring a survey form is close to a drop-in swap:
@@ -44,6 +43,7 @@ function normalize(rows) {
     village:       r.village      || null,
     village_code:  r.villageCode  || null,
     entry_type:    r.entryType    || "BLOCK",
+    is_active:     r.isActive !== false,
   }));
 }
 
@@ -65,49 +65,38 @@ export async function loadFormLocations(formKey) {
   return cache[formKey];
 }
 
-/**
- * Whether per-form location data is actually available. An empty set almost
- * always means the data hasn't loaded (offline / dev-bypass / unauthenticated /
- * first visit) rather than "admin assigned zero blocks" - so we fall back to the
- * full master list to keep the survey forms usable, exactly like before.
- */
-function hasFormData(formKey) {
-  const blocks = getBlocks(formKey);
-  return Array.isArray(blocks) && blocks.length > 0;
-}
-
-/** Distinct states present in the form's active blocks (or all states as fallback). */
+/** Distinct states present in the form's active blocks. Empty when none are active. */
 function deriveStates(formKey) {
-  if (!hasFormData(formKey)) return StateList;
   const seen = new Map();
-  getBlocks(formKey).forEach((b) => {
-    if (b.state_code != null && !seen.has(b.state_code)) {
-      seen.set(b.state_code, { text: b.state, state_code: b.state_code });
-    }
-  });
+  getBlocks(formKey)
+    .filter((b) => b.is_active)
+    .forEach((b) => {
+      if (b.state_code != null && !seen.has(b.state_code))
+        seen.set(b.state_code, { text: b.state, state_code: b.state_code });
+    });
   return Array.from(seen.values()).sort((a, b) => a.text.localeCompare(b.text));
 }
 
-/** Distinct districts present in the form's active blocks (or all districts as fallback). */
+/** Distinct districts present in the form's active blocks. Empty when none are active. */
 function deriveDistricts(formKey) {
-  if (!hasFormData(formKey)) return DistrictList;
   const seen = new Map();
-  getBlocks(formKey).forEach((b) => {
-    if (b.district_code != null && !seen.has(b.district_code)) {
-      seen.set(b.district_code, {
-        text: b.district,
-        district_code: b.district_code,
-        state_code: b.state_code,
-      });
-    }
-  });
+  getBlocks(formKey)
+    .filter((b) => b.is_active)
+    .forEach((b) => {
+      if (b.district_code != null && !seen.has(b.district_code))
+        seen.set(b.district_code, {
+          text: b.district,
+          district_code: b.district_code,
+          state_code: b.state_code,
+        });
+    });
   return Array.from(seen.values()).sort((a, b) => a.text.localeCompare(b.text));
 }
 
-/** All active blocks for the form (or all blocks as fallback). */
+/** Active blocks for the form. Empty when none are active. */
 function deriveBlocks(formKey) {
-  if (!hasFormData(formKey)) return BlockList;
   return getBlocks(formKey)
+    .filter((b) => b.is_active)
     .map((b) => ({
       text: b.block,
       block_code: b.block_code,
@@ -137,17 +126,13 @@ export function getFormLocationHelpers(formKey) {
     deriveBlocks(formKey).filter((e) => e.district_code === districtCode);
 
   const getVillageOptions = (blockCode) => {
-    const formVillages = (cache[formKey] || []).filter(
-      (loc) => loc.entry_type === "VILLAGE" && loc.block_code === blockCode
-    );
-    if (formVillages.length > 0) {
-      return formVillages.map((loc) => ({
+    return (cache[formKey] || [])
+      .filter((loc) => loc.is_active && loc.entry_type === "VILLAGE" && loc.block_code === blockCode)
+      .map((loc) => ({
         text: loc.village,
         village_code: loc.village_code,
         block_code: loc.block_code,
       }));
-    }
-    return VillageList.filter((e) => e.block_code === blockCode);
   };
 
   const getDistrictOptionsByStateName = (stateName) => {
@@ -172,17 +157,13 @@ export function getFormLocationHelpers(formKey) {
       (x) => x.text === blockName && x.district_code === d?.district_code
     );
     if (!b) return [];
-    const formVillages = (cache[formKey] || []).filter(
-      (loc) => loc.entry_type === "VILLAGE" && loc.block_code === b.block_code
-    );
-    if (formVillages.length > 0) {
-      return formVillages.map((loc) => ({
+    return (cache[formKey] || [])
+      .filter((loc) => loc.is_active && loc.entry_type === "VILLAGE" && loc.block_code === b.block_code)
+      .map((loc) => ({
         text: loc.village,
         village_code: loc.village_code,
         block_code: loc.block_code,
       }));
-    }
-    return VillageList.filter((v) => v.block_code === b.block_code);
   };
 
   return {

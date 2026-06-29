@@ -28,7 +28,7 @@ const STATES = [
 const FORM_CATEGORIES = [
   {
     key: "rmc",
-    label: "Data Download",
+    label: "Routine Monitoring",
     description: "Routine Monitoring Common Checklist exports",
     color: "#16a085",
     exports: [

@@ -68,22 +68,11 @@ function buildMenuItems(role, notifCount) {
   // Data — summary + complete response + section exports
   if (isAdmin || isUnicef || isState || isIEG) {
     const dataChildren = [
-      { key: "/data/state-wise-summary", icon: <BarChartOutlined />, label: "State-Wise Summary" },
+      { key: "/data/state-wise-summary", icon: <BarChartOutlined />, label: "State-Wise Summary (RM)" },
       ...(!isState ? [{ key: "/data/complete-response", icon: <DownloadOutlined />, label: "Complete Response" }] : []),
-      { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "Data Download" },
+      { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "Routine Monitoring" },
       { key: "/data/export/followup", icon: <DownloadOutlined />, label: "Follow-Up Data" },
-      {
-        key: "concurrent-assessment",
-        icon: <CalendarOutlined />,
-        label: "Concurrent Assessment",
-        children: [
-          { key: "/data/export/biannual", icon: <DownloadOutlined />, label: "CA Export" },
-          ...(isAdmin || isState
-            ? [{ key: "/data/response-summary", icon: <PieChartOutlined />, label: "Response Summary" }]
-            : []),
-          { key: "/data/household-child-list", icon: <UnorderedListOutlined />, label: "Household Child List" },
-        ],
-      },
+      { key: "/data/export/biannual", icon: <CalendarOutlined />, label: "Concurrent Assessment" },
     ];
     items.push({
       key: "data",
@@ -140,7 +129,6 @@ function buildMenuItems(role, notifCount) {
       icon: <EnvironmentOutlined />,
       label: "Locations",
       children: [
-        { key: "/locations/villages", icon: <EnvironmentOutlined />, label: "Village Management" },
         { key: "/locations/form-locations", icon: <AppstoreOutlined />, label: "Form Locations" },
       ],
     });
@@ -184,7 +172,7 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
       trigger={null}
       collapsible
       collapsed={collapsed}
-      width={260}
+      width={280}
       collapsedWidth={70}
       style={{
         height: "100vh",
