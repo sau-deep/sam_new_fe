@@ -740,7 +740,7 @@ const step1ValidationSchema = Yup.object({
     'conditional-required', 'This is a required field',
     function (value) {
       const { ashaUsedtoInform, homeVisitAsha } = this.parent;
-      return !(Number(homeVisitAsha) > 0 && Array.isArray(ashaUsedtoInform) && ashaUsedtoInform.includes('Other') && (!value || value.trim() === ''));
+      return !(Number(homeVisitAsha) > 0 && Array.isArray(ashaUsedtoInform) && ashaUsedtoInform.includes('other') && (!value || value.trim() === ''));
     }
   ),
   weightNotMeasuredReason_other: Yup.string().test(
@@ -4328,13 +4328,13 @@ const BiAnnual = () => {
                                 <em>{t('hv6_note')}</em>
                                 <FormGroup aria-label="ASHA methods" id="ashaUsedtoInform">
                                   {[
-                                    "Verbal counseling",
-                                    "Demonstration",
-                                    "Flip chart",
-                                    "Pamphlet/leaflet",
-                                    "Video",
-                                    "Nothing",
-                                    "Other",
+                                    "mcp_card",
+                                    "flipbook_flipchart",
+                                    "posters",
+                                    "video_on_mobile_device",
+                                    "counselling_card",
+                                    "nothing",
+                                    "other",
                                   ].map((option) => (
                                     <FormControlLabel
                                       key={option}
@@ -4345,25 +4345,25 @@ const BiAnnual = () => {
                                           onChange={(e) => {
                                             const { value } = e.target;
                                             let newArray = [...values.ashaUsedtoInform];
-                                            if (value === 'Nothing') {
-                                              newArray = newArray.includes('Nothing')
-                                                ? newArray.filter((item) => item !== 'Nothing')
-                                                : ['Nothing'];
-                                            } else if (value === 'Other') {
-                                              newArray = newArray.includes('Other')
-                                                ? newArray.filter((item) => item !== 'Other')
-                                                : [...newArray.filter((item) => item !== 'Nothing'), 'Other'];
+                                            if (value === 'nothing') {
+                                              newArray = newArray.includes('nothing')
+                                                ? newArray.filter((item) => item !== 'nothing')
+                                                : ['nothing'];
+                                            } else if (value === 'other') {
+                                              newArray = newArray.includes('other')
+                                                ? newArray.filter((item) => item !== 'other')
+                                                : [...newArray.filter((item) => item !== 'nothing'), 'other'];
                                             } else {
                                               newArray = newArray.includes(value)
                                                 ? newArray.filter((item) => item !== value)
-                                                : [...newArray.filter((item) => item !== 'Nothing'), value];
+                                                : [...newArray.filter((item) => item !== 'nothing'), value];
                                             }
                                             setFieldValue("ashaUsedtoInform", newArray);
                                           }}
                                           name="ashaUsedtoInform"
                                         />
                                       }
-                                      label={t(option.toLowerCase().replace(/[\/]/g, '_').replace(/\s+/g, '_'))}
+                                      label={t(option)}
                                     />
                                   ))}
                                 </FormGroup>
@@ -4372,7 +4372,7 @@ const BiAnnual = () => {
                                 )}
                               </Grid>
 
-                              {values.ashaUsedtoInform.includes('Other') && (
+                              {values.ashaUsedtoInform.includes('other') && (
                                 <Grid item xs={7} className={{
                                   [styles.invalid]: touched.ashaUsedtoInform_other && !!errors.ashaUsedtoInform_other,
                                 }}>

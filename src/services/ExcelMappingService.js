@@ -240,11 +240,11 @@ class ExcelMappingService {
       'hv5_other',
       'hv5_other_text',
       'hv6',
-      'hv6_verbal_couns',
-      'hv6_demonstration',
-      'hv6_flip_chart',
-      'hv6_pamphlet_leaflet',
-      'hv6_video',
+      'hv6_mcp_card',
+      'hv6_flipbook_flipchart',
+      'hv6_posters',
+      'hv6_video_on_mobile_device',
+      'hv6_counselling_card',
       'hv6_nothing',
       'hv6_other',
       'hv6_other_text',
@@ -549,14 +549,14 @@ class ExcelMappingService {
       excelRow.hv5_other_text = getOtherText(record.ashaInform);
 
       excelRow.hv6 = safe(record.ashaUsedtoInform);
-      excelRow.hv6_verbal_couns = indicatorYesNo(hv6List.includes('Verbal counseling'));
-      excelRow.hv6_demonstration = indicatorYesNo(hv6List.includes('Demonstration'));
-      excelRow.hv6_flip_chart = indicatorYesNo(hv6List.includes('Flip chart'));
-      excelRow.hv6_pamphlet_leaflet = indicatorYesNo(hv6List.includes('Pamphlet/leaflet'));
-      excelRow.hv6_video = indicatorYesNo(hv6List.includes('Video'));
-      excelRow.hv6_nothing = indicatorYesNo(hv6List.includes('Nothing') || hv6List.includes('nothing'));
-      excelRow.hv6_other      = indicatorYesNo(hv6List.includes('Other') || hv6List.some((v) => v.startsWith('Other -')));
-      excelRow.hv6_other_text = getOtherText(record.ashaUsedtoInform);
+      excelRow.hv6_mcp_card               = indicatorYesNo(hv6List.includes('mcp_card'));
+      excelRow.hv6_flipbook_flipchart     = indicatorYesNo(hv6List.includes('flipbook_flipchart'));
+      excelRow.hv6_posters                = indicatorYesNo(hv6List.includes('posters'));
+      excelRow.hv6_video_on_mobile_device = indicatorYesNo(hv6List.includes('video_on_mobile_device'));
+      excelRow.hv6_counselling_card       = indicatorYesNo(hv6List.includes('counselling_card'));
+      excelRow.hv6_nothing                = indicatorYesNo(hv6List.includes('nothing'));
+      excelRow.hv6_other                  = indicatorYesNo(hv6List.some((v) => v === 'other' || v.startsWith('Other -')));
+      excelRow.hv6_other_text             = getOtherText(record.ashaUsedtoInform);
 
       // Micronutrients
       excelRow.mn1 = safe(record.vitA6Months);
