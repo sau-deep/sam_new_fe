@@ -81,7 +81,13 @@ export default function FormLocationManagement() {
     ? locationData.districts.filter(d => String(d.stateCode) === String(stateCode))
     : [];
   const blockOptions = districtCode
-    ? locationData.blocks.filter(b => String(b.districtCode) === String(districtCode))
+    ? Array.from(
+        new Map(
+          locationData.blocks
+            .filter(b => String(b.districtCode) === String(districtCode))
+            .map(b => [b.block, b])
+        ).values()
+      )
     : [];
   const villageOptions = blockCode
     ? (locationData.villages || []).filter(v => String(v.blockCode) === String(blockCode))

@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Table, Button, Modal, Form, Input, Select, Tag, Space, Popconfirm,
-  message, Card, Row, Col, Typography, Badge, Tabs, Statistic, Avatar, Switch, Divider, Tooltip, Alert,
+  message, Card, Row, Col, Typography, Badge, Tabs, Statistic, Avatar, Switch, Tooltip, Alert,
 } from "antd";
 import {
-  UserAddOutlined, EditOutlined, DeleteOutlined, CheckOutlined,
-  StopOutlined, PlayCircleOutlined, TeamOutlined, SearchOutlined, SettingOutlined, CopyOutlined, CheckCircleOutlined,
+  UserAddOutlined, EditOutlined, DeleteOutlined,
+  StopOutlined, PlayCircleOutlined, TeamOutlined, SettingOutlined, CopyOutlined, CheckCircleOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useFormConfig } from "../../context/FormConfigContext";
-import api from "../../services/axiosInstance";
+import api, { clearApiCache } from "../../services/axiosInstance";
 import { ROLES } from "../../config";
 
 const { Title, Text } = Typography;
@@ -25,6 +26,32 @@ const FORM_LABELS = [
   { key: "BI_ANNUAL", label: "Concurrent Assessment (Bi-Annual)", description: "Bi-annual child health and nutrition" },
   { key: "FOLLOWUP", label: "Follow-Up Assessment", description: "Track progress of assessed children" },
 ];
+
+// --- localStorage cache helpers ---
+const LS_KEY = "sam_uc";
+const LS_TTL = 10 * 60 * 1000; // 10 minutes
+
+function readUsersCache() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() > parsed.expiresAt) { localStorage.removeItem(LS_KEY); return null; }
+    return parsed;
+  } catch { return null; }
+}
+
+function patchUsersCache(patch) {
+  try {
+    const existing = readUsersCache() || {};
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...existing, ...patch, expiresAt: Date.now() + LS_TTL }));
+  } catch { /* quota exceeded — skip */ }
+}
+
+function clearUsersCache() {
+  localStorage.removeItem(LS_KEY);
+}
+// ----------------------------------
 
 function FormSettingsTab() {
   const { formConfig: config, updateFormConfig } = useFormConfig();
@@ -89,72 +116,121 @@ export default function UserManagement() {
   const [activeTab, setActiveTab] = useState(tabFromPath);
   const [statusFilter, setStatusFilter] = useState(null);
   const [credentialsModal, setCredentialsModal] = useState({ open: false, username: "", password: "" });
+  // tracks which tabs have had a network fetch this session (prevents redundant fetches on tab switch)
+  const [tabsLoaded, setTabsLoaded] = useState({ surveyors: false, "state-admins": false });
 
-  // Keep activeTab in sync when user navigates via the sidebar
   useEffect(() => {
     setActiveTab(tabFromPath);
     setStatusFilter(null);
   }, [location.pathname]);
+
   const [form] = Form.useForm();
   const [editForm] = Form.useForm();
 
-  const fetchUsers = async () => {
+  const invalidateCaches = () => {
+    clearUsersCache();
+    clearApiCache("/user-management");
+    clearApiCache("/admin/user-management");
+  };
+
+  const fetchUsers = async (tab = activeTab, force = false) => {
+    // Seed state from localStorage immediately for instant display
+    if (!force) {
+      const cached = readUsersCache();
+      if (cached) {
+        if (cached.surveyors) setSurveyors(cached.surveyors);
+        if (cached.stateUsers) setStateUsers(cached.stateUsers);
+        if (cached.stats) setStats(cached.stats);
+      }
+    }
+
     setLoading(true);
     try {
       if (isAdmin()) {
-        // Admin has no state — use admin-specific endpoints that skip state filtering
-        const [sRes, suRes, statsRes] = await Promise.allSettled([
-          api.get("/admin/user-management/surveyors"),
-          api.get("/admin/user-management/state-users"),
-          api.get("/admin/user-management/stats"),
-        ]);
-        if (sRes.status === "fulfilled") {
-          const d = sRes.value.data;
-          setSurveyors(Array.isArray(d) ? d : (d?.data || []));
+        const fetchSurveyors = force || tab === "surveyors";
+        const fetchStateUsers = force || tab === "state-admins";
+
+        const requests = [];
+        if (fetchSurveyors) requests.push(api.get("/admin/user-management/surveyors", force ? { noCache: true } : {}));
+        if (fetchStateUsers) requests.push(api.get("/admin/user-management/state-users", force ? { noCache: true } : {}));
+        requests.push(api.get("/admin/user-management/stats", force ? { noCache: true } : {}));
+
+        const results = await Promise.allSettled(requests);
+        let idx = 0;
+        let newSurveyors, newStateUsers, newStats;
+
+        if (fetchSurveyors) {
+          const sRes = results[idx++];
+          if (sRes.status === "fulfilled") {
+            const d = sRes.value.data;
+            newSurveyors = Array.isArray(d) ? d : (d?.data || []);
+            setSurveyors(newSurveyors);
+          }
         }
-        if (suRes.status === "fulfilled") {
-          const d = suRes.value.data;
-          setStateUsers(Array.isArray(d) ? d : (d?.data || []));
+        if (fetchStateUsers) {
+          const suRes = results[idx++];
+          if (suRes.status === "fulfilled") {
+            const d = suRes.value.data;
+            newStateUsers = Array.isArray(d) ? d : (d?.data || []);
+            setStateUsers(newStateUsers);
+          }
         }
-        if (statsRes.status === "fulfilled") {
+        const statsRes = results[idx];
+        if (statsRes?.status === "fulfilled") {
           const d = statsRes.value.data;
           const statsData = d?.totalSurveyors !== undefined ? d : (d?.data || {});
-          setStats({
+          newStats = {
             total: statsData.totalSurveyors ?? 0,
             active: statsData.activeSurveyors ?? statsData.activeStateUsers ?? 0,
             inactive: statsData.inactiveSurveyors ?? 0,
             pending: statsData.pendingApproval ?? 0,
-          });
+          };
+          setStats(newStats);
         }
+
+        patchUsersCache({
+          ...(newSurveyors !== undefined && { surveyors: newSurveyors }),
+          ...(newStateUsers !== undefined && { stateUsers: newStateUsers }),
+          ...(newStats !== undefined && { stats: newStats }),
+        });
+
       } else {
         const [sRes, statsRes] = await Promise.allSettled([
-          api.get("/user-management/surveyors"),
-          api.get("/user-management/stats"),
+          api.get("/user-management/surveyors", force ? { noCache: true } : {}),
+          api.get("/user-management/stats", force ? { noCache: true } : {}),
         ]);
+        let newSurveyors, newStats;
         if (sRes.status === "fulfilled") {
           const d = sRes.value.data;
-          setSurveyors(Array.isArray(d) ? d : (d?.data || []));
+          newSurveyors = Array.isArray(d) ? d : (d?.data || []);
+          setSurveyors(newSurveyors);
         }
         if (statsRes.status === "fulfilled") {
           const d = statsRes.value.data;
-          // Backend uses surveyorCount/activeSurveyorCount keys; handle both naming conventions
           const raw = d?.totalSurveyors !== undefined ? d
             : d?.surveyorCount !== undefined ? d
             : (d?.data || {});
-          setStats({
+          newStats = {
             total: raw.totalSurveyors ?? raw.surveyorCount ?? 0,
             active: raw.activeSurveyors ?? raw.activeSurveyorCount ?? 0,
             inactive: raw.inactiveSurveyors ?? raw.inactiveSurveyorCount ?? 0,
             pending: raw.pendingApproval ?? 0,
-          });
+          };
+          setStats(newStats);
         }
+        patchUsersCache({
+          ...(newSurveyors !== undefined && { surveyors: newSurveyors }),
+          ...(newStats !== undefined && { stats: newStats }),
+        });
       }
+
+      setTabsLoaded(prev => ({ ...prev, [tab]: true }));
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(tabFromPath); }, []);
 
   const handleCreate = async (values) => {
     try {
@@ -165,7 +241,8 @@ export default function UserManagement() {
       await api.post(endpoint, values);
       setCreateModal({ open: false });
       form.resetFields();
-      fetchUsers();
+      invalidateCaches();
+      fetchUsers(activeTab, true);
       if (isStateType) {
         setCredentialsModal({ open: true, username: values.email, password: "password" });
       } else {
@@ -192,8 +269,6 @@ export default function UserManagement() {
   const handleEditSurveyor = async (values) => {
     try {
       const userId = editModal.record?.id;
-      // Admin has no state — must use the admin endpoint for all edits.
-      // STATE role uses the surveyor-specific endpoint which enforces state isolation.
       const endpoint = (editModal.type === "state-admin" || isAdmin())
         ? `/admin/user-management/user/${userId}`
         : `/user-management/surveyor/${userId}`;
@@ -201,7 +276,8 @@ export default function UserManagement() {
       message.success(`${editModal.type === "state-admin" ? "State Admin" : "Surveyor"} updated successfully`);
       setEditModal({ open: false, record: null, type: "surveyor" });
       editForm.resetFields();
-      fetchUsers();
+      invalidateCaches();
+      fetchUsers(activeTab, true);
     } catch (err) {
       message.error(err.response?.data?.message || "Failed to update user");
     }
@@ -219,10 +295,27 @@ export default function UserManagement() {
       const methods = { activate: "put", deactivate: "put", delete: "delete" };
       await api[methods[action]](endpoints[action]);
       message.success(`User ${action}d successfully`);
-      fetchUsers();
+      invalidateCaches();
+      fetchUsers(activeTab, true);
     } catch (err) {
       message.error(err.response?.data?.message || "Action failed");
     }
+  };
+
+  const handleTabChange = (k) => {
+    setActiveTab(k);
+    setStatusFilter(null);
+    navigate(k === "state-admins" ? "/users/state-admins" : "/users/surveyors");
+    // Only fetch from network if this tab hasn't been loaded this session
+    if (k !== "form-settings" && !tabsLoaded[k]) {
+      fetchUsers(k);
+    }
+  };
+
+  const handleRefresh = () => {
+    invalidateCaches();
+    setTabsLoaded({ surveyors: false, "state-admins": false });
+    fetchUsers(activeTab, true);
   };
 
   const surveyorColumns = [
@@ -340,6 +433,15 @@ export default function UserManagement() {
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 220, borderRadius: 8 }}
           />
+          <Tooltip title="Refresh user list">
+            <Button
+              icon={<ReloadOutlined spin={loading} />}
+              onClick={handleRefresh}
+              disabled={loading}
+            >
+              Refresh
+            </Button>
+          </Tooltip>
           <Button
             type="primary"
             icon={<UserAddOutlined />}
@@ -391,11 +493,7 @@ export default function UserManagement() {
       <Card style={{ borderRadius: 16 }}>
         <Tabs
           activeKey={activeTab}
-          onChange={(k) => {
-            setActiveTab(k);
-            setStatusFilter(null);
-            navigate(k === "state-admins" ? "/users/state-admins" : "/users/surveyors");
-          }}
+          onChange={handleTabChange}
         >
           <TabPane
             tab={<span><TeamOutlined /> Surveyors ({surveyors.length})</span>}

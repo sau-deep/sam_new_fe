@@ -95,15 +95,17 @@ function deriveDistricts(formKey) {
 
 /** Active blocks for the form. Empty when none are active. */
 function deriveBlocks(formKey) {
-  return getBlocks(formKey)
+  const mapped = getBlocks(formKey)
     .filter((b) => b.is_active)
     .map((b) => ({
       text: b.block,
       block_code: b.block_code,
       district_code: b.district_code,
       state_code: b.state_code,
-    }))
-    .sort((a, b) => (a.text || "").localeCompare(b.text || ""));
+    }));
+  return Array.from(
+    new Map(mapped.map((b) => [`${b.district_code}:${b.text}`, b])).values()
+  ).sort((a, b) => (a.text || "").localeCompare(b.text || ""));
 }
 
 /**
