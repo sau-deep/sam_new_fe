@@ -710,10 +710,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 2, message: "Max 2 characters" },
+                            { max: 6, message: "Max 6 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customStateName} />
+                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -786,10 +786,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 2, message: "Max 2 characters" },
+                            { max: 6, message: "Max 6 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customSelDistrict} />
+                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -873,10 +873,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 2, message: "Max 2 characters" },
+                            { max: 6, message: "Max 6 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. V1" maxLength={2} disabled={!customSelBlock} />
+                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customSelBlock} />
                         </Form.Item>
                       </Col>
                     </>)}
