@@ -22,13 +22,14 @@ import {
 } from "@mui/material";
 import { Formik, Form } from "formik";
 import apiService from '../../services/api';
+import { generateQuestionnairePDF } from '../../services/BiAnnualPDFService';
 import Loader from "components/ui/Loader";
 import SnackBar from "components/ui/SnackBar";
 import WhatsAppContact from "components/ui/WhatsAppContact";
 import AutoSaveIndicator from "components/ui/AutoSaveIndicator";
 import ErrorReportingDialog from '../../components/ui/ErrorReportingDialog';
 import ConsentDialog from '../../components/ui/ConsentDialog';
-import { ArrowBack, ArrowForward, Check, LocationOn, LocationOff } from "@mui/icons-material";
+import { ArrowBack, ArrowForward, Check, LocationOn, LocationOff, PictureAsPdf } from "@mui/icons-material";
 // Per-form location helpers (block-level, backend-driven + offline cache).
 import { getFormLocationHelpers } from "utils/formLocations";
 import useFormLocations from "hooks/useFormLocations";
@@ -1606,15 +1607,26 @@ const BiAnnual = () => {
               my: 1
             }
           }}>
-            <Box display="flex" alignItems="center" mb={4}>
-              <IconButton 
-                onClick={handleGoBack}
-                sx={{ mr: 2 }}
-                aria-label="Go back"
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={4}>
+              <Box display="flex" alignItems="center">
+                <IconButton
+                  onClick={handleGoBack}
+                  sx={{ mr: 2 }}
+                  aria-label="Go back"
+                >
+                  <ArrowBack />
+                </IconButton>
+                <Typography variant="h3" className={styles.heading}>{t('concurrent_assessment')}</Typography>
+              </Box>
+              {/* <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PictureAsPdf />}
+                onClick={generateQuestionnairePDF}
+                sx={{ whiteSpace: 'nowrap', ml: 2 }}
               >
-                <ArrowBack />
-              </IconButton>
-              <Typography variant="h3" className={styles.heading}>{t('concurrent_assessment')}</Typography>
+                Download Questionnaire
+              </Button> */}
             </Box>
             
             {/* Location Status Display */}
