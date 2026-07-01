@@ -43,6 +43,14 @@ const FORM_CATEGORIES = [
         color: UNICEF_COLORS.primary,
       },
       {
+        key: "cbe",
+        label: "CBE Session",
+        description: "Community-Based Event / Session data",
+        endpoint: "/excel-export/cbe",
+        icon: "👥",
+        color: "#00695c",
+      },
+      {
         key: "vhsnd",
         label: "VHSND Section",
         description: "Village Health, Sanitation & Nutrition Day data",
