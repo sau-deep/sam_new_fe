@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card, Row, Col, Button, Select, DatePicker, Table, Tag,
@@ -12,19 +12,17 @@ import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
 import ExcelMappingService from "../../services/ExcelMappingService";
+import useFormLocations from "../../hooks/useFormLocations";
 import { UNICEF_COLORS } from "../../theme/unicef";
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const STATES = [
-  "All States", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar",
-  "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
-  "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
-  "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
-  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
-];
+// Form keys whose active form_location entries feed the State Filter. The export
+// page spans these forms, so the states offered are the union of the states
+// actually configured for them — never the full list of Indian states.
+const FORM_KEYS = ["ROUTINE_MONITORING", "HOUSE_HOLD", "FOLLOWUP", "BI_ANNUAL"];
 
 // Export types grouped by form category
 const FORM_CATEGORIES = [
@@ -188,6 +186,34 @@ export default function DataExport({ defaultForm }) {
   const [auditLoading, setAuditLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultForm || "rmc");
   const { isAdmin, isStateAdmin } = useAuth();
+
+  // States shown in the filter are derived from the active form_location entries
+  // of the exportable forms (union, de-duplicated), so only states that actually
+  // have configured locations appear — not the full list of Indian states.
+  const rmcLocs = useFormLocations("ROUTINE_MONITORING");
+  const householdLocs = useFormLocations("HOUSE_HOLD");
+  const followupLocs = useFormLocations("FOLLOWUP");
+  const biannualLocs = useFormLocations("BI_ANNUAL");
+  const locHelpers = { ROUTINE_MONITORING: rmcLocs, HOUSE_HOLD: householdLocs, FOLLOWUP: followupLocs, BI_ANNUAL: biannualLocs };
+  const locVersion = FORM_KEYS.map((k) => locHelpers[k].version).join("-");
+
+  const availableStates = useMemo(() => {
+    const names = new Set();
+    FORM_KEYS.forEach((k) => {
+      locHelpers[k].getStateOptions().forEach((s) => { if (s.text) names.add(s.text); });
+    });
+    return ["All States", ...Array.from(names).sort((a, b) => a.localeCompare(b))];
+    // locVersion changes whenever any form's locations finish (re)loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locVersion]);
+
+  // If the previously selected state is no longer among the configured states
+  // (e.g. locations changed), fall back to "All States".
+  useEffect(() => {
+    if (selectedState !== "All States" && !availableStates.includes(selectedState)) {
+      setSelectedState("All States");
+    }
+  }, [availableStates, selectedState]);
 
   // When the route changes (e.g., navigating from /data/export/household → /data/export/rmc),
   // sync the active tab with the new defaultForm prop.
@@ -399,7 +425,7 @@ export default function DataExport({ defaultForm }) {
                 option?.children?.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {STATES.map((s) => <Option key={s} value={s}>{s}</Option>)}
+              {availableStates.map((s) => <Option key={s} value={s}>{s}</Option>)}
             </Select>
           </div>
           <Alert

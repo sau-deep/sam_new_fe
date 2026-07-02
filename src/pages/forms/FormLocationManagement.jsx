@@ -710,10 +710,11 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
+                            { max: 6, message: "Max 6 digits" },
+                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
                           ]}>
-                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customStateName} />
+                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customStateName}
+                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -786,10 +787,11 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
+                            { max: 6, message: "Max 6 digits" },
+                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
                           ]}>
-                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customSelDistrict} />
+                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customSelDistrict}
+                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -873,10 +875,11 @@ export default function FormLocationManagement() {
                         <Form.Item label="Village Code" name="customVillageCode"
                           rules={[
                             { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
+                            { max: 6, message: "Max 6 digits" },
+                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
                           ]}>
-                          <Input placeholder="e.g. V10001" maxLength={6} disabled={!customSelBlock} />
+                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customSelBlock}
+                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
                         </Form.Item>
                       </Col>
                     </>)}

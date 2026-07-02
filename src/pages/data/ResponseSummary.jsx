@@ -5,7 +5,7 @@
  * API: GET /admin/response-summary/village-summary?state=&district=
  * Response: [{ villageCode, villageName, householdChecklistCount, concurrentAssessmentCount }]
  *
- * Note: Data is available from June 2025 onwards (backend filter).
+ * Note: Data is available from 1 July 2026 onwards (backend filter).
  */
 import { useState, useCallback } from "react";
 import {
@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import api from "../../services/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
-import { StateList, DistrictList } from "../../constants/locations";
+import useFormLocations from "../../hooks/useFormLocations";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -45,17 +45,20 @@ export default function ResponseSummary() {
   const [fetched, setFetched] = useState(false);
   const { isStateAdmin, user } = useAuth();
 
+  // Location dropdowns are sourced from the Household form's active form-locations
+  // (form_location table, form_key = HOUSE_HOLD) — the same source the Household
+  // survey uses — so the filter values exactly match what was saved. The static
+  // master list caused mismatches (e.g. form-location "Malakangir" vs master "Malkangiri").
+  const { getStateOptions, getDistrictOptionsByStateName } = useFormLocations("HOUSE_HOLD");
+
   // State admin locked to their state
   const userState = user?.state || null;
   const lockedState = isStateAdmin() && userState ? userState : null;
   const effectiveState = lockedState || selectedState;
 
-  // District options based on state selection
-  const stateCode = StateList.find(
-    (s) => s.text === effectiveState
-  )?.state_code;
-  const districtOptions = stateCode
-    ? DistrictList.filter((d) => d.state_code === stateCode)
+  // District options based on selected state (form-location backed)
+  const districtOptions = effectiveState
+    ? getDistrictOptionsByStateName(effectiveState)
     : [];
 
   const handleStateChange = (val) => {
@@ -113,7 +116,7 @@ export default function ResponseSummary() {
       width: 170,
       sorter: (a, b) => (a.householdChecklistCount ?? 0) - (b.householdChecklistCount ?? 0),
       render: (v) => (
-        <Tag color={(v ?? 0) > 0 ? "purple" : "default"} style={{ minWidth: 40, textAlign: "center" }}>
+        <Tag color={(v ?? 0) > 20 ? "green" : (v ?? 0) > 0 ? "purple" : "default"} style={{ minWidth: 40, textAlign: "center" }}>
           {v ?? 0}
         </Tag>
       ),
@@ -125,7 +128,7 @@ export default function ResponseSummary() {
       width: 180,
       sorter: (a, b) => (a.concurrentAssessmentCount ?? 0) - (b.concurrentAssessmentCount ?? 0),
       render: (v) => (
-        <Tag color={(v ?? 0) > 0 ? "blue" : "default"} style={{ minWidth: 40, textAlign: "center" }}>
+        <Tag color={(v ?? 0) > 20 ? "green" : (v ?? 0) > 0 ? "blue" : "default"} style={{ minWidth: 40, textAlign: "center" }}>
           {v ?? 0}
         </Tag>
       ),
@@ -151,7 +154,7 @@ export default function ResponseSummary() {
         <Title level={3} style={{ margin: 0, color: "#002147" }}>Response Summary</Title>
         <Text type="secondary">
           Village-wise response summary — Household Checklist and Concurrent Assessment counts
-          (Data from June 2025 onwards)
+          (Data from 1 July 2026 onwards)
         </Text>
       </div>
 
@@ -174,7 +177,7 @@ export default function ResponseSummary() {
                 showSearch
                 filterOption={(inp, opt) => opt?.children?.toLowerCase().includes(inp.toLowerCase())}
               >
-                {StateList.map((s) => <Option key={s.text} value={s.text}>{s.text}</Option>)}
+                {getStateOptions().map((s) => <Option key={s.text} value={s.text}>{s.text}</Option>)}
               </Select>
             </div>
           )}

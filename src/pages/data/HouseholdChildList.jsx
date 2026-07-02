@@ -1,18 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Card, Row, Col, Button, Select, DatePicker, Table,
-  Typography, message, Empty, Alert, Spin,
+  Typography, message, Empty, Alert,
 } from "antd";
 import { SearchOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 import api from "../../services/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
-import { StateList } from "../../constants/locations";
+import useFormLocations from "../../hooks/useFormLocations";
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 const COLUMNS = [
   { title: "Child ID", dataIndex: "childId", key: "childId", render: (v) => v || "—" },
@@ -25,118 +24,69 @@ const COLUMNS = [
 
 export default function HouseholdChildList() {
   const { isStateAdmin, user } = useAuth();
-  const userState = user?.state || null;
-  const lockedState = isStateAdmin() && userState ? userState : null;
+  const lockedState = isStateAdmin() && user?.state ? user.state : null;
 
-  const lockedStateObj = lockedState
-    ? StateList.find((s) => s.text === lockedState)
-    : null;
+  // Location dropdowns come from the Household form's active form-locations
+  // (form_location, form_key = HOUSE_HOLD) — the same source the Household survey
+  // uses — so filter values match what was saved. Filtering is by name (not code),
+  // since newer records may carry names but null location codes.
+  const {
+    getStateOptions,
+    getDistrictOptionsByStateName,
+    getBlockOptionsByDistrictName,
+    getVillageOptionsByBlockName,
+  } = useFormLocations("HOUSE_HOLD");
 
   const [dateRange, setDateRange] = useState([dayjs().subtract(10, "month"), dayjs()]);
 
-  // Selected values (store code strings, matching DB)
-  const [stateCode, setStateCode] = useState(lockedStateObj ? String(lockedStateObj.state_code) : null);
-  const [districtCode, setDistrictCode] = useState(null);
-  const [blockCode, setBlockCode] = useState(null);
-  const [villageCode, setVillageCode] = useState(null);
-
-  // Display labels (for export filename)
-  const [stateLabel, setStateLabel] = useState(lockedState || null);
-  const [districtLabel, setDistrictLabel] = useState(null);
-
-  // Dynamic dropdown options from API
-  const [districts, setDistricts] = useState([]);
-  const [blocks, setBlocks] = useState([]);
-  const [villages, setVillages] = useState([]);
-
-  // Loading states
-  const [districtLoading, setDistrictLoading] = useState(false);
-  const [blockLoading, setBlockLoading] = useState(false);
-  const [villageLoading, setVillageLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
+  // Selected values are location NAMES (matching the DB name columns).
+  const [selectedState, setSelectedState] = useState(lockedState || null);
+  const [selectedDistrict, setSelectedDistrict] = useState(null);
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const [selectedVillage, setSelectedVillage] = useState(null);
 
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
 
-  // Load districts when state changes
-  useEffect(() => {
-    if (!stateCode) { setDistricts([]); setDistrictCode(null); setBlocks([]); setBlockCode(null); setVillages([]); setVillageCode(null); return; }
-    setDistrictLoading(true);
-    api.get("/survey/districts", { params: { stateCode } })
-      .then(({ data }) => {
-        const arr = Array.isArray(data?.data) ? data.data : [];
-        // Deduplicate by districtCode, keep first occurrence (alphabetically sorted by DB)
-        const seen = new Set();
-        setDistricts(arr.filter((d) => { if (seen.has(d.districtCode)) return false; seen.add(d.districtCode); return true; }));
-      })
-      .catch(() => message.error("Failed to load districts"))
-      .finally(() => setDistrictLoading(false));
-  }, [stateCode]);
+  const effectiveState = lockedState || selectedState;
 
-  // Load blocks when district changes
-  useEffect(() => {
-    if (!stateCode || !districtCode) { setBlocks([]); setBlockCode(null); setVillages([]); setVillageCode(null); return; }
-    setBlockLoading(true);
-    api.get("/survey/blocks", { params: { stateCode, districtCode } })
-      .then(({ data }) => {
-        const arr = Array.isArray(data?.data) ? data.data : [];
-        const seen = new Set();
-        setBlocks(arr.filter((b) => { if (seen.has(b.blockCode)) return false; seen.add(b.blockCode); return true; }));
-      })
-      .catch(() => message.error("Failed to load blocks"))
-      .finally(() => setBlockLoading(false));
-  }, [stateCode, districtCode]);
+  // Cascading options derived from the form-locations (live cache, re-derived per render).
+  const stateOptions = getStateOptions();
+  const districtOptions = effectiveState ? getDistrictOptionsByStateName(effectiveState) : [];
+  const blockOptions = effectiveState && selectedDistrict
+    ? getBlockOptionsByDistrictName(effectiveState, selectedDistrict)
+    : [];
+  const villageOptions = effectiveState && selectedDistrict && selectedBlock
+    ? getVillageOptionsByBlockName(effectiveState, selectedDistrict, selectedBlock)
+    : [];
 
-  // Load villages when block changes
-  useEffect(() => {
-    if (!stateCode || !districtCode || !blockCode) { setVillages([]); setVillageCode(null); return; }
-    if (!dateRange || dateRange.length < 2) return;
-    setVillageLoading(true);
-    api.get("/survey/villages", {
-      params: {
-        stateCode,
-        districtCode,
-        blockCode,
-        startDate: dateRange[0].format("YYYY-MM-DD"),
-        endDate: dateRange[1].format("YYYY-MM-DD"),
-      },
-    })
-      .then(({ data }) => {
-        const arr = Array.isArray(data?.data) ? data.data : [];
-        setVillages(arr);
-      })
-      .catch(() => {})
-      .finally(() => setVillageLoading(false));
-  }, [stateCode, districtCode, blockCode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleStateChange = (code, option) => {
-    setStateCode(code);
-    setStateLabel(option?.label || code);
-    setDistrictCode(null); setDistrictLabel(null);
-    setBlockCode(null);
-    setVillageCode(null);
+  const handleStateChange = (val) => {
+    setSelectedState(val);
+    setSelectedDistrict(null);
+    setSelectedBlock(null);
+    setSelectedVillage(null);
     setResults([]); setSearched(false);
   };
 
-  const handleDistrictChange = (code, option) => {
-    setDistrictCode(code);
-    setDistrictLabel(option?.label || code);
-    setBlockCode(null);
-    setVillageCode(null);
+  const handleDistrictChange = (val) => {
+    setSelectedDistrict(val);
+    setSelectedBlock(null);
+    setSelectedVillage(null);
     setResults([]); setSearched(false);
   };
 
-  const handleBlockChange = (code) => {
-    setBlockCode(code);
-    setVillageCode(null);
+  const handleBlockChange = (val) => {
+    setSelectedBlock(val);
+    setSelectedVillage(null);
     setResults([]); setSearched(false);
   };
 
   const handleSearch = async () => {
     if (!dateRange || dateRange.length < 2) { message.warning("Please select a date range."); return; }
-    if (!stateCode) { message.warning("Please select a state."); return; }
-    if (!districtCode) { message.warning("Please select a district."); return; }
-    if (!blockCode) { message.warning("Please select a block."); return; }
+    if (!effectiveState) { message.warning("Please select a state."); return; }
+    if (!selectedDistrict) { message.warning("Please select a district."); return; }
+    if (!selectedBlock) { message.warning("Please select a block."); return; }
 
     setSearchLoading(true);
     setSearched(false);
@@ -144,10 +94,10 @@ export default function HouseholdChildList() {
       const payload = {
         startDate: dateRange[0].format("YYYY-MM-DD"),
         endDate: dateRange[1].format("YYYY-MM-DD"),
-        stateCode: Number(stateCode),
-        districtCode: Number(districtCode),
-        blockCode: Number(blockCode),
-        villageCode: villageCode ? Number(villageCode) : null,
+        state: effectiveState,
+        district: selectedDistrict,
+        block: selectedBlock,
+        village: selectedVillage || null,
       };
       const { data } = await api.post("/survey/household", payload);
       const arr = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
@@ -169,10 +119,10 @@ export default function HouseholdChildList() {
 
   const handleReset = () => {
     setDateRange([dayjs().subtract(10, "month"), dayjs()]);
-    if (!lockedState) { setStateCode(null); setStateLabel(null); }
-    setDistrictCode(null); setDistrictLabel(null);
-    setBlockCode(null);
-    setVillageCode(null);
+    if (!lockedState) setSelectedState(null);
+    setSelectedDistrict(null);
+    setSelectedBlock(null);
+    setSelectedVillage(null);
     setResults([]);
     setSearched(false);
   };
@@ -190,8 +140,8 @@ export default function HouseholdChildList() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Household Child List");
-    const s = (stateLabel || "all").replace(/\s+/g, "_");
-    const d = (districtLabel || "all").replace(/\s+/g, "_");
+    const s = (effectiveState || "all").replace(/\s+/g, "_");
+    const d = (selectedDistrict || "all").replace(/\s+/g, "_");
     XLSX.writeFile(wb, `household_child_list_${s}_${d}_${dayjs().format("YYYYMMDD")}.xlsx`);
     message.success("Excel file downloaded.");
   };
@@ -230,14 +180,14 @@ export default function HouseholdChildList() {
           <Col xs={24} sm={12} lg={4}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>State</div>
             <Select
-              value={stateCode}
+              value={effectiveState}
               onChange={handleStateChange}
               disabled={!!lockedState}
               style={{ width: "100%" }}
               placeholder="Select State"
               showSearch
               optionFilterProp="label"
-              options={StateList.map((s) => ({ value: String(s.state_code), label: s.text }))}
+              options={stateOptions.map((s) => ({ value: s.text, label: s.text }))}
             />
           </Col>
 
@@ -245,15 +195,14 @@ export default function HouseholdChildList() {
           <Col xs={24} sm={12} lg={4}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>District</div>
             <Select
-              value={districtCode}
+              value={selectedDistrict}
               onChange={handleDistrictChange}
-              disabled={!stateCode || districtLoading}
-              loading={districtLoading}
+              disabled={!effectiveState}
               style={{ width: "100%" }}
-              placeholder={districtLoading ? "Loading…" : "Select District"}
+              placeholder="Select District"
               showSearch
               optionFilterProp="label"
-              options={districts.map((d) => ({ value: d.districtCode, label: d.district }))}
+              options={districtOptions.map((d) => ({ value: d.text, label: d.text }))}
             />
           </Col>
 
@@ -261,15 +210,14 @@ export default function HouseholdChildList() {
           <Col xs={24} sm={12} lg={4}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Block</div>
             <Select
-              value={blockCode}
+              value={selectedBlock}
               onChange={handleBlockChange}
-              disabled={!districtCode || blockLoading}
-              loading={blockLoading}
+              disabled={!selectedDistrict}
               style={{ width: "100%" }}
-              placeholder={blockLoading ? "Loading…" : "Select Block"}
+              placeholder="Select Block"
               showSearch
               optionFilterProp="label"
-              options={blocks.map((b) => ({ value: b.blockCode, label: b.block }))}
+              options={blockOptions.map((b) => ({ value: b.text, label: b.text }))}
             />
           </Col>
 
@@ -277,16 +225,15 @@ export default function HouseholdChildList() {
           <Col xs={24} sm={12} lg={4}>
             <div style={{ fontSize: 12, fontWeight: 500, color: "#374151", marginBottom: 6 }}>Village (optional)</div>
             <Select
-              value={villageCode}
-              onChange={setVillageCode}
-              disabled={!blockCode || villageLoading}
-              loading={villageLoading}
+              value={selectedVillage}
+              onChange={setSelectedVillage}
+              disabled={!selectedBlock}
               style={{ width: "100%" }}
-              placeholder={villageLoading ? "Loading…" : "All Villages"}
+              placeholder="All Villages"
               allowClear
               showSearch
               optionFilterProp="label"
-              options={villages.map((v) => ({ value: v.villageCode, label: v.village }))}
+              options={villageOptions.map((v) => ({ value: v.text, label: v.text }))}
             />
           </Col>
         </Row>
@@ -306,7 +253,7 @@ export default function HouseholdChildList() {
             icon={<SearchOutlined />}
             onClick={handleSearch}
             loading={searchLoading}
-            disabled={!stateCode || !districtCode || !blockCode}
+            disabled={!effectiveState || !selectedDistrict || !selectedBlock}
             style={{ borderRadius: 8, height: 38 }}
           >
             Search

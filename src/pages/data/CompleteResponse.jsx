@@ -21,7 +21,7 @@ import dayjs from "dayjs";
 import api from "../../services/axiosInstance";
 import ExcelMappingService from "../../services/ExcelMappingService";
 import { useAuth } from "../../context/AuthContext";
-import { StateList } from "../../constants/locations";
+import useFormLocations from "../../hooks/useFormLocations";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -32,6 +32,7 @@ const FORM_OPTIONS = [
     label: "Household Checklist",
     value: "household",
     endpoint: "/form/households",
+    formKey: "HOUSE_HOLD",
     color: "#8e44ad",
     description: "All household survey responses",
   },
@@ -39,6 +40,7 @@ const FORM_OPTIONS = [
     label: "Concurrent Assessment",
     value: "biannual",
     endpoint: "/form/biannuals",
+    formKey: "BI_ANNUAL",
     color: "#3498db",
     description: "Bi-annual / concurrent assessment records",
   },
@@ -46,6 +48,7 @@ const FORM_OPTIONS = [
     label: "Followup Assessment",
     value: "followup",
     endpoint: "/form/followups",
+    formKey: "FOLLOWUP",
     color: "#e74c3c",
     description: "All follow-up assessment records",
   },
@@ -53,6 +56,7 @@ const FORM_OPTIONS = [
     label: "Routine Monitoring Checklist",
     value: "routine",
     endpoint: "/form/routines",
+    formKey: "ROUTINE_MONITORING",
     color: "#16a085",
     description: "Routine monitoring checklist (AWC, VHSND, CBE)",
   },
@@ -182,6 +186,11 @@ export default function CompleteResponse() {
 
   const formMeta = FORM_OPTIONS.find((f) => f.value === selectedForm);
 
+  // State options come from the selected form's active form-locations (form_location
+  // table), so the filter values match what that form actually saved. Defaults to
+  // HOUSE_HOLD until a form is chosen (cheap, cached).
+  const { getStateOptions } = useFormLocations(formMeta?.formKey || "HOUSE_HOLD");
+
   const handleFetch = useCallback(async () => {
     if (!selectedForm) { message.warning("Please select a form type."); return; }
     if (!dateRange?.[0] || !dateRange?.[1]) { message.warning("Please select a date range."); return; }
@@ -233,7 +242,7 @@ export default function CompleteResponse() {
             <Select
               placeholder="Select Form"
               value={selectedForm}
-              onChange={(v) => { setSelectedForm(v); setData([]); setFetched(false); }}
+              onChange={(v) => { setSelectedForm(v); setSelectedState(null); setData([]); setFetched(false); }}
               style={{ width: "100%" }}
             >
               {FORM_OPTIONS.map((f) => (
@@ -277,7 +286,7 @@ export default function CompleteResponse() {
                 style={{ width: "100%" }}
                 filterOption={(inp, opt) => opt?.children?.toLowerCase().includes(inp.toLowerCase())}
               >
-                {StateList.map((s) => <Option key={s.text} value={s.text}>{s.text}</Option>)}
+                {getStateOptions().map((s) => <Option key={s.text} value={s.text}>{s.text}</Option>)}
               </Select>
             )}
           </Col>

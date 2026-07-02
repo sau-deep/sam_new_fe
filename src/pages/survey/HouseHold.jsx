@@ -278,8 +278,11 @@ const HouseHold = () => {
     date: currentDate,
     time: currentTime,
     state: "",
+    stateCode: "",
     district: "",
+    districtCode: "",
     block: "",
+    blockCode: "",
     village: "",
     villageCode: "",
     clusterNumber: "",
@@ -1153,11 +1156,17 @@ const HouseHold = () => {
                                 const { value } = e.target;
                                 setFieldValue("state", value);
                                 setFieldValue("district", '');
+                                // Clear child location codes when state changes
+                                setFieldValue("districtCode", '');
+                                setFieldValue("blockCode", '');
+                                setFieldValue("villageCode", '');
                                 // Reset village availability state when state changes
                                 setVillagesAvailable(true);
                                 setVillageValidationError('');
                                 const stateData = getStateOptions(value)[0];
                                 setAddress(stateData || {});
+                                // Persist the selected state's code so it is submitted with the form
+                                setFieldValue("stateCode", stateData?.state_code != null ? stateData.state_code.toString() : '');
                               }}
                               onBlur={handleBlur}
                               error={touched.state && !!errors.state}
@@ -1189,6 +1198,7 @@ const HouseHold = () => {
                                 const { value } = e.target;
                                 setFieldValue("district", value);
                                 setFieldValue("block", '');
+                                setFieldValue("blockCode", '');
                                 setFieldValue("village", '');
                                 setFieldValue("villageCode", '');
                                 setSelectedVillage(null);
@@ -1197,6 +1207,8 @@ const HouseHold = () => {
                                 setVillageValidationError('');
                                 const districtData = address.state_code ? getDistrictOptions(address.state_code).find(e => e.text === value) : null;
                                 setAddress(districtData || {});
+                                // Persist the selected district's code so it is submitted with the form
+                                setFieldValue("districtCode", districtData?.district_code != null ? districtData.district_code.toString() : '');
                               }}
                               onBlur={handleBlur}
                              error={touched.district && !!errors.district}
@@ -1229,9 +1241,11 @@ const HouseHold = () => {
                                 setFieldValue("villageCode", '');
                                 setSelectedVillage(null);
                                 setVillageValidationError(''); // Clear previous village validation error
-                                
+
                                 const blockData = address.district_code ? getBlockOptions(address.district_code).find(e => e.text === value) : null;
                                 setAddress(blockData || {});
+                                // Persist the selected block's code so it is submitted with the form
+                                setFieldValue("blockCode", blockData?.block_code != null ? blockData.block_code.toString() : '');
                                 
                                 // Check if villages are available for this block
                                 if (blockData && blockData.block_code) {
