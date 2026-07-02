@@ -18,6 +18,7 @@ import * as XLSX from "xlsx";
 import api from "../../services/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
 import { StateList } from "../../constants/locations";
+import useFormLocations from "../../hooks/useFormLocations";
 
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
@@ -67,10 +68,12 @@ export default function StateWiseSummary() {
   const [dateRange, setDateRange] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const { isStateAdmin, user } = useAuth();
+  const { getCanonicalStateName } = useFormLocations("ROUTINE_MONITORING");
 
-  // State admin is locked to their own state
+  // State admin is locked to their own state. users.state is stored UPPERCASE, so resolve
+  // it to the canonical proper-case form-location value that matches the routine data.
   const userState = user?.state || null;
-  const lockedState = isStateAdmin() && userState ? userState : null;
+  const lockedState = isStateAdmin() && userState ? getCanonicalStateName(userState) : null;
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);

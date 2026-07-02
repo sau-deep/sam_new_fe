@@ -49,11 +49,12 @@ export default function ResponseSummary() {
   // (form_location table, form_key = HOUSE_HOLD) — the same source the Household
   // survey uses — so the filter values exactly match what was saved. The static
   // master list caused mismatches (e.g. form-location "Malakangir" vs master "Malkangiri").
-  const { getStateOptions, getDistrictOptionsByStateName } = useFormLocations("HOUSE_HOLD");
+  const { getStateOptions, getDistrictOptionsByStateName, getCanonicalStateName } = useFormLocations("HOUSE_HOLD");
 
-  // State admin locked to their state
+  // State admin locked to their state. users.state is stored UPPERCASE, so resolve it to
+  // the canonical proper-case form-location value that matches the survey data.
   const userState = user?.state || null;
-  const lockedState = isStateAdmin() && userState ? userState : null;
+  const lockedState = isStateAdmin() && userState ? getCanonicalStateName(userState) : null;
   const effectiveState = lockedState || selectedState;
 
   // District options based on selected state (form-location backed)

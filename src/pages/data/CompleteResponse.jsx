@@ -181,15 +181,17 @@ export default function CompleteResponse() {
   const [fetched, setFetched] = useState(false);
   const { isAdmin, isIEG, isStateAdmin, user } = useAuth();
 
-  const lockedState = (isStateAdmin() && user?.state) ? user.state : null;
-  const effectiveState = lockedState || selectedState;
-
   const formMeta = FORM_OPTIONS.find((f) => f.value === selectedForm);
 
   // State options come from the selected form's active form-locations (form_location
   // table), so the filter values match what that form actually saved. Defaults to
   // HOUSE_HOLD until a form is chosen (cheap, cached).
-  const { getStateOptions } = useFormLocations(formMeta?.formKey || "HOUSE_HOLD");
+  const { getStateOptions, getCanonicalStateName } = useFormLocations(formMeta?.formKey || "HOUSE_HOLD");
+
+  // users.state is stored UPPERCASE; resolve to the canonical proper-case form-location
+  // value so the state param sent to the backend matches the saved survey data.
+  const lockedState = (isStateAdmin() && user?.state) ? getCanonicalStateName(user.state) : null;
+  const effectiveState = lockedState || selectedState;
 
   const handleFetch = useCallback(async () => {
     if (!selectedForm) { message.warning("Please select a form type."); return; }

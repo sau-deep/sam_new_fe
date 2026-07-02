@@ -116,7 +116,7 @@ export function getFormLocationHelpers(formKey) {
   const getStateOptions = (value) => {
     const all = deriveStates(formKey);
     if (value == null || value === "") return all;
-    if (typeof value === "string") return all.filter((e) => e.text === value);
+    if (typeof value === "string") return all.filter((e) => e.text?.toLowerCase() === value.toLowerCase());
     if (typeof value === "number") return all.filter((e) => String(e.state_code) === String(value));
     return all;
   };
@@ -137,26 +137,36 @@ export function getFormLocationHelpers(formKey) {
       }));
   };
 
+  // Resolve a (possibly differently-cased) state name to the canonical form-location
+  // text so callers send the exact value stored in the data. State-admin users carry
+  // an UPPERCASE state (users.state is stored uppercased); survey/form-location data is
+  // proper-case. Returns the input unchanged when no active form-location matches.
+  const getCanonicalStateName = (stateName) => {
+    if (!stateName) return stateName;
+    const st = deriveStates(formKey).find((s) => s.text?.toLowerCase() === stateName.toLowerCase());
+    return st ? st.text : stateName;
+  };
+
   const getDistrictOptionsByStateName = (stateName) => {
-    const st = deriveStates(formKey).find((s) => s.text === stateName);
+    const st = deriveStates(formKey).find((s) => s.text?.toLowerCase() === stateName?.toLowerCase());
     return st ? deriveDistricts(formKey).filter((d) => d.state_code === st.state_code) : [];
   };
 
   const getBlockOptionsByDistrictName = (stateName, districtName) => {
-    const st = deriveStates(formKey).find((s) => s.text === stateName);
+    const st = deriveStates(formKey).find((s) => s.text?.toLowerCase() === stateName?.toLowerCase());
     const d = deriveDistricts(formKey).find(
-      (x) => x.text === districtName && x.state_code === st?.state_code
+      (x) => x.text?.toLowerCase() === districtName?.toLowerCase() && x.state_code === st?.state_code
     );
     return d ? deriveBlocks(formKey).filter((b) => b.district_code === d.district_code) : [];
   };
 
   const getVillageOptionsByBlockName = (stateName, districtName, blockName) => {
-    const st = deriveStates(formKey).find((s) => s.text === stateName);
+    const st = deriveStates(formKey).find((s) => s.text?.toLowerCase() === stateName?.toLowerCase());
     const d = deriveDistricts(formKey).find(
-      (x) => x.text === districtName && x.state_code === st?.state_code
+      (x) => x.text?.toLowerCase() === districtName?.toLowerCase() && x.state_code === st?.state_code
     );
     const b = deriveBlocks(formKey).find(
-      (x) => x.text === blockName && x.district_code === d?.district_code
+      (x) => x.text?.toLowerCase() === blockName?.toLowerCase() && x.district_code === d?.district_code
     );
     if (!b) return [];
     return (cache[formKey] || [])
@@ -173,6 +183,7 @@ export function getFormLocationHelpers(formKey) {
     getDistrictOptions,
     getBlockOptions,
     getVillageOptions,
+    getCanonicalStateName,
     getDistrictOptionsByStateName,
     getBlockOptionsByDistrictName,
     getVillageOptionsByBlockName,

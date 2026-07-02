@@ -57,7 +57,6 @@ const COLUMNS = FIELDS.map((f) => ({
 
 export default function HouseholdChildList() {
   const { isStateAdmin, user } = useAuth();
-  const lockedState = isStateAdmin() && user?.state ? user.state : null;
 
   // Location dropdowns come from the Household form's active form-locations
   // (form_location, form_key = HOUSE_HOLD) — the same source the Household survey
@@ -65,10 +64,15 @@ export default function HouseholdChildList() {
   // since newer records may carry names but null location codes.
   const {
     getStateOptions,
+    getCanonicalStateName,
     getDistrictOptionsByStateName,
     getBlockOptionsByDistrictName,
     getVillageOptionsByBlockName,
   } = useFormLocations("HOUSE_HOLD");
+
+  // users.state is stored UPPERCASE; resolve to the canonical proper-case form-location
+  // value so the locked state matches dropdown options and saved survey data.
+  const lockedState = isStateAdmin() && user?.state ? getCanonicalStateName(user.state) : null;
 
   const [dateRange, setDateRange] = useState([dayjs().subtract(10, "month"), dayjs()]);
 
