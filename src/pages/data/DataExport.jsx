@@ -131,8 +131,8 @@ const FORM_CATEGORIES = [
     exports: [
       {
         key: "biannual",
-        label: "Bi-Annual Assessment",
-        description: "All concurrent/bi-annual assessment records",
+        label: "Concurrent Assessment",
+        description: "All concurrent assessment records",
         endpoint: "/form/biannuals",
         icon: "📅",
         color: "#3498db",

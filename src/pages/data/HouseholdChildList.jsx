@@ -13,14 +13,47 @@ import useFormLocations from "../../hooks/useFormLocations";
 const { RangePicker } = DatePicker;
 const { Title, Text } = Typography;
 
-const COLUMNS = [
-  { title: "Child ID", dataIndex: "childId", key: "childId", render: (v) => v || "—" },
-  { title: "Village", dataIndex: "village", key: "village", render: (v) => v || "—" },
-  { title: "Block", dataIndex: "block", key: "block", render: (v) => v || "—" },
-  { title: "District", dataIndex: "district", key: "district", render: (v) => v || "—" },
-  { title: "State", dataIndex: "state", key: "state", render: (v) => v || "—" },
-  { title: "Visit Date", dataIndex: "date", key: "date", render: (v) => v || "—" },
+// Single source of truth for every column the household_checklist record carries.
+// Both the on-screen table and the Excel export are derived from this list, so
+// they always stay in sync with the full API response.
+const fmtDateTime = (v) => (v ? dayjs(v).format("DD MMM YYYY HH:mm") : "—");
+const blank = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+
+const FIELDS = [
+  { key: "childId", title: "Child ID", width: 160 },
+  { key: "nameParticipant", title: "Participant Name", width: 160 },
+  { key: "verbalConsent", title: "Verbal Consent", width: 130 },
+  { key: "date", title: "Visit Date", width: 120 },
+  { key: "time", title: "Time", width: 90 },
+  { key: "headOfHousehold", title: "Head of Household", width: 160 },
+  { key: "mobileNumber", title: "Mobile Number", width: 130 },
+  { key: "numberOfChildren", title: "No. of Children", width: 120 },
+  { key: "childrenStayingHh", title: "Children Staying in HH", width: 160 },
+  { key: "householdNumber", title: "Household Number", width: 140 },
+  { key: "clusterNumber", title: "Cluster Code", width: 110 },
+  { key: "structureCode", title: "Structure Code", width: 120 },
+  { key: "state", title: "State", width: 130 },
+  { key: "stateCode", title: "State Code", width: 100 },
+  { key: "district", title: "District", width: 140 },
+  { key: "districtCode", title: "District Code", width: 110 },
+  { key: "block", title: "Block", width: 140 },
+  { key: "blockCode", title: "Block Code", width: 100 },
+  { key: "village", title: "Village", width: 140 },
+  { key: "villageCode", title: "Village Code", width: 110 },
+  { key: "latitude", title: "Latitude", width: 120 },
+  { key: "longitude", title: "Longitude", width: 120 },
+  { key: "responseMode", title: "Response Mode", width: 120 },
+  { key: "createdBy", title: "Created By", width: 140 },
+  { key: "createdOn", title: "Created On", width: 160, format: fmtDateTime },
 ];
+
+const COLUMNS = FIELDS.map((f) => ({
+  title: f.title,
+  dataIndex: f.key,
+  key: f.key,
+  width: f.width,
+  render: (v) => (f.format ? f.format(v) : blank(v)),
+}));
 
 export default function HouseholdChildList() {
   const { isStateAdmin, user } = useAuth();
@@ -129,14 +162,12 @@ export default function HouseholdChildList() {
 
   const handleExport = () => {
     if (!results.length) { message.warning("No data to export."); return; }
-    const rows = results.map((r) => ({
-      "Child ID": r.childId || "—",
-      "Village": r.village || "—",
-      "Block": r.block || "—",
-      "District": r.district || "—",
-      "State": r.state || "—",
-      "Visit Date": r.date || "—",
-    }));
+    const rows = results.map((r) =>
+      FIELDS.reduce((acc, f) => {
+        acc[f.title] = f.format ? f.format(r[f.key]) : blank(r[f.key]);
+        return acc;
+      }, {})
+    );
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Household Child List");
@@ -297,7 +328,7 @@ export default function HouseholdChildList() {
             loading={searchLoading}
             size="small"
             pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (total) => `Total ${total} records` }}
-            scroll={{ x: 700 }}
+            scroll={{ x: "max-content" }}
             locale={{ emptyText: "No records found for the selected criteria" }}
           />
         )}
