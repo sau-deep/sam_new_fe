@@ -1,4 +1,4 @@
-name: Deploy SAM v2 (New UI) to AWS S3 + CloudFront /v2
+name: Deploy SAM v2 (New UI) to AWS S3 + CloudFront (root)
 
 on:
   push:
@@ -13,7 +13,7 @@ env:
   AWS_REGION: ap-south-1
   BUCKET_NAME: coecmamsupport.com
   CLOUDFRONT_DISTRIBUTION_ID: E4L4PA4P2IR55
-  WEBSITE_URL: https://coecmamsupport.com/v2
+  WEBSITE_URL: https://coecmamsupport.com
   NODE_VERSION: "18"
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Build & Deploy to S3 /v2 + invalidate CloudFront
+      - name: Build & Deploy to S3 root + invalidate CloudFront
         env:
           CI: "false"
           AWS_PROFILE: ""
@@ -56,7 +56,7 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "## SAM v2 deployment complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "## SAM v2 deployment complete (root)" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: ${{ env.WEBSITE_URL }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- S3 prefix: s3://${{ env.BUCKET_NAME }}/v2/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- S3 prefix: s3://${{ env.BUCKET_NAME }}/ (root)" >> "$GITHUB_STEP_SUMMARY"
           echo "- CloudFront distribution: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}" >> "$GITHUB_STEP_SUMMARY"
