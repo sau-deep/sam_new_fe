@@ -77,14 +77,22 @@ function deriveStates(formKey) {
   return Array.from(seen.values()).sort((a, b) => a.text.localeCompare(b.text));
 }
 
-/** Distinct districts present in the form's active blocks. Empty when none are active. */
+/**
+ * Distinct districts present in the form's active blocks. Empty when none are active.
+ *
+ * District codes are only unique WITHIN a state, so the dedup key must include the
+ * state_code — otherwise two states sharing a district_code collide and one district
+ * silently overwrites the other in the Map.
+ */
 function deriveDistricts(formKey) {
   const seen = new Map();
   getBlocks(formKey)
     .filter((b) => b.is_active)
     .forEach((b) => {
-      if (b.district_code != null && !seen.has(b.district_code))
-        seen.set(b.district_code, {
+      if (b.district_code == null) return;
+      const key = `${b.state_code}:${b.district_code}`;
+      if (!seen.has(key))
+        seen.set(key, {
           text: b.district,
           district_code: b.district_code,
           state_code: b.state_code,
@@ -93,7 +101,12 @@ function deriveDistricts(formKey) {
   return Array.from(seen.values()).sort((a, b) => a.text.localeCompare(b.text));
 }
 
-/** Active blocks for the form. Empty when none are active. */
+/**
+ * Active blocks for the form. Empty when none are active.
+ *
+ * Block codes are only unique WITHIN a district, so the dedup key is the full
+ * state:district:block path — otherwise blocks from different states leak together.
+ */
 function deriveBlocks(formKey) {
   const mapped = getBlocks(formKey)
     .filter((b) => b.is_active)
@@ -104,7 +117,9 @@ function deriveBlocks(formKey) {
       state_code: b.state_code,
     }));
   return Array.from(
-    new Map(mapped.map((b) => [`${b.district_code}:${b.text}`, b])).values()
+    new Map(
+      mapped.map((b) => [`${b.state_code}:${b.district_code}:${b.block_code}:${b.text}`, b])
+    ).values()
   ).sort((a, b) => (a.text || "").localeCompare(b.text || ""));
 }
 
@@ -124,16 +139,31 @@ export function getFormLocationHelpers(formKey) {
   const getDistrictOptions = (stateCode) =>
     deriveDistricts(formKey).filter((e) => e.state_code === stateCode);
 
-  const getBlockOptions = (districtCode) =>
-    deriveBlocks(formKey).filter((e) => e.district_code === districtCode);
+  // Blocks are scoped by state + district: a district_code alone is not unique
+  // across states, so filtering by it would surface blocks from other states.
+  const getBlockOptions = (stateCode, districtCode) =>
+    deriveBlocks(formKey).filter(
+      (e) => e.state_code === stateCode && e.district_code === districtCode
+    );
 
-  const getVillageOptions = (blockCode) => {
+  // Villages are scoped by the full state + district + block path for the same
+  // reason: block_code is only unique within a district.
+  const getVillageOptions = (stateCode, districtCode, blockCode) => {
     return (cache[formKey] || [])
-      .filter((loc) => loc.is_active && loc.entry_type === "VILLAGE" && loc.block_code === blockCode)
+      .filter(
+        (loc) =>
+          loc.is_active &&
+          loc.entry_type === "VILLAGE" &&
+          loc.state_code === stateCode &&
+          loc.district_code === districtCode &&
+          loc.block_code === blockCode
+      )
       .map((loc) => ({
         text: loc.village,
         village_code: loc.village_code,
         block_code: loc.block_code,
+        district_code: loc.district_code,
+        state_code: loc.state_code,
       }));
   };
 
@@ -157,7 +187,11 @@ export function getFormLocationHelpers(formKey) {
     const d = deriveDistricts(formKey).find(
       (x) => x.text?.toLowerCase() === districtName?.toLowerCase() && x.state_code === st?.state_code
     );
-    return d ? deriveBlocks(formKey).filter((b) => b.district_code === d.district_code) : [];
+    return d
+      ? deriveBlocks(formKey).filter(
+          (b) => b.state_code === d.state_code && b.district_code === d.district_code
+        )
+      : [];
   };
 
   const getVillageOptionsByBlockName = (stateName, districtName, blockName) => {
@@ -166,15 +200,27 @@ export function getFormLocationHelpers(formKey) {
       (x) => x.text?.toLowerCase() === districtName?.toLowerCase() && x.state_code === st?.state_code
     );
     const b = deriveBlocks(formKey).find(
-      (x) => x.text?.toLowerCase() === blockName?.toLowerCase() && x.district_code === d?.district_code
+      (x) =>
+        x.text?.toLowerCase() === blockName?.toLowerCase() &&
+        x.state_code === d?.state_code &&
+        x.district_code === d?.district_code
     );
     if (!b) return [];
     return (cache[formKey] || [])
-      .filter((loc) => loc.is_active && loc.entry_type === "VILLAGE" && loc.block_code === b.block_code)
+      .filter(
+        (loc) =>
+          loc.is_active &&
+          loc.entry_type === "VILLAGE" &&
+          loc.state_code === b.state_code &&
+          loc.district_code === b.district_code &&
+          loc.block_code === b.block_code
+      )
       .map((loc) => ({
         text: loc.village,
         village_code: loc.village_code,
         block_code: loc.block_code,
+        district_code: loc.district_code,
+        state_code: loc.state_code,
       }));
   };
 

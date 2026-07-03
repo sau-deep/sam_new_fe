@@ -1242,14 +1242,14 @@ const HouseHold = () => {
                                 setSelectedVillage(null);
                                 setVillageValidationError(''); // Clear previous village validation error
 
-                                const blockData = address.district_code ? getBlockOptions(address.district_code).find(e => e.text === value) : null;
+                                const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
                                 setAddress(blockData || {});
                                 // Persist the selected block's code so it is submitted with the form
                                 setFieldValue("blockCode", blockData?.block_code != null ? blockData.block_code.toString() : '');
                                 
                                 // Check if villages are available for this block
                                 if (blockData && blockData.block_code) {
-                                  const availableVillages = getVillageOptions(blockData.block_code);
+                                  const availableVillages = getVillageOptions(blockData.state_code, blockData.district_code, blockData.block_code);
                                   if (availableVillages.length === 0) {
                                     setVillagesAvailable(false);
                                     setVillageValidationError('No villages available for this block. Please select another block.');
@@ -1271,7 +1271,7 @@ const HouseHold = () => {
                               error={touched.block && !!errors.block}
                             >
                               <MenuItem value={null} disabled>Select Block</MenuItem>
-                              {values.state && values.district && address.district_code && getBlockOptions(address.district_code).map((block, i) => (
+                              {values.state && values.district && address.district_code && getBlockOptions(address.state_code, address.district_code).map((block, i) => (
                                 <MenuItem key={i} value={block.text}>{block.text}</MenuItem>
                               ))}
                             </Select>
@@ -1301,7 +1301,7 @@ const HouseHold = () => {
                                 const { value } = e.target;
                                 setFieldValue("village", value);
                                 if (value) {
-                                  const villageData = address.block_code ? getVillageOptions(address.block_code).find(v => v.text === value) : null;
+                                  const villageData = address.block_code ? getVillageOptions(address.state_code, address.district_code, address.block_code).find(v => v.text === value) : null;
                                   setSelectedVillage(villageData);
                                   setFieldValue("villageCode", villageData ? villageData.village_code.toString().padStart(2, '0') : '');
                                 } else {
@@ -1315,7 +1315,7 @@ const HouseHold = () => {
                               <MenuItem value={null} disabled>
                                 {!villagesAvailable ? "No villages available - select another block" : "Select Village"}
                               </MenuItem>
-                              {values.state && values.district && values.block && address.block_code && villagesAvailable && getVillageOptions(address.block_code).map((village, i) => (
+                              {values.state && values.district && values.block && address.block_code && villagesAvailable && getVillageOptions(address.state_code, address.district_code, address.block_code).map((village, i) => (
                                 <MenuItem key={i} value={village.text}>{village.text}</MenuItem>
                               ))}
                             </Select>

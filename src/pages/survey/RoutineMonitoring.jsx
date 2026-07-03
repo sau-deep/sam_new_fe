@@ -194,7 +194,7 @@ const RoutineMonitoring = () => {
                                 
                                 // If block is also saved, set block address
                                 if (preferences.block && districtData.district_code) {
-                                    const blockData = getBlockOptions(districtData.district_code).find(b => b.text === preferences.block);
+                                    const blockData = getBlockOptions(districtData.state_code, districtData.district_code).find(b => b.text === preferences.block);
                                     if (blockData) {
                                         setAddress(blockData);
                                     }
@@ -1914,14 +1914,14 @@ const RoutineMonitoring = () => {
                                                     onChange={(e) => {
                                                         const { value } = e.target;
                                                         setFieldValue("block", value);
-                                                        const blockData = address.district_code ? getBlockOptions(address.district_code).find(e => e.text === value) : null;
+                                                        const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
                                                         setAddress(blockData || {});
                                                     }}
                                                     onBlur={handleBlur}
                                                     error={touched.block && !!errors.block}
                                                 >
                                                     <MenuItem value={null} disabled>{t('selectBlock')}</MenuItem>
-                                                    {values.district && address.district_code && getBlockOptions(address.district_code).map((block, i) => (
+                                                    {values.district && address.district_code && getBlockOptions(address.state_code, address.district_code).map((block, i) => (
                                                         <MenuItem key={i} value={block.text}>{block.text}</MenuItem>
                                                     ))}
                                                 </Select>

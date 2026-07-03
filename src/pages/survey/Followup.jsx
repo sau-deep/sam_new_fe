@@ -987,7 +987,7 @@ const Followup = () => {
                                                             error={touched.district && !!errors.district}
                                                         >
                                                             <MenuItem value={null} disabled>Select District</MenuItem>
-                                                            {values.state && address.state_code && getDistrictOptions(address.state_code) && getDistrictOptions(address.state_code).map((district, i) => (
+                                                            {values.state && address.state_code && getDistrictOptions(address.state_code).map((district, i) => (
                                                                 <MenuItem key={i}
                                                                           value={district.text}>{district.text}</MenuItem>
                                                             ))}
@@ -1015,14 +1015,14 @@ const Followup = () => {
                                                                 const {value} = e.target;
                                                                 setFieldValue("block", value);
                                                                 setFieldValue("village", '');
-                                                                const blockData = address.district_code && getBlockOptions(address.district_code) && getBlockOptions(address.district_code).length > 0 ? getBlockOptions(address.district_code).find(e => e.text === value) : null;
+                                                                const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
                                                                 setAddress(blockData || {});
                                                             }}
                                                             onBlur={handleBlur}
                                                             error={touched.block && !!errors.block}
                                                         >
                                                             <MenuItem value={null} disabled>Select Block</MenuItem>
-                                                            {values.district && address.district_code && getBlockOptions(address.district_code) && getBlockOptions(address.district_code).length > 0 && getBlockOptions(address.district_code).map((block, i) => (
+                                                            {values.district && address.district_code && getBlockOptions(address.state_code, address.district_code).length > 0 && getBlockOptions(address.state_code, address.district_code).map((block, i) => (
                                                                 <MenuItem key={i} value={block.text}>{block.text}</MenuItem>
                                                             ))}
                                                         </Select>
