@@ -238,7 +238,24 @@ export default function UserManagement() {
       const endpoint = isStateType
         ? "/admin/user-management/create-state-user"
         : "/user-management/create-surveyor";
-      await api.post(endpoint, values);
+      // The backend requires `state` on surveyor creation. Global admins pick it in
+      // the form; state admins have no state field shown, so inherit their own state.
+      const payload = (!isStateType && !isAdmin())
+        ? { ...values, state: user?.state }
+        : values;
+      if (!isStateType && !payload.state) {
+        message.error("Your account has no state assigned; cannot create a surveyor.");
+        return;
+      }
+      const res = await api.post(endpoint, payload);
+      // The backend returns HTTP 200 even on business failures, carrying the real
+      // outcome in the SAMResponse body ({ success, message }). Treat success:false
+      // as an error so failed creations don't masquerade as success.
+      const body = res?.data;
+      if (body && body.success === false) {
+        message.error(body.message || "Error creating user");
+        return;
+      }
       setCreateModal({ open: false });
       form.resetFields();
       invalidateCaches();
