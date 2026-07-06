@@ -2,6 +2,7 @@
  * Utility functions for geocoding and reverse geocoding
  * Provides robust error handling and fallbacks for location services
  */
+import { getForcedOffline } from './networkState';
 
 const GEOCODING_SERVICES = {
     BIGDATACLOUD: 'bigdatacloud',
@@ -225,7 +226,7 @@ export const getAddressString = async (lat, lng) => {
  */
 export const isGeocodingAvailable = async () => {
   try {
-    if (!navigator.onLine) {
+    if (!navigator.onLine || getForcedOffline()) {
       return false;
     }
 

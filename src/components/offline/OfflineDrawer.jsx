@@ -22,7 +22,7 @@ import {
 } from "@ant-design/icons";
 import RouterSharpIcon from "@mui/icons-material/RouterSharp";
 import { getOfflineForms, deleteForm } from "../../utils/indexDB";
-import { useNetworkStatus } from "../../utils/networkState";
+import { useEffectiveNetworkStatus } from "../../utils/networkState";
 import apiService from "../../services/api";
 
 const { Text } = Typography;
@@ -62,7 +62,7 @@ const displayValue = (value) => {
 };
 
 export default function OfflineDrawer() {
-  const isOnline = useNetworkStatus();
+  const { isOnline } = useEffectiveNetworkStatus();
   const [open, setOpen] = useState(false);
   const [forms, setForms] = useState([]);
   const [loading, setLoading] = useState(false);

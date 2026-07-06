@@ -6,7 +6,7 @@ import AppHeader from "./Header";
 import Footer from "../../layouts/footer/Footer";
 import OfflineDrawer from "../offline/OfflineDrawer";
 import { useAuth } from "../../context/AuthContext";
-import { useNetworkStatus } from "../../utils/networkState";
+import { useEffectiveNetworkStatus } from "../../utils/networkState";
 import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
 import { DisconnectOutlined, EyeOutlined, SaveOutlined } from "@ant-design/icons";
@@ -51,7 +51,7 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const { isAdmin, isIEG, getPrimaryRole } = useAuth();
-  const isOnline = useNetworkStatus();
+  const { isOnline } = useEffectiveNetworkStatus();
   const navigate = useNavigate();
 
   const isSurveyor = getPrimaryRole?.() === ROLES.SURVEYOR;

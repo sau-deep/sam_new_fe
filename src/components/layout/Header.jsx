@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip } from "antd";
+import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip, message } from "antd";
 import {
   MenuFoldOutlined, MenuUnfoldOutlined, BellOutlined, UserOutlined,
   LogoutOutlined, GlobalOutlined, WifiOutlined, DisconnectOutlined,
@@ -7,7 +7,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useNetworkStatus } from "../../utils/networkState";
+import { useNetworkStatus, useEffectiveNetworkStatus, setForcedOffline } from "../../utils/networkState";
 import { ROLES } from "../../config";
 import api from "../../services/axiosInstance";
 import { LANGUAGES } from "../../constants";
@@ -24,8 +24,9 @@ const ROLE_COLORS = {
 };
 
 // Compact mobile header for surveyor role — no sidebar toggle, no language
-function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
+function SurveyorMobileHeader({ user, userMenuItems }) {
   const navigate = useNavigate();
+  const { isOnline, forcedOffline, realOnline } = useEffectiveNetworkStatus();
   const [issueCount, setIssueCount] = useState(0);
   const initials = (user?.name || user?.username || "U")
     .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
@@ -45,6 +46,34 @@ function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  const handleNetworkToggle = () => {
+    if (forcedOffline) {
+      setForcedOffline(false);
+      if (realOnline) {
+        message.success("Back online — forms will be uploaded automatically.");
+      } else {
+        message.info("Online mode selected — will activate when network is available.");
+      }
+    } else {
+      if (!realOnline) {
+        message.warning("No network connection available.");
+        return;
+      }
+      setForcedOffline(true);
+      message.info("Offline mode activated. Forms will be saved locally.");
+    }
+  };
+
+  // Pill colour: green = online, orange = forced-offline (network OK), red = no network
+  const pillColor  = isOnline ? "#6DCC36" : (forcedOffline && realOnline ? "#FF7A3D" : "#FF4D4F");
+  const pillBg     = isOnline ? "rgba(74,140,28,0.25)" : (forcedOffline && realOnline ? "rgba(212,88,0,0.3)" : "rgba(255,77,79,0.15)");
+  const pillBorder = isOnline ? "#4A8C1C" : (forcedOffline && realOnline ? "#D45800" : "#FF4D4F");
+  const tooltipText = isOnline
+    ? "Online — tap to switch to offline mode"
+    : forcedOffline
+      ? "Offline mode active — tap to go back online"
+      : "No network connection";
+
   return (
     <div style={{
       height: 56, background: "#002147", display: "flex", alignItems: "center",
@@ -63,25 +92,35 @@ function SurveyorMobileHeader({ isOnline, user, userMenuItems }) {
         <span style={{ color: "white", fontWeight: 700, fontSize: 13 }}>CMAM Programme</span>
       </div>
 
-      {/* Prominent network signal pill */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 6,
-        background: isOnline ? "rgba(74,140,28,0.25)" : "rgba(212,88,0,0.3)",
-        border: `1.5px solid ${isOnline ? "#4A8C1C" : "#D45800"}`,
-        padding: "5px 12px", borderRadius: 20,
-        animation: isOnline ? "none" : "offlinePulse 2s ease-in-out infinite",
-      }}>
-        {isOnline
-          ? <WifiOutlined style={{ color: "#6DCC36", fontSize: 15 }} />
-          : <DisconnectOutlined style={{ color: "#FF7A3D", fontSize: 15 }} />}
-        <span style={{
-          fontSize: 12, fontWeight: 700,
-          color: isOnline ? "#6DCC36" : "#FF7A3D",
-          letterSpacing: 0.3,
-        }}>
-          {isOnline ? "Online" : "Offline"}
-        </span>
-      </div>
+      {/* Online / Offline toggle pill */}
+      <Tooltip title={tooltipText}>
+        <div
+          role="button"
+          aria-pressed={!isOnline}
+          onClick={handleNetworkToggle}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: pillBg,
+            border: `1.5px solid ${pillBorder}`,
+            padding: "5px 12px", borderRadius: 20,
+            cursor: "pointer",
+            userSelect: "none",
+            transition: "opacity 0.15s, transform 0.1s",
+            animation: !isOnline ? "offlinePulse 2s ease-in-out infinite" : "none",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.75"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.93)"; }}
+          onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+        >
+          {isOnline
+            ? <WifiOutlined style={{ color: pillColor, fontSize: 15 }} />
+            : <DisconnectOutlined style={{ color: pillColor, fontSize: 15 }} />}
+          <span style={{ fontSize: 12, fontWeight: 700, color: pillColor, letterSpacing: 0.3 }}>
+            {isOnline ? "Online" : "Offline"}
+          </span>
+        </div>
+      </Tooltip>
 
       {/* My reported issues */}
       <Tooltip title="My Reported Issues">
@@ -152,7 +191,7 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
   ];
 
   if (hideSidebarToggle) {
-    return <SurveyorMobileHeader isOnline={isOnline} user={user} userMenuItems={userMenuItems} />;
+    return <SurveyorMobileHeader user={user} userMenuItems={userMenuItems} />;
   }
 
   return (
