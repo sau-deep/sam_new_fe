@@ -19,6 +19,22 @@ const { Title, Text } = Typography;
 const fmtDateTime = (v) => (v ? dayjs(v).format("DD MMM YYYY HH:mm") : "—");
 const blank = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 
+// The household_checklist source can carry the same child_id on more than one row
+// (a child surveyed again, or duplicated rows), and the backend's 25-record cluster
+// sample does not dedupe. Keep only the first record per non-empty childId so every
+// row shown in the table and written to the Excel export has a unique Child ID.
+// Records with no childId are kept as-is since they can't be keyed by it.
+const dedupeByChildId = (records) => {
+  const seen = new Set();
+  return records.filter((r) => {
+    const id = r?.childId;
+    if (id === null || id === undefined || id === "") return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
 const FIELDS = [
   { key: "childId", title: "Child ID", width: 160 },
   { key: "nameParticipant", title: "Participant Name", width: 160 },
@@ -138,12 +154,13 @@ export default function HouseholdChildList() {
       };
       const { data } = await api.post("/survey/household", payload);
       const arr = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
-      setResults(arr);
+      const unique = dedupeByChildId(arr);
+      setResults(unique);
       setSearched(true);
-      if (arr.length === 0) {
+      if (unique.length === 0) {
         message.info("No records found for the selected criteria.");
       } else {
-        message.success(`Found ${arr.length} record${arr.length !== 1 ? "s" : ""}.`);
+        message.success(`Found ${unique.length} record${unique.length !== 1 ? "s" : ""}.`);
       }
     } catch (err) {
       message.error(`Search failed: ${err.response?.data?.message || err.message}`);

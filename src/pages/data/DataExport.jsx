@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card, Row, Col, Button, Select, DatePicker, Table, Tag,
-  Typography, Space, Alert, Tabs, message,
+  Typography, Space, Alert, Tabs, Tooltip, message,
 } from "antd";
 import {
   DownloadOutlined, FileExcelOutlined, HistoryOutlined,
@@ -137,6 +137,8 @@ const FORM_CATEGORIES = [
         icon: "📅",
         color: "#3498db",
         clientSideExcel: true,
+        // State Admins are not permitted to download the Concurrent Assessment export.
+        disableForStateAdmin: true,
       },
     ],
   },
@@ -270,43 +272,56 @@ export default function DataExport({ defaultForm }) {
 
   const ExportGrid = ({ exports }) => (
     <Row gutter={[16, 16]}>
-      {exports.map((et) => (
-        <Col xs={24} sm={12} lg={8} key={et.key}>
-          <Card
+      {exports.map((et) => {
+        const blocked = et.disableForStateAdmin && isStateAdmin();
+        const button = (
+          <Button
+            type={et.isFull ? "primary" : "default"}
+            icon={<FileExcelOutlined />}
+            loading={loading[et.key]}
+            disabled={blocked}
+            onClick={() => handleDownload(et)}
+            block
             style={{
-              borderRadius: 14,
-              border: `1px solid ${et.isFull ? et.color + "40" : "#F3F4F6"}`,
-              background: et.isFull ? `${et.color}08` : "white",
-              height: "100%",
+              borderRadius: 8, height: 38,
+              ...(blocked
+                ? {}
+                : et.isFull
+                ? { background: et.color, borderColor: et.color }
+                : { borderColor: et.color, color: et.color }),
             }}
-            bodyStyle={{ padding: 20, display: "flex", flexDirection: "column", height: "100%" }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ fontSize: 28 }}>{et.icon}</div>
-              {et.isFull && <Tag color="red">Full Dataset</Tag>}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>{et.label}</div>
-            <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 1.5, flex: 1 }}>
-              {et.description}
-            </div>
-            <Button
-              type={et.isFull ? "primary" : "default"}
-              icon={<FileExcelOutlined />}
-              loading={loading[et.key]}
-              onClick={() => handleDownload(et)}
-              block
+            {loading[et.key] ? "Downloading..." : "Download Excel"}
+          </Button>
+        );
+        return (
+          <Col xs={24} sm={12} lg={8} key={et.key}>
+            <Card
               style={{
-                borderRadius: 8, height: 38,
-                ...(et.isFull
-                  ? { background: et.color, borderColor: et.color }
-                  : { borderColor: et.color, color: et.color }),
+                borderRadius: 14,
+                border: `1px solid ${et.isFull ? et.color + "40" : "#F3F4F6"}`,
+                background: et.isFull ? `${et.color}08` : "white",
+                height: "100%",
               }}
+              bodyStyle={{ padding: 20, display: "flex", flexDirection: "column", height: "100%" }}
             >
-              {loading[et.key] ? "Downloading..." : "Download Excel"}
-            </Button>
-          </Card>
-        </Col>
-      ))}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ fontSize: 28 }}>{et.icon}</div>
+                {et.isFull && <Tag color="red">Full Dataset</Tag>}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>{et.label}</div>
+              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 1.5, flex: 1 }}>
+                {et.description}
+              </div>
+              {blocked ? (
+                <Tooltip title="Not available for State Admin">
+                  <span style={{ display: "block", cursor: "not-allowed" }}>{button}</span>
+                </Tooltip>
+              ) : button}
+            </Card>
+          </Col>
+        );
+      })}
     </Row>
   );
 
