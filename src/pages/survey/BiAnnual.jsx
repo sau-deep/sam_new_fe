@@ -4573,8 +4573,8 @@ const BiAnnual = () => {
                                 id="positionHtMeasured" value={values.positionHtMeasured}
                                 onChange={handleChange}
                                 onBlur={handleBlur} error={touched.positionHtMeasured && !!errors.positionHtMeasured}>
-                                <FormControlLabel value={t('standing_up')} control={<Radio />} label={t('standing_up')} />
-                                <FormControlLabel value={t('lying_down')} control={<Radio />} label={t('lying_down')} />
+                                <FormControlLabel value="Standing up" control={<Radio />} label={t('standing_up')} />
+                                <FormControlLabel value="Lying down" control={<Radio />} label={t('lying_down')} />
                               </RadioGroup>
                               {touched.positionHtMeasured && errors.positionHtMeasured && (
                                 <div className={styles.error}>{errors.positionHtMeasured}</div>
@@ -4594,9 +4594,9 @@ const BiAnnual = () => {
                               id="presentBilateralOedema" value={values.presentBilateralOedema}
                               onChange={handleChange}
                               onBlur={handleBlur} error={touched.presentBilateralOedema && !!errors.presentBilateralOedema}>
-                              <FormControlLabel value={t('yes')} control={<Radio />} label={t('yes')} />
-                              <FormControlLabel value={t('no')} control={<Radio />} label={t('no')} />
-                              <FormControlLabel value={t('not_assessed')} control={<Radio />} label={t('not_assessed')} />
+                              <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                              <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                              <FormControlLabel value="Not assessed" control={<Radio />} label={t('not_assessed')} />
                             </RadioGroup>
                             {touched.presentBilateralOedema && errors.presentBilateralOedema && (
                               <div className={styles.error}>{errors.presentBilateralOedema}</div>
