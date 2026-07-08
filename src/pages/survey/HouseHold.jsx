@@ -64,14 +64,13 @@ const step1ValidationSchema = Yup.object({
   time: Yup.string().required("This is required field"),
 });
 
+// Step 2 (household details) validates every mandatory field shown on this step.
+// This was previously an accidental copy of step 1's schema, so at submit time only
+// the four consent fields — already filled on step 1 — were checked and the household
+// fields could be left blank. Location/coordinates are intentionally not listed here:
+// they're enforced separately by the `hasValidCoordinates` gate (the submit button
+// stays disabled and handleSubmit re-checks before posting).
 const step2ValidationSchema = Yup.object({
-  nameParticipant: Yup.string().required("This is required field"),
-  verbalConsent: Yup.string().required("This is required field"),
-  date: Yup.string().required("This is required field"),
-  time: Yup.string().required("This is required field"),
-});
-
-const step3ValidationSchema = Yup.object({
   state: Yup.string().required("This is required field"),
   district: Yup.string().required("This is required field"),
   block: Yup.string().required("This is required field"),
@@ -84,27 +83,6 @@ const step3ValidationSchema = Yup.object({
   headOfHousehold: Yup.string().required("This is required field"),
   numberOfChildren: Yup.string().required("This is required field"),
   childrenStayingHh: Yup.string().required("This is required field"),
-  locationHousehold: Yup.string().when('responseMode',
-    (responseMode, schema) => {
-      return responseMode === 'online'
-        ? schema.required("Location is required when online")
-        : schema;
-    }
-  ),
-  latitude: Yup.number().when('responseMode',
-    (responseMode, schema) => {
-      return responseMode === 'online'
-        ? schema.min(-90).max(90).required("Valid latitude is required when online")
-        : schema;
-    }
-  ),
-  longitude: Yup.number().when('responseMode',
-    (responseMode, schema) => {
-      return responseMode === 'online'
-        ? schema.min(-180).max(180).required("Valid longitude is required when online")
-        : schema;
-    }
-  )
 });
 
 const HouseHold = () => {
