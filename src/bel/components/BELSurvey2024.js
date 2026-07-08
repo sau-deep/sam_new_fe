@@ -48,6 +48,9 @@ import {
   GRADE_MAX_LENGTH
 } from '../constants/personalInfo';
 
+// Number of ranks to collect per ranking question (Q13 → top 2, Q16 → top 3)
+const RANKING_MAX = { q13: 2, q16: 3 };
+
 // Animations
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(20px); }
@@ -315,17 +318,17 @@ const BELSurvey2024 = () => {
     const getRequiredFields = () => {
       const required = [
         // All questions are mandatory except text inputs (excluding Section 13)
-        'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
+        'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34',
         // Multi-part questions
         'q4_psychological', 'q4_innovation', 'q4_diversity', 'q4_communication', 'q4_trust',
         'q10_vision', 'q10_transparency', 'q10_feedback', 'q10_change',
         'q15_market', 'q15_contributions', 'q15_colleagues',
-        'q19_efficiency', 'q19_collaborate', 'q19_customers', 'q19_information',
+        'q19_efficiency', 'q19_customers', 'q19_information',
         'q24_market', 'q24_technology', 'q24_innovation', 'q24_digital',
         'q27_strategy', 'q27_changes', 'q27_performance', 'q27_recognition',
         // Section 13 (Open-ended Insights) questions are mandatory
         'q37', 'q38',
-        'q39_1', 'q39_2', 'q39_3', 'q40_1', 'q40_2', 'q40_3'
+        'q39_1', 'q39_2', 'q40_1', 'q40_2'
       ];
       
       // Add conditional required fields
@@ -353,13 +356,13 @@ const BELSurvey2024 = () => {
         if (!hasSelection) required.push(qKey + '_required');
       });
       
-      // Ranking questions (exactly 3 rankings required)
+      // Ranking questions (all required ranks must be filled)
       const rankingRequired = ['q13', 'q16'];
       rankingRequired.forEach(qKey => {
-        const rankings = Object.keys(formData).filter(key => 
+        const rankings = Object.keys(formData).filter(key =>
           key.startsWith(qKey + '_') && ['1', '2', '3'].includes(formData[key])
         ).length;
-        if (rankings < 3) required.push(qKey + '_required');
+        if (rankings < RANKING_MAX[qKey]) required.push(qKey + '_required');
       });
       
       return required;
@@ -370,9 +373,9 @@ const BELSurvey2024 = () => {
       if (field.endsWith('_required')) {
         const qKey = field.replace('_required', '');
         if (qKey === 'q13' || qKey === 'q16') {
-          return Object.keys(formData).filter(key => 
+          return Object.keys(formData).filter(key =>
             key.startsWith(qKey + '_') && ['1', '2', '3'].includes(formData[key])
-          ).length >= 3;
+          ).length >= RANKING_MAX[qKey];
         } else if (qKey === 'q35') {
           return Object.keys(formData).some(key => 
             (key.startsWith('q35_') && formData[key]) || (key === 'q35_other_selected' && formData[key])
@@ -545,6 +548,32 @@ const BELSurvey2024 = () => {
     handleCheckboxChange(fieldName, checked);
   };
 
+  // Handle single-select "chip" questions (Q26, Q29). Stored as `<questionKey>_<option>`
+  // booleans like the multi-selects, but only one option may be true at a time.
+  const handleSingleSelectChip = (questionKey, optionKey) => {
+    const fieldName = `${questionKey}_${optionKey}`;
+    const isCurrentlySelected = !!formData[fieldName];
+    setFormData(prev => {
+      const next = { ...prev };
+      // Clear any previous selection within this question group
+      Object.keys(next).forEach(key => {
+        if (key.startsWith(`${questionKey}_`)) delete next[key];
+      });
+      // Toggle: pick the clicked option, or clear it if it was already selected
+      if (!isCurrentlySelected) next[fieldName] = true;
+      return next;
+    });
+
+    // Clear the group's validation error once an option is chosen
+    if (!isCurrentlySelected && validationErrors[questionKey]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[questionKey];
+        return newErrors;
+      });
+    }
+  };
+
   // Handle Q8 checkbox changes with mutual exclusivity
   const handleQ8CheckboxChange = (fieldName, checked) => {
     if (fieldName === 'q8_none') {
@@ -592,14 +621,14 @@ const BELSurvey2024 = () => {
     
     setFormData(prev => ({ ...prev, ...updates }));
     
-    // Clear validation error if we now have 3 rankings
+    // Clear validation error once all required ranks are filled
     setTimeout(() => {
       const updatedFormData = { ...formData, ...updates };
-      const rankings = Object.keys(updatedFormData).filter(key => 
+      const rankings = Object.keys(updatedFormData).filter(key =>
         key.startsWith(`${questionKey}_`) && ['1', '2', '3'].includes(updatedFormData[key])
       ).length;
-      
-      if (rankings >= 3 && validationErrors[questionKey]) {
+
+      if (rankings >= (RANKING_MAX[questionKey] || 3) && validationErrors[questionKey]) {
         setValidationErrors(prev => {
           const newErrors = { ...prev };
           delete newErrors[questionKey];
@@ -613,7 +642,7 @@ const BELSurvey2024 = () => {
   const isQuestionRequired = (questionKey) => {
     // All questions are required except text inputs (excluding Section 13)
     const alwaysRequired = [
-      'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
+      'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34',
       'q37', 'q38', 'q39', 'q40'
     ];
     
@@ -622,11 +651,11 @@ const BELSurvey2024 = () => {
       'q4_psychological', 'q4_innovation', 'q4_diversity', 'q4_communication', 'q4_trust',
       'q10_vision', 'q10_transparency', 'q10_feedback', 'q10_change',
       'q15_market', 'q15_contributions', 'q15_colleagues',
-      'q19_efficiency', 'q19_collaborate', 'q19_customers', 'q19_information',
+      'q19_efficiency', 'q19_customers', 'q19_information',
       'q24_market', 'q24_technology', 'q24_innovation', 'q24_digital',
       'q27_strategy', 'q27_changes', 'q27_performance', 'q27_recognition',
-      'q39_1', 'q39_2', 'q39_3',
-      'q40_1', 'q40_2', 'q40_3'
+      'q39_1', 'q39_2',
+      'q40_1', 'q40_2'
     ];
     
     // Conditionally required questions
@@ -682,7 +711,7 @@ const BELSurvey2024 = () => {
     // All questions are mandatory except text inputs (excluding Section 13)
     
     // Single-select questions (mandatory)
-    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34'];
+    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34'];
     singleSelectQuestions.forEach(field => {
       if (isEmpty(formData[field])) addError(field);
     });
@@ -692,7 +721,7 @@ const BELSurvey2024 = () => {
       ['q4_psychological', 'q4_innovation', 'q4_diversity', 'q4_communication', 'q4_trust'],
       ['q10_vision', 'q10_transparency', 'q10_feedback', 'q10_change'],
       ['q15_market', 'q15_contributions', 'q15_colleagues'],
-      ['q19_efficiency', 'q19_collaborate', 'q19_customers', 'q19_information'],
+      ['q19_efficiency', 'q19_customers', 'q19_information'],
       ['q24_market', 'q24_technology', 'q24_innovation', 'q24_digital'],
       ['q27_strategy', 'q27_changes', 'q27_performance', 'q27_recognition']
     ];
@@ -711,13 +740,14 @@ const BELSurvey2024 = () => {
       if (!hasSelection) addError(qKey + '_required', 'Please select at least one option');
     });
     
-    // Ranking questions (mandatory - exactly 3 rankings required)
+    // Ranking questions (mandatory - all required ranks must be filled)
     const rankingRequired = ['q13', 'q16'];
     rankingRequired.forEach(qKey => {
-      const rankings = Object.keys(formData).filter(key => 
+      const need = RANKING_MAX[qKey];
+      const rankings = Object.keys(formData).filter(key =>
         key.startsWith(qKey + '_') && ['1', '2', '3'].includes(formData[key])
       ).length;
-      if (rankings < 3) addError(qKey + '_required', 'Please complete all 3 rankings');
+      if (rankings < need) addError(qKey + '_required', `Please complete all ${need} rankings`);
     });
 
     // Handle conditional validations for text inputs (optional except Section 13)
@@ -757,11 +787,11 @@ const BELSurvey2024 = () => {
     // Section 13 - Open-ended Insights (mandatory except Q41)
     if (isEmpty(formData['q37'])) addError('q37');
     if (isEmpty(formData['q38'])) addError('q38');
-    ['q39_1', 'q39_2', 'q39_3'].forEach(field => {
-      if (isEmpty(formData[field])) addError(field, 'Please provide all 3 improvements');
+    ['q39_1', 'q39_2'].forEach(field => {
+      if (isEmpty(formData[field])) addError(field, 'Please provide all 2 improvements');
     });
-    ['q40_1', 'q40_2', 'q40_3'].forEach(field => {
-      if (isEmpty(formData[field])) addError(field, 'Please provide all 3 things working well');
+    ['q40_1', 'q40_2'].forEach(field => {
+      if (isEmpty(formData[field])) addError(field, 'Please provide all 2 things working well');
     });
     // Q41 is optional text input
 
@@ -810,7 +840,6 @@ const BELSurvey2024 = () => {
       'q4_communication': { question: 'Rate workplace culture - Open communication (1-5)', options: { '1': '1 - Poor', '2': '2 - Below Average', '3': '3 - Average', '4': '4 - Good', '5': '5 - Excellent' } },
       'q4_trust': { question: 'Rate workplace culture - Trust among colleagues (1-5)', options: { '1': '1 - Poor', '2': '2 - Below Average', '3': '3 - Average', '4': '4 - Good', '5': '5 - Excellent' } },
       'q5': { question: 'Which best describes your sense of belonging at work?', options: { 'truly_belong': 'I feel like I truly belong and can be my authentic self', 'generally_included': 'I generally feel included but sometimes feel like an outsider', 'dont_fit': 'I often feel like I don\'t quite fit in', 'excluded': 'I feel excluded or isolated' } },
-      'q7': { question: 'I feel part of a team(inter-department) working together for a shared vision', options: { 'strongly_agree': 'Strongly Agree', 'agree': 'Agree', 'neutral': 'Neutral', 'disagree': 'Disagree', 'strongly_disagree': 'Strongly Disagree' } },
       'q9': { question: 'I have a clear understanding of my role and how it contributes to the company\'s goals and growth of the Unit', options: { 'strongly_agree': 'Strongly Agree', 'agree': 'Agree', 'neutral': 'Neutral', 'disagree': 'Disagree', 'strongly_disagree': 'Strongly Disagree' } },
       'q10_vision': { question: 'Rate senior leadership - Vision & strategy communication', options: { 'a_plus': 'A+', 'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D', 'f': 'F' } },
       'q10_transparency': { question: 'Rate senior leadership - Transparency in decision-making', options: { 'a_plus': 'A+', 'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D', 'f': 'F' } },
@@ -826,7 +855,6 @@ const BELSurvey2024 = () => {
       'q17': { question: 'Is there one new benefit you would like us to consider adding?', options: null },
       'q18': { question: 'The technology tools I use for work are', options: { 'cutting_edge': 'Cutting-edge', 'modern': 'Modern & meets needs', 'adequate': 'Adequate but could be better', 'outdated': 'Outdated & slow', 'hindering': 'Seriously hindering' } },
       'q19_efficiency': { question: 'How well does technology enable you to - Work efficiently', options: { 'excellent': 'Excellent', 'good': 'Good', 'fair': 'Fair', 'poor': 'Poor' } },
-      'q19_collaborate': { question: 'How well does technology enable you to - Collaborate with colleagues', options: { 'excellent': 'Excellent', 'good': 'Good', 'fair': 'Fair', 'poor': 'Poor' } },
       'q19_customers': { question: 'How well does technology enable you to - Serve customers effectively', options: { 'excellent': 'Excellent', 'good': 'Good', 'fair': 'Fair', 'poor': 'Poor' } },
       'q19_information': { question: 'How well does technology enable you to - Access information quickly', options: { 'excellent': 'Excellent', 'good': 'Good', 'fair': 'Fair', 'poor': 'Poor' } },
       'q20': { question: 'My current work-life balance is', options: { 'excellent': 'Excellent', 'good': 'Good', 'fair': 'Fair', 'poor': 'Poor', 'terrible': 'Terrible' } },
@@ -849,19 +877,15 @@ const BELSurvey2024 = () => {
       'q30a': { question: 'How could our performance review process be improved?', options: null },
       'q31': { question: 'How would you rate your onboarding experience overall?', options: { 'exceptional': 'Exceptional', 'good': 'Good', 'average': 'Average', 'poor': 'Poor', 'terrible': 'Terrible' } },
       'q32': { question: 'Did you receive the necessary resources and training to feel successful when you first started working?', options: { 'had_everything': 'Yes, I had everything I needed', 'had_most': 'I had most of what I needed', 'missing_few': 'I was missing a few key things', 'did_not_have': 'I did not have the resources and training I needed' } },
-      'q33': { question: 'How long did it take you to feel fully productive in your role?', options: { '1_2_months': '1-2 months', '3_4_months': '3-4 months', '5_6_months': '5-6 months', 'still_not': 'Still not there' } },
-      'q33a': { question: 'What would have accelerated your time to productivity?', options: null },
       'q34': { question: 'Do you see yourself working at BEL FIVE years from now?', options: { 'yes_definitely': 'Yes, definitely', 'probably': 'Probably', 'unsure': 'Unsure', 'probably_not': 'Probably not', 'definitely_not': 'Definitely not' } },
       'q35_other': { question: 'Reasons for staying - Other (specify)', options: null },
       'q36_other': { question: 'Factors influencing leaving decision - Other (specify)', options: null },
       'q37': { question: 'If you were CMD for a day, What is the first thing you would change in BEL?', options: null },
       'q38': { question: 'What would make you more effective in your role?', options: null },
-      'q39_1': { question: 'List 3 things good in BEL-GAD unit - Item 1', options: null },
-      'q39_2': { question: 'List 3 things good in BEL-GAD unit - Item 2', options: null },
-      'q39_3': { question: 'List 3 things good in BEL-GAD unit - Item 3', options: null },
-      'q40_1': { question: 'List 3 things to change in BEL-GAD unit - Item 1', options: null },
-      'q40_2': { question: 'List 3 things to change in BEL-GAD unit - Item 2', options: null },
-      'q40_3': { question: 'List 3 things to change in BEL-GAD unit - Item 3', options: null },
+      'q39_1': { question: 'List 2 things good in BEL-GAD unit - Item 1', options: null },
+      'q39_2': { question: 'List 2 things good in BEL-GAD unit - Item 2', options: null },
+      'q40_1': { question: 'List 2 things to change in BEL-GAD unit - Item 1', options: null },
+      'q40_2': { question: 'List 2 things to change in BEL-GAD unit - Item 2', options: null },
       'q41': { question: 'Any other feedback or suggestions?', options: null },
       'q42': { question: 'Do you got enough opportunities to participate in extra curricular activities?', options: { 'yes': 'Yes', 'yes_work_pressure': 'Yes but due to work pressure I could not participate', 'yes_manager_discourages': 'Yes but reporting manager do not encourage to participate', 'no_rare_activities': 'No, very rare activities are organized' } }
     };
@@ -900,7 +924,7 @@ const BELSurvey2024 = () => {
       },
       // Q16 is now handled as a ranking question, not multi-select
       'q26': {
-        question: 'Most Effective Communication Channel of BEL-GAD (Select up to 2)',
+        question: 'Most Effective Communication Channel of BEL-GAD',
         section: 'COMMUNICATION & INFORMATION FLOW',
         options: {
           'email': 'Email/Email newsletters',
@@ -914,7 +938,7 @@ const BELSurvey2024 = () => {
         }
       },
       'q29': {
-        question: 'Preferred Recognition Forms (Select up to 3)',
+        question: 'Preferred Recognition Form',
         section: 'RECOGNITION & PERFORMANCE',
         options: {
           'public_praise': 'Public praise from manager/leadership',
@@ -1020,7 +1044,7 @@ const BELSurvey2024 = () => {
         let questionText;
         
         if (key.startsWith('q13_')) {
-          questionText = `Rank your top 3 development priorities - Priority ${value}`;
+          questionText = `Rank your top 2 development priorities - Priority ${value}`;
         } else if (key.startsWith('q16_')) {
           questionText = `Rank your top 3 benefits - Priority ${value}`;
         }
@@ -1351,10 +1375,10 @@ const BELSurvey2024 = () => {
             <Box
               key={key}
               onClick={() => {
-                if (questionKey === 'q6' || questionKey === 'q29') {
+                if (questionKey === 'q26' || questionKey === 'q29') {
+                  handleSingleSelectChip(questionKey, key);
+                } else if (questionKey === 'q6') {
                   handleCheckboxChangeWithLimit(`${questionKey}_${key}`, !isSelected, 3);
-                } else if (questionKey === 'q26') {
-                  handleCheckboxChangeWithLimit(`${questionKey}_${key}`, !isSelected, 2);
                 } else if (questionKey === 'q8') {
                   handleQ8CheckboxChange(`${questionKey}_${key}`, !isSelected);
                 } else {
@@ -1391,7 +1415,9 @@ const BELSurvey2024 = () => {
   };
 
   // Render ranking component with medal icons and dropdowns
-  const renderRankingComponent = (questionKey, options, title) => {
+  const renderRankingComponent = (questionKey, options, title, maxRank = 3) => {
+    const ranks = Array.from({ length: maxRank }, (_, i) => i + 1);
+    const validRankStrs = ranks.map(String);
     const getMedalIcon = (rank) => {
       switch(rank) {
         case 1: return '🥇';
@@ -1412,7 +1438,7 @@ const BELSurvey2024 = () => {
 
     const getAvailableOptions = (currentRank) => {
       const usedOptions = Object.keys(formData)
-        .filter(key => key.startsWith(`${questionKey}_`) && ['1', '2', '3'].includes(formData[key]))
+        .filter(key => key.startsWith(`${questionKey}_`) && validRankStrs.includes(formData[key]))
         .map(key => key.replace(`${questionKey}_`, ''));
       
       return Object.keys(options).filter(optionKey => {
@@ -1429,9 +1455,9 @@ const BELSurvey2024 = () => {
         <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600, mb: 2, textAlign: 'center' }}>
           {title}
         </Typography>
-        
-        {[1, 2, 3].map((rank) => {
-          const selectedOption = Object.keys(formData).find(key => 
+
+        {ranks.map((rank) => {
+          const selectedOption = Object.keys(formData).find(key =>
             key.startsWith(`${questionKey}_`) && formData[key] === rank.toString()
           );
           const selectedKey = selectedOption ? selectedOption.replace(`${questionKey}_`, '') : null;
@@ -1550,17 +1576,17 @@ const BELSurvey2024 = () => {
         {/* Progress Indicator */}
         <Box sx={{ mt: 2, textAlign: 'center' }}>
           <Typography variant="body2" sx={{ color: '#666', mb: 1, fontSize: isMobile ? '0.8rem' : '0.9rem' }}>
-            {language === 'hi' ? 
-              `प्रगति: ${Object.keys(formData).filter(key => 
-                key.startsWith(`${questionKey}_`) && ['1', '2', '3'].includes(formData[key])
-              ).length} में से 3 रैंकिंग पूरी` :
-              `Progress: ${Object.keys(formData).filter(key => 
-                key.startsWith(`${questionKey}_`) && ['1', '2', '3'].includes(formData[key])
-              ).length} of 3 rankings completed`
+            {language === 'hi' ?
+              `प्रगति: ${Object.keys(formData).filter(key =>
+                key.startsWith(`${questionKey}_`) && validRankStrs.includes(formData[key])
+              ).length} में से ${maxRank} रैंकिंग पूरी` :
+              `Progress: ${Object.keys(formData).filter(key =>
+                key.startsWith(`${questionKey}_`) && validRankStrs.includes(formData[key])
+              ).length} of ${maxRank} rankings completed`
             }
           </Typography>
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-            {[1, 2, 3].map((rank) => {
+            {ranks.map((rank) => {
               const isCompleted = Object.keys(formData).some(key => 
                 key.startsWith(`${questionKey}_`) && formData[key] === rank.toString()
               );
@@ -1957,12 +1983,6 @@ const BELSurvey2024 = () => {
                   👑 3. {t('survey.sections.leadership')}
                 </Typography>
                 
-                {/* Q7 */}
-                <QuestionBox hasError={!!validationErrors['q7']} data-question="q7">
-                  {renderQuestionTitle('q7', t('survey.questions.q7'))}
-                  {renderEmojiRating('q7', 'agreement')}
-                </QuestionBox>
-
                 {/* Q8 */}
                 <QuestionBox hasError={!!validationErrors['q8']} data-question="q8">
                   {renderQuestionTitle('q8', t('survey.questions.q8'))}
@@ -2155,7 +2175,7 @@ const BELSurvey2024 = () => {
                     cross_functional: t('survey.options.development_priorities.cross_functional'),
                     mentoring: t('survey.options.development_priorities.mentoring'),
                     certifications: t('survey.options.development_priorities.certifications')
-                  }, language === 'hi' ? 'नीचे दिए गए ड्रॉपडाउन का उपयोग करके अपनी शीर्ष 3 विकास प्राथमिकताओं का चयन करें:' : 'Select your top 3 development priorities using the dropdown below:')}
+                  }, language === 'hi' ? 'नीचे दिए गए ड्रॉपडाउन का उपयोग करके अपनी शीर्ष 2 विकास प्राथमिकताओं का चयन करें:' : 'Select your top 2 development priorities using the dropdown below:', 2)}
                 </QuestionBox>
 
                 {/* Q14 */}
@@ -2338,13 +2358,12 @@ const BELSurvey2024 = () => {
                 </QuestionBox>
 
                 {/* Q19 */}
-                <QuestionBox hasError={!!(validationErrors['q19_efficiency'] || validationErrors['q19_collaborate'] || validationErrors['q19_customers'] || validationErrors['q19_information'])} data-question="q19">
+                <QuestionBox hasError={!!(validationErrors['q19_efficiency'] || validationErrors['q19_customers'] || validationErrors['q19_information'])} data-question="q19">
                   {renderQuestionTitle('q19', t('survey.questions.q19'))}
-                  
+
                   <Box sx={{ mt: 2 }}>
                     {[
                       { key: 'q19_efficiency', label: t('survey.questions.q19_efficiency') },
-                      { key: 'q19_collaborate', label: t('survey.questions.q19_collaborate') },
                       { key: 'q19_customers', label: t('survey.questions.q19_customers') },
                       { key: 'q19_information', label: t('survey.questions.q19_information') }
                     ].map((item) => (
@@ -3105,42 +3124,6 @@ const BELSurvey2024 = () => {
                   </Box>
                 </QuestionBox>
 
-                {/* Q33 */}
-                <QuestionBox hasError={!!validationErrors['q33']} data-question="q33">
-                  {renderQuestionTitle('q33', t('survey.questions.q33'))}
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center', mt: 2 }}>
-                    {[
-                      { key: '1_2_months', label: t('survey.options.productivity_time.1_2_months'), color: '#4caf50' },
-                      { key: '3_4_months', label: t('survey.options.productivity_time.3_4_months'), color: '#8bc34a' },
-                      { key: '5_6_months', label: t('survey.options.productivity_time.5_6_months'), color: '#ff9800' },
-                      { key: 'still_not', label: t('survey.options.productivity_time.still_not'), color: '#f44336' }
-                    ].map((option) => (
-                      <ColorfulRadioOption
-                        key={option.key}
-                        selected={formData['q33'] === option.key}
-                        color={option.color}
-                        onClick={() => handleFieldChange('q33', option.key)}
-                      >
-                        {option.label}
-                      </ColorfulRadioOption>
-                    ))}
-                  </Box>
-                </QuestionBox>
-
-                {/* Q33a */}
-                <QuestionBox hasError={!!validationErrors['q33a']} data-question="q33a">
-                  {renderQuestionTitle('q33a', t('survey.questions.q33a'))}
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={3}
-                    value={formData['q33a'] || ''}
-                    onChange={(e) => handleFieldChange('q33a', e.target.value)}
-                    placeholder={t('survey.placeholders.text_response')}
-                    variant="outlined"
-                    sx={{ mt: 1 }}
-                  />
-                </QuestionBox>
               </CardContent>
             </SectionCard>
           </Fade>
@@ -3340,10 +3323,10 @@ const BELSurvey2024 = () => {
                   </QuestionBox>
                 ))}
 
-                {/* Q39 - 3 separate mandatory boxes */}
-                <QuestionBox hasError={!!(validationErrors['q39_1'] || validationErrors['q39_2'] || validationErrors['q39_3'])} data-question="q39">
+                {/* Q39 - 2 separate mandatory boxes */}
+                <QuestionBox hasError={!!(validationErrors['q39_1'] || validationErrors['q39_2'])} data-question="q39">
                   {renderQuestionTitle('q39', t('survey.questions.q39'))}
-                  {[1, 2, 3].map((num) => (
+                  {[1, 2].map((num) => (
                     <TextField
                       key={num}
                       fullWidth
@@ -3357,10 +3340,10 @@ const BELSurvey2024 = () => {
                   ))}
                 </QuestionBox>
 
-                {/* Q40 - 3 separate mandatory boxes */}
-                <QuestionBox hasError={!!(validationErrors['q40_1'] || validationErrors['q40_2'] || validationErrors['q40_3'])} data-question="q40">
+                {/* Q40 - 2 separate mandatory boxes */}
+                <QuestionBox hasError={!!(validationErrors['q40_1'] || validationErrors['q40_2'])} data-question="q40">
                   {renderQuestionTitle('q40', t('survey.questions.q40'))}
-                  {[1, 2, 3].map((num) => (
+                  {[1, 2].map((num) => (
                     <TextField
                       key={num}
                       fullWidth

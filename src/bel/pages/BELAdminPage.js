@@ -108,6 +108,7 @@ const BELAdminPage = () => {
   const [filteredWalkinData, setFilteredWalkinData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [exportingReadable, setExportingReadable] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [languageFilter, setLanguageFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
@@ -313,41 +314,47 @@ const BELAdminPage = () => {
     }
   }, [activeMenu, responses, walkinData, searchTerm, languageFilter, dateFilter, locationFilter, postFilter, isLocationActive]);
 
+  // Fetch every survey response matching the current filters, paging through results.
+  const fetchAllSurveyResponses = async () => {
+    const baseFilter = {
+      searchTerm: searchTerm || null,
+      language: languageFilter === 'all' ? null : languageFilter,
+      startDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
+      endDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
+      status: 'all',
+      sortBy: 'submissionTimestamp',
+      sortDirection: 'DESC'
+    };
+
+    const pageSize = 500;
+    const allResponses = [];
+    let page = 0;
+    let totalPages = 1;
+
+    do {
+      const resp = await apiService.post('/bel/survey/responses', {
+        ...baseFilter,
+        page,
+        size: pageSize
+      });
+      const pageData = (resp && resp.data) ? resp.data : {};
+      allResponses.push(...(pageData.content || []));
+      totalPages = pageData.totalPages || 1;
+      page += 1;
+    } while (page < totalPages);
+
+    return allResponses;
+  };
+
   const handleExport = async () => {
-    if (exporting) return;
-    
+    if (exporting || exportingReadable) return;
+
     try {
       setExporting(true);
       if (activeMenu === 'survey') {
         // Build the Excel on the client so every option becomes its own Yes/No
-        // column (same format as the bi-annual export). Fetch all matching
-        // responses first, paging through the results.
-        const baseFilter = {
-          searchTerm: searchTerm || null,
-          language: languageFilter === 'all' ? null : languageFilter,
-          startDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
-          endDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
-          status: 'all',
-          sortBy: 'submissionTimestamp',
-          sortDirection: 'DESC'
-        };
-
-        const pageSize = 500;
-        const allResponses = [];
-        let page = 0;
-        let totalPages = 1;
-
-        do {
-          const resp = await apiService.post('/bel/survey/responses', {
-            ...baseFilter,
-            page,
-            size: pageSize
-          });
-          const pageData = (resp && resp.data) ? resp.data : {};
-          allResponses.push(...(pageData.content || []));
-          totalPages = pageData.totalPages || 1;
-          page += 1;
-        } while (page < totalPages);
+        // column (same format as the bi-annual export).
+        const allResponses = await fetchAllSurveyResponses();
 
         if (!allResponses.length) {
           console.warn('No survey responses to export');
@@ -387,6 +394,32 @@ const BELAdminPage = () => {
       console.error('Error exporting data:', error);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Download the survey data in a compact "one column per question" layout, where
+  // each cell holds the actual answer(s) instead of a Yes/No column per option.
+  const handleExportReadable = async () => {
+    if (exporting || exportingReadable) return;
+
+    try {
+      setExportingReadable(true);
+      const allResponses = await fetchAllSurveyResponses();
+
+      if (!allResponses.length) {
+        console.warn('No survey responses to export');
+        return;
+      }
+
+      const rows = ExcelMappingService.generateBELSurveyExcelData(allResponses, 'readable');
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'BEL Survey (Q&A)');
+      XLSX.writeFile(wb, `bel_employee_survey_qa_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error('Error exporting survey data (readable):', error);
+    } finally {
+      setExportingReadable(false);
     }
   };
 
@@ -744,16 +777,46 @@ const BELAdminPage = () => {
                 <Typography variant="h6" mb={2}>
                   Download Complete Survey Data
                 </Typography>
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={exporting ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
-                  onClick={handleExport}
-                  disabled={exporting}
-                  sx={{ minWidth: 200 }}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? 2 : 4,
+                    justifyContent: 'center',
+                    alignItems: 'flex-start'
+                  }}
                 >
-                  {exporting ? 'Downloading...' : 'Download Excel'}
-                </Button>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={exporting ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
+                      onClick={handleExport}
+                      disabled={exporting || exportingReadable}
+                      sx={{ minWidth: 220 }}
+                    >
+                      {exporting ? 'Downloading...' : 'Download Excel (Detailed)'}
+                    </Button>
+                    <Typography variant="caption" display="block" color="text.secondary" mt={0.5}>
+                      One Yes/No column per answer option
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      startIcon={exportingReadable ? <CircularProgress size={20} color="inherit" /> : <DownloadIcon />}
+                      onClick={handleExportReadable}
+                      disabled={exporting || exportingReadable}
+                      sx={{ minWidth: 220 }}
+                    >
+                      {exportingReadable ? 'Downloading...' : 'Download Excel (Q&A)'}
+                    </Button>
+                    <Typography variant="caption" display="block" color="text.secondary" mt={0.5}>
+                      One column per question with the answer
+                    </Typography>
+                  </Box>
+                </Box>
               </Paper>
 
 
