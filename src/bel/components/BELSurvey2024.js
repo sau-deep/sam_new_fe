@@ -39,6 +39,14 @@ import {
 import belLogo from '../assets/bel_logo.png';
 import apiService from '../../services/api';
 import belI18n from '../i18n-beltest';
+import BELPersonalInfoForm from './BELPersonalInfoForm';
+import {
+  EMPTY_PERSONAL_INFO,
+  DEPARTMENT_ALLOWED,
+  DEPARTMENT_MAX_LENGTH,
+  GRADE_ALLOWED,
+  GRADE_MAX_LENGTH
+} from '../constants/personalInfo';
 
 // Animations
 const fadeIn = keyframes`
@@ -290,6 +298,9 @@ const BELSurvey2024 = () => {
   const [progress, setProgress] = useState(0);
   const [validationErrors, setValidationErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [step, setStep] = useState('personal'); // 'personal' -> 'survey'
+  const [personalInfo, setPersonalInfo] = useState(EMPTY_PERSONAL_INFO);
+  const [personalInfoErrors, setPersonalInfoErrors] = useState({});
 
   const totalSections = 13;
   const totalRequiredQuestions = 65; // Approximate count of required questions
@@ -304,7 +315,7 @@ const BELSurvey2024 = () => {
     const getRequiredFields = () => {
       const required = [
         // All questions are mandatory except text inputs (excluding Section 13)
-        'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
+        'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
         // Multi-part questions
         'q4_psychological', 'q4_innovation', 'q4_diversity', 'q4_communication', 'q4_trust',
         'q10_vision', 'q10_transparency', 'q10_feedback', 'q10_change',
@@ -448,6 +459,57 @@ const BELSurvey2024 = () => {
     }
   };
 
+  // ---- Personal Information step (shown before the survey questions) ----
+  const handlePersonalInfoChange = (fieldName, value) => {
+    setPersonalInfo(prev => ({ ...prev, [fieldName]: value }));
+    if (personalInfoErrors[fieldName] && value !== '' && value !== null && value !== undefined) {
+      setPersonalInfoErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
+    }
+  };
+
+  const validatePersonalInfo = () => {
+    const newErrors = {};
+    const requiredMsg = t('personalInfo.validation.required');
+
+    ['sbuName', 'age', 'serviceInBel', 'gender', 'departmentName', 'gradeWageGroup'].forEach(field => {
+      const value = personalInfo[field];
+      if (!value || value.toString().trim() === '') {
+        newErrors[field] = requiredMsg;
+      }
+    });
+
+    // Format checks (defense-in-depth; the inputs already restrict typing)
+    if (!newErrors.departmentName &&
+        (!DEPARTMENT_ALLOWED.test(personalInfo.departmentName) ||
+         personalInfo.departmentName.length > DEPARTMENT_MAX_LENGTH)) {
+      newErrors.departmentName = t('personalInfo.validation.departmentName');
+    }
+    if (!newErrors.gradeWageGroup &&
+        (!GRADE_ALLOWED.test(personalInfo.gradeWageGroup) ||
+         personalInfo.gradeWageGroup.length > GRADE_MAX_LENGTH)) {
+      newErrors.gradeWageGroup = t('personalInfo.validation.gradeWageGroup');
+    }
+
+    setPersonalInfoErrors(newErrors);
+    return { isValid: Object.keys(newErrors).length === 0 };
+  };
+
+  const handleContinue = () => {
+    const { isValid } = validatePersonalInfo();
+    if (!isValid) {
+      setErrorMessage(t('personalInfo.validation.incomplete'));
+      setShowError(true);
+      return;
+    }
+    setShowError(false);
+    setStep('survey');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Handle checkbox changes
   const handleCheckboxChange = (fieldName, checked) => {
     setFormData(prev => ({
@@ -551,7 +613,7 @@ const BELSurvey2024 = () => {
   const isQuestionRequired = (questionKey) => {
     // All questions are required except text inputs (excluding Section 13)
     const alwaysRequired = [
-      'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
+      'q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34',
       'q37', 'q38', 'q39', 'q40'
     ];
     
@@ -620,7 +682,7 @@ const BELSurvey2024 = () => {
     // All questions are mandatory except text inputs (excluding Section 13)
     
     // Single-select questions (mandatory)
-    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34'];
+    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q7', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q33', 'q34'];
     singleSelectQuestions.forEach(field => {
       if (isEmpty(formData[field])) addError(field);
     });
@@ -800,7 +862,8 @@ const BELSurvey2024 = () => {
       'q40_1': { question: 'List 3 things to change in BEL-GAD unit - Item 1', options: null },
       'q40_2': { question: 'List 3 things to change in BEL-GAD unit - Item 2', options: null },
       'q40_3': { question: 'List 3 things to change in BEL-GAD unit - Item 3', options: null },
-      'q41': { question: 'Any other feedback or suggestions?', options: null }
+      'q41': { question: 'Any other feedback or suggestions?', options: null },
+      'q42': { question: 'Do you got enough opportunities to participate in extra curricular activities?', options: { 'yes': 'Yes', 'yes_work_pressure': 'Yes but due to work pressure I could not participate', 'yes_manager_discourages': 'Yes but reporting manager do not encourage to participate', 'no_rare_activities': 'No, very rare activities are organized' } }
     };
 
     // Multi-select question mappings with section organization
@@ -846,7 +909,8 @@ const BELSurvey2024 = () => {
           'digital_platforms': 'Digital workplace platforms',
           'video_messages': 'Video messages from leadership',
           'presentations': 'Department presentations',
-          'one_on_one': 'One-on-one with manager'
+          'one_on_one': 'One-on-one with manager',
+          'anything_else': 'Any other'
         }
       },
       'q29': {
@@ -1029,8 +1093,20 @@ const BELSurvey2024 = () => {
       // Convert to readable format (use original formData for display purposes)
       const readableResponses = convertToReadableFormat(formData);
 
+      // Add the personal-information answers to the readable export so they show
+      // up as columns in the admin export automatically. Keys deliberately avoid
+      // the substring "other" (convertToReadableFormat drops such keys).
+      readableResponses['SBU Name'] = personalInfo.sbuName;
+      readableResponses['Age'] = personalInfo.age;
+      readableResponses['Service in BEL'] = personalInfo.serviceInBel;
+      readableResponses['Gender'] = personalInfo.gender;
+      readableResponses['Department Name'] = personalInfo.departmentName;
+      readableResponses['Grade/Wage Group'] = personalInfo.gradeWageGroup;
+
       const surveyData = {
         language,
+        personalInfo,
+        department: personalInfo.departmentName, // reuses the existing `department` column
         responses: cleanedResponses,
         readableResponses: readableResponses,
         timestamp: new Date().toISOString(),
@@ -1047,6 +1123,9 @@ const BELSurvey2024 = () => {
         setTimeout(() => {
           setFormData({});
           setProgress(0);
+          setPersonalInfo(EMPTY_PERSONAL_INFO);
+          setPersonalInfoErrors({});
+          setStep('personal');
         }, 3000);
       } else {
         throw new Error(response?.message || 'Failed to submit survey');
@@ -1509,6 +1588,8 @@ const BELSurvey2024 = () => {
       {/* Progress Bar */}
       <ProgressContainer>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {step === 'survey' && (
+          <>
           <Typography variant="body2" sx={{ minWidth: '80px' }}>
             Progress: {Math.round(progress)}%
           </Typography>
@@ -1524,7 +1605,9 @@ const BELSurvey2024 = () => {
               }
             }} 
           />
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          </>
+          )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto' }}>
             <Typography variant="caption" sx={{ color: 'white', fontWeight: 600 }}>
               {t('survey.language')}:
             </Typography>
@@ -1574,7 +1657,20 @@ const BELSurvey2024 = () => {
         </Zoom>
       </HeaderContainer>
 
+      {/* Personal Information Step */}
+      {step === 'personal' && (
+        <BELPersonalInfoForm
+          values={personalInfo}
+          errors={personalInfoErrors}
+          onChange={handlePersonalInfoChange}
+          onContinue={handleContinue}
+          t={t}
+          isMobile={isMobile}
+        />
+      )}
+
       {/* Survey Form */}
+      {step === 'survey' && (
       <SurveyContainer>
         <form onSubmit={handleSubmit}>
           
@@ -2403,6 +2499,54 @@ const BELSurvey2024 = () => {
                     sx={{ mt: 1 }}
                   />
                 </QuestionBox>
+
+                {/* Q42 - Extra-curricular activities */}
+                <QuestionBox hasError={!!validationErrors['q42']} data-question="q42">
+                  {renderQuestionTitle('q42', t('survey.questions.q42'))}
+                  <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.5,
+                    mt: 1.5
+                  }}>
+                    {[
+                      { key: 'yes', label: t('survey.options.extracurricular.yes'), emoji: '✅', color: '#4caf50' },
+                      { key: 'yes_work_pressure', label: t('survey.options.extracurricular.yes_work_pressure'), emoji: '😓', color: '#ff9800' },
+                      { key: 'yes_manager_discourages', label: t('survey.options.extracurricular.yes_manager_discourages'), emoji: '🚫', color: '#ff5722' },
+                      { key: 'no_rare_activities', label: t('survey.options.extracurricular.no_rare_activities'), emoji: '📭', color: '#f44336' }
+                    ].map((option) => (
+                      <Box
+                        key={option.key}
+                        onClick={() => handleFieldChange('q42', option.key)}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '8px 12px',
+                          borderRadius: '12px',
+                          backgroundColor: formData['q42'] === option.key ? option.color : `${option.color}40`,
+                          color: formData['q42'] === option.key ? 'white' : option.color,
+                          border: formData['q42'] === option.key ? '3px solid #1976d2' : '2px solid transparent',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease',
+                          boxShadow: formData['q42'] === option.key
+                            ? `0 6px 20px ${option.color}80, 0 0 0 2px #fff`
+                            : '0 3px 10px rgba(0,0,0,0.1)',
+                          transform: formData['q42'] === option.key ? 'scale(1.02)' : 'scale(1)',
+                          '&:hover': {
+                            transform: 'scale(1.02)',
+                            backgroundColor: formData['q42'] === option.key ? option.color : `${option.color}60`,
+                            boxShadow: `0 6px 20px ${option.color}60`
+                          }
+                        }}
+                      >
+                        <Box sx={{ fontSize: '1.3rem', mr: 1.5, opacity: formData['q42'] === option.key ? 1 : 0.7 }}>{option.emoji}</Box>
+                        <Box sx={{ fontSize: '0.9rem', fontWeight: 600, color: formData['q42'] === option.key ? 'white' : '#333' }}>
+                          {option.label}
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                </QuestionBox>
               </CardContent>
             </SectionCard>
           </Fade>
@@ -2654,7 +2798,8 @@ const BELSurvey2024 = () => {
                     digital_platforms: t('survey.options.communication_preferences.digital_platforms'),
                     video_messages: t('survey.options.communication_preferences.video_messages'),
                     presentations: t('survey.options.communication_preferences.presentations'),
-                    one_on_one: t('survey.options.communication_preferences.one_on_one')
+                    one_on_one: t('survey.options.communication_preferences.one_on_one'),
+                    anything_else: t('survey.options.communication_preferences.anything_else')
                   })}
                 </QuestionBox>
 
@@ -3326,6 +3471,7 @@ const BELSurvey2024 = () => {
           </Zoom>
         </form>
       </SurveyContainer>
+      )}
 
       {/* Footer */}
       <Box

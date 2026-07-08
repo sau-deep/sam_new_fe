@@ -1,4 +1,62 @@
 {
+  "personalInfo": {
+    "title": "Personal Information",
+    "subtitle": "Please tell us a little about yourself before starting the survey. All fields are required.",
+    "continue": "Continue to Survey",
+    "labels": {
+      "sbuName": "SBU Name",
+      "age": "Age",
+      "serviceInBel": "Service in BEL",
+      "gender": "Gender",
+      "departmentName": "Department Name",
+      "gradeWageGroup": "Grade / Wage Group"
+    },
+    "placeholders": {
+      "sbuName": "Select your SBU",
+      "age": "Choose your age",
+      "serviceInBel": "Select Service Years",
+      "gender": "Select Gender",
+      "departmentName": "Enter your department",
+      "gradeWageGroup": "e.g. E3"
+    },
+    "hints": {
+      "departmentName": "Letters and spaces only (max 100)",
+      "gradeWageGroup": "Alphanumeric, max 10 (e.g. E3)"
+    },
+    "options": {
+      "sbu": {
+        "radar": "RADAR",
+        "dccs": "DCCS",
+        "ncs": "NCS",
+        "sccs": "SCCS",
+        "central": "CENTRAL",
+        "antenna": "ANTENNA"
+      },
+      "age": {
+        "a19_25": "19-25 years",
+        "a26_35": "26-35 years",
+        "a36_45": "36-45 years",
+        "a45_plus": "45 and above"
+      },
+      "service": {
+        "s0_5": "0-5 years",
+        "s5_10": "5-10 years",
+        "s10_20": "10-20 years",
+        "s20_30": "20-30 years",
+        "s30_plus": "30 and above"
+      },
+      "gender": {
+        "male": "Male",
+        "female": "Female"
+      }
+    },
+    "validation": {
+      "required": "This field is required",
+      "departmentName": "Only letters and spaces are allowed (max 100)",
+      "gradeWageGroup": "Only letters and numbers are allowed (max 10)",
+      "incomplete": "Please complete all personal information fields before continuing."
+    }
+  },
   "survey": {
     "title": "EMPLOYEE SATISFACTION & ENGAGEMENT SURVEY – 2025",
     "subtitle": "Thank you for helping us shape an even better workplace. Your answers are confidential and reported only in aggregate.",
@@ -92,7 +150,8 @@
       "q38": "What would make you more effective in your role?",
       "q39": "List 3 things which you find good in the BEL-GAD unit.",
       "q40": "List 3 things which you would like to change in the BEL-GAD unit.",
-      "q41": "Any other feedback or suggestions?"
+      "q41": "Any other feedback or suggestions?",
+      "q42": "Do you got enough opportunities to participate in extra curricular activities?"
     },
     "options": {
       "frequency": {
@@ -267,7 +326,8 @@
         "digital_platforms": "💻 Digital workplace platforms/BEL Sampark/SAMVAD/BEL Jharokha",
         "video_messages": "📹 Video messages from leadership",
         "presentations": "📊 Department presentations",
-        "one_on_one": "👤 One-on-one with manager"
+        "one_on_one": "👤 One-on-one with manager",
+        "anything_else": "✏️ Any other"
       },
       "recognition_frequency": {
         "daily": "😍 Daily",
@@ -335,6 +395,12 @@
         "culture_issues": "🏢 Issues with company culture or work environment.",
         "better_opportunities": "🌟 Better opportunities elsewhere.",
         "work_life_balance": "⚖️ Poor work-life balance."
+      },
+      "extracurricular": {
+        "yes": "Yes",
+        "yes_work_pressure": "Yes but due to work pressure I could not participate",
+        "yes_manager_discourages": "Yes but reporting manager do not encourage to participate",
+        "no_rare_activities": "No, very rare activities are organized"
       }
     },
     "placeholders": {

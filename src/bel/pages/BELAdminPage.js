@@ -58,9 +58,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
+import * as XLSX from 'xlsx';
 import belLogo from '../assets/bel_logo.png';
 import apiService from '../../services/api';
 import belRobustService from '../../services/belRobustService';
+import ExcelMappingService from '../../services/ExcelMappingService';
 import BELCodesAdmin from '../components/BELCodesAdmin';
 
 // Styled components
@@ -317,31 +319,46 @@ const BELAdminPage = () => {
     try {
       setExporting(true);
       if (activeMenu === 'survey') {
-        const filterData = {
-          searchTerm,
+        // Build the Excel on the client so every option becomes its own Yes/No
+        // column (same format as the bi-annual export). Fetch all matching
+        // responses first, paging through the results.
+        const baseFilter = {
+          searchTerm: searchTerm || null,
           language: languageFilter === 'all' ? null : languageFilter,
           startDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
           endDate: dateFilter ? new Date(dateFilter).toISOString().split('T')[0] : null,
           status: 'all',
-          page: 0,
-          size: 1000
+          sortBy: 'submissionTimestamp',
+          sortDirection: 'DESC'
         };
 
-        const response = await apiService.post('/bel/survey/export', filterData, {
-          responseType: 'blob'
-        });
+        const pageSize = 500;
+        const allResponses = [];
+        let page = 0;
+        let totalPages = 1;
 
-        if (response && response.data) {
-          const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `bel_employee_survey_${new Date().toISOString().split('T')[0]}.xlsx`;
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.body.removeChild(a);
+        do {
+          const resp = await apiService.post('/bel/survey/responses', {
+            ...baseFilter,
+            page,
+            size: pageSize
+          });
+          const pageData = (resp && resp.data) ? resp.data : {};
+          allResponses.push(...(pageData.content || []));
+          totalPages = pageData.totalPages || 1;
+          page += 1;
+        } while (page < totalPages);
+
+        if (!allResponses.length) {
+          console.warn('No survey responses to export');
+          return;
         }
+
+        const rows = ExcelMappingService.generateBELSurveyExcelData(allResponses);
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'BEL Survey');
+        XLSX.writeFile(wb, `bel_employee_survey_${new Date().toISOString().split('T')[0]}.xlsx`);
       } else if (activeMenu === 'walkin') {
         const filterData = {
           searchTerm,

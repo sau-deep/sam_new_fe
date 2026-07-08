@@ -590,6 +590,241 @@ class ExcelMappingService {
   }
 
   /**
+   * Generate Excel-ready data for the BEL employee-survey export.
+   *
+   * Mirrors the bi-annual export style: every option of every choice question
+   * becomes its own column with a 'Yes'/'No' indicator based on what the
+   * respondent selected. Free-text answers print the typed value as-is.
+   *
+   * Reads each record's raw `responses` blob. Values there are canonical
+   * English stored as strings: booleans as 'true'/'false', single-selects as
+   * their option key (e.g. 'always'), rankings as '1'|'2'|'3', and text/numeric
+   * answers as the typed value.
+   */
+  static generateBELSurveyExcelData(records) {
+    if (!Array.isArray(records)) return [];
+
+    const safe = (v) => (v === null || v === undefined ? '' : v);
+    const asStr = (v) => (v === null || v === undefined ? '' : String(v));
+    const yn = (cond) => (cond ? 'Yes' : 'No');
+    const isTrue = (v) => v === true || asStr(v) === 'true';
+    const col = (label, optLabel) => `${label} - ${optLabel}`;
+
+    const formatDateTime = (val) => {
+      if (val === null || val === undefined || val === '') return '';
+      if (Array.isArray(val)) {
+        const [y, m, d, h = 0, mi = 0, s = 0] = val;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${y}-${pad(m)}-${pad(d)} ${pad(h)}:${pad(mi)}:${pad(s)}`;
+      }
+      if (typeof val === 'string') return val.replace('T', ' ');
+      return String(val);
+    };
+
+    // Reusable option sets as [responseValue, readableLabel] pairs (display order).
+    const AGREEMENT = [['strongly_agree', 'Strongly Agree'], ['agree', 'Agree'], ['neutral', 'Neutral'], ['disagree', 'Disagree'], ['strongly_disagree', 'Strongly Disagree']];
+    const RATING_1_5 = [['1', '1 - Poor'], ['2', '2 - Below Average'], ['3', '3 - Average'], ['4', '4 - Good'], ['5', '5 - Excellent']];
+    const GRADE = [['a_plus', 'A+'], ['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D'], ['f', 'F']];
+    const EGFP = [['excellent', 'Excellent'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor']];
+    const COMPENSATION = [['much_above', 'Much above'], ['above', 'Above'], ['fair', 'Fair'], ['below', 'Below'], ['much_below', 'Much below']];
+    const CAPABILITY = [['leading', 'Leading'], ['following', 'Following'], ['lagging', 'Lagging'], ['struggling', 'Struggling']];
+
+    // Leading identification / personal-info columns (read from the record itself,
+    // not from the `responses` blob). [columnHeader, recordField]
+    const META = [
+      ['ID', 'id'],
+      ['Submitted At', 'submissionTimestamp'],
+      ['Employee ID', 'employeeId'],
+      ['SBU Name', 'sbuName'],
+      ['Age', 'age'],
+      ['Service in BEL', 'serviceInBel'],
+      ['Gender', 'gender'],
+      ['Department', 'department'],
+      ['Grade/Wage Group', 'gradeWageGroup'],
+      ['Language', 'language'],
+      ['Version', 'version'],
+      ['Status', 'status'],
+    ];
+
+    // Survey questions in display order. `label` is the human-readable column
+    // prefix; each option contributes a `"<label> - <optionLabel>"` column.
+    // `t` = how to expand the question:
+    //   single      radio: one Yes/No column per option
+    //   multi       checkbox: one Yes/No column per option (boolean keys `<k>_<opt>`)
+    //   singleOther radio whose options already include 'other', plus a free-text field
+    //   multiOther  checkbox + a separate 'other' toggle (`selectedKey`) and free-text (`textKey`)
+    //   ranking     one column per item; value = the chosen rank ('1'|'2'|'3') or 'No'
+    //   value/text  print the raw typed value in a single column (header = `label`)
+    // `o` holds [responseValue, readableLabel] pairs.
+    const SCHEMA = [
+      // 1. Overall job satisfaction & engagement
+      { t: 'single', k: 'q1', label: 'Q1 Motivation frequency', o: [['always', 'Always'], ['very_often', 'Very Often'], ['often', 'Often'], ['sometimes', 'Sometimes'], ['rarely', 'Rarely'], ['never', 'Never']] },
+      { t: 'value', k: 'q2', label: 'Q2 NPS - recommend BEL (1-10)' },
+      { t: 'text', k: 'q2a', label: 'Q2a NPS - what would move to 10' },
+      { t: 'single', k: 'q3', label: 'Q3 Job satisfaction', o: [['love_job', 'I love my job and look forward to coming to work'], ['generally_satisfied', "I'm generally satisfied with my work"], ['meets_needs', 'My job meets my basic needs'], ['somewhat_dissatisfied', "I'm somewhat dissatisfied with my work"], ['looking_opportunities', "I'm actively looking for other opportunities"]] },
+      { t: 'text', k: 'q3a', label: 'Q3a Dissatisfaction reasons' },
+      // 2. Work environment & culture
+      { t: 'single', k: 'q4_psychological', label: 'Q4 Culture - Psychological safety', o: RATING_1_5 },
+      { t: 'single', k: 'q4_innovation', label: 'Q4 Culture - Innovation encouragement', o: RATING_1_5 },
+      { t: 'single', k: 'q4_diversity', label: 'Q4 Culture - Diversity & inclusion', o: RATING_1_5 },
+      { t: 'single', k: 'q4_communication', label: 'Q4 Culture - Open communication', o: RATING_1_5 },
+      { t: 'single', k: 'q4_trust', label: 'Q4 Culture - Trust among colleagues', o: RATING_1_5 },
+      { t: 'single', k: 'q5', label: 'Q5 Sense of belonging', o: [['truly_belong', 'I feel like I truly belong and can be my authentic self'], ['generally_included', 'I generally feel included but sometimes feel like an outsider'], ['dont_fit', "I often feel like I don't quite fit in"], ['excluded', 'I feel excluded or isolated']] },
+      { t: 'multi', k: 'q6', label: 'Q6 Culture descriptors', o: [['collaborative', 'Collaborative'], ['competitive', 'Competitive'], ['innovative', 'Innovative'], ['hierarchical', 'Hierarchical'], ['flexible', 'Flexible'], ['fast_paced', 'Fast-paced'], ['supportive', 'Supportive'], ['inclusive', 'Inclusive'], ['transparent', 'Transparent'], ['bureaucratic', 'Bureaucratic']] },
+      // 3. Leadership & management excellence
+      { t: 'single', k: 'q7', label: 'Q7 Part of a team / shared vision', o: AGREEMENT },
+      { t: 'multi', k: 'q8', label: 'Q8 Manager behaviors', o: [['clear_direction', 'Provides clear direction and priorities'], ['recognizes', 'Recognizes and appreciates my contributions'], ['supports_development', 'Supports my professional development'], ['gives_feedback', 'Gives constructive feedback regularly'], ['trusts_decisions', 'Trusts me to make decisions in my role'], ['available', 'Is available when I need guidance'], ['demonstrates_values', 'Demonstrates company values consistently'], ['none', 'None of the above']] },
+      { t: 'single', k: 'q9', label: 'Q9 Role clarity & contribution', o: AGREEMENT },
+      { t: 'single', k: 'q10_vision', label: 'Q10 Leadership - Vision & strategy', o: GRADE },
+      { t: 'single', k: 'q10_transparency', label: 'Q10 Leadership - Transparency', o: GRADE },
+      { t: 'single', k: 'q10_feedback', label: 'Q10 Leadership - Acting on feedback', o: GRADE },
+      { t: 'single', k: 'q10_change', label: 'Q10 Leadership - Leading through change', o: GRADE },
+      // 4. Career growth & development
+      { t: 'single', k: 'q11', label: 'Q11 Career path clarity', o: [['very_clear', 'Yes, very clear'], ['somewhat_clear', 'Somewhat clear'], ['unclear', 'Unclear'], ['no_path', 'No path exists']] },
+      { t: 'text', k: 'q11a', label: 'Q11a Career support needed' },
+      { t: 'single', k: 'q12', label: 'Q12 Professional development hours', o: [['0', '0 hours'], ['1_10', '1-10 hours'], ['11_25', '11-25 hours'], ['26_50', '26-50 hours'], ['50_plus', '50+ hours']] },
+      { t: 'ranking', k: 'q13', label: 'Q13 Development priorities (rank 1-3)', o: [['technical', 'Technical/functional skills'], ['leadership', 'Leadership and management training'], ['digital', 'Digital/technology skills'], ['communication', 'Communication and presentation skills'], ['project_management', 'Project management'], ['cross_functional', 'Cross-functional experience'], ['mentoring', 'Mentoring/coaching'], ['certifications', 'Industry certifications']] },
+      { t: 'single', k: 'q14', label: 'Q14 Development opportunity quality', o: [['world_class', 'World-class'], ['above_average', 'Above average'], ['average', 'Average'], ['below_average', 'Below average'], ['poor', 'Poor']] },
+      // 5. Compensation & total rewards
+      { t: 'single', k: 'q15_market', label: 'Q15 Fair pay - vs market', o: COMPENSATION },
+      { t: 'single', k: 'q15_contributions', label: 'Q15 Fair pay - vs contributions', o: COMPENSATION },
+      { t: 'single', k: 'q15_colleagues', label: 'Q15 Fair pay - vs colleagues', o: COMPENSATION },
+      { t: 'ranking', k: 'q16', label: 'Q16 Benefits (rank 1-3)', o: [['medical', 'Medical policy'], ['pension', 'Pension scheme'], ['retired_health', 'Retired employee health scheme'], ['besafe', 'BESAFE Scheme'], ['leaves', 'Number of leaves granted'], ['prp_ppi', 'PRP/PPI'], ['creche', 'Creche facility'], ['quarters', 'Company quarters'], ['iut', 'IUT Benefits'], ['club', 'Club facility'], ['canteen', 'Canteen']] },
+      { t: 'text', k: 'q17', label: 'Q17 New benefit suggestion' },
+      // 6. Technology & digital enablement
+      { t: 'single', k: 'q18', label: 'Q18 Technology tools', o: [['cutting_edge', 'Cutting-edge'], ['modern', 'Modern & meets needs'], ['adequate', 'Adequate but could be better'], ['outdated', 'Outdated & slow'], ['hindering', 'Seriously hindering']] },
+      { t: 'single', k: 'q19_efficiency', label: 'Q19 Tech enables - Work efficiently', o: EGFP },
+      { t: 'single', k: 'q19_collaborate', label: 'Q19 Tech enables - Collaboration', o: EGFP },
+      { t: 'single', k: 'q19_customers', label: 'Q19 Tech enables - Serve customers', o: EGFP },
+      { t: 'single', k: 'q19_information', label: 'Q19 Tech enables - Access information', o: EGFP },
+      // 7. Work-life integration & wellbeing
+      { t: 'single', k: 'q20', label: 'Q20 Work-life balance', o: [['excellent', 'Excellent'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor'], ['terrible', 'Terrible']] },
+      { t: 'single', k: 'q21', label: 'Q21 Disconnect outside work hours', o: AGREEMENT },
+      { t: 'single', k: 'q22', label: 'Q22 Mental health / wellbeing support', o: [['outstanding', 'Outstanding support'], ['good', 'Good support'], ['some', 'Some support'], ['limited', 'Limited support'], ['no_support', 'No support']] },
+      { t: 'text', k: 'q22a', label: 'Q22a Wellbeing support ideas' },
+      { t: 'single', k: 'q42', label: 'Q42 Extra-curricular opportunities', o: [['yes', 'Yes'], ['yes_work_pressure', 'Yes but due to work pressure I could not participate'], ['yes_manager_discourages', 'Yes but reporting manager do not encourage to participate'], ['no_rare_activities', 'No, very rare activities are organized']] },
+      // 8. Innovation & future focus
+      { t: 'single', k: 'q23', label: 'Q23 Encouraged to share ideas', o: [['highly_encouraged', 'Highly encouraged'], ['somewhat_encouraged', 'Somewhat encouraged'], ['discouraged', 'Discouraged'], ['strongly_discouraged', 'Strongly discouraged']] },
+      { t: 'single', k: 'q24_market', label: 'Q24 Capability - Market changes', o: CAPABILITY },
+      { t: 'single', k: 'q24_technology', label: 'Q24 Capability - Technology adoption', o: CAPABILITY },
+      { t: 'single', k: 'q24_innovation', label: 'Q24 Capability - Innovation culture', o: CAPABILITY },
+      { t: 'single', k: 'q24_digital', label: 'Q24 Capability - Digital transformation', o: CAPABILITY },
+      { t: 'singleOther', k: 'q25', label: 'Q25 Biggest innovation barrier', o: [['time_resources', 'Lack of time/resources'], ['risk_averse', 'Risk-averse culture'], ['unclear_processes', 'Unclear processes'], ['insufficient_funding', 'Insufficient funding'], ['lack_support', 'Lack of leadership support'], ['skills_gaps', 'Skills/capability gaps'], ['other', 'Other']], textKey: 'q25_other' },
+      // 9. Communication & information flow
+      { t: 'multi', k: 'q26', label: 'Q26 Preferred communication methods', o: [['email', 'Email/Email newsletters'], ['meetings', 'Team meetings'], ['notice_board', 'Notice board'], ['digital_platforms', 'Digital workplace platforms'], ['video_messages', 'Video messages from leadership'], ['presentations', 'Department presentations'], ['one_on_one', 'One-on-one with manager'], ['anything_else', 'Any other']] },
+      { t: 'single', k: 'q27_strategy', label: 'Q27 Comms effectiveness - Strategy & goals', o: EGFP },
+      { t: 'single', k: 'q27_changes', label: 'Q27 Comms effectiveness - Role changes', o: EGFP },
+      { t: 'single', k: 'q27_performance', label: 'Q27 Comms effectiveness - Performance expectations', o: EGFP },
+      { t: 'single', k: 'q27_recognition', label: 'Q27 Comms effectiveness - Recognition', o: EGFP },
+      // 10. Recognition & performance
+      { t: 'single', k: 'q28', label: 'Q28 Recognition frequency', o: [['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['annually', 'Annually'], ['rarely', 'Rarely/Never']] },
+      { t: 'multi', k: 'q29', label: 'Q29 Meaningful recognition forms', o: [['public_praise', 'Public praise from manager/leadership'], ['thank_you_notes', 'Written thank you notes'], ['monetary', 'Monetary rewards/bonuses'], ['development', 'Professional development opportunities'], ['responsibilities', 'Increased responsibilities/stretch assignments'], ['peer_awards', 'Peer nominations/awards'], ['advancement', 'Career advancement']] },
+      { t: 'single', k: 'q30', label: 'Q30 Performance evaluated fairly', o: [['completely_fair', 'Yes, completely fair'], ['mostly_fair', 'Mostly fair'], ['somewhat_fair', 'Somewhat fair'], ['unfair', 'Unfair'], ['very_unfair', 'Very unfair']] },
+      { t: 'text', k: 'q30a', label: 'Q30a Review process improvements' },
+      // 11. Onboarding experience
+      { t: 'single', k: 'q31', label: 'Q31 Onboarding experience', o: [['exceptional', 'Exceptional'], ['good', 'Good'], ['average', 'Average'], ['poor', 'Poor'], ['terrible', 'Terrible']] },
+      { t: 'single', k: 'q32', label: 'Q32 Onboarding resources & training', o: [['had_everything', 'Yes, I had everything I needed'], ['had_most', 'I had most of what I needed'], ['missing_few', 'I was missing a few key things'], ['did_not_have', 'I did not have the resources and training I needed']] },
+      { t: 'single', k: 'q33', label: 'Q33 Time to full productivity', o: [['1_2_months', '1-2 months'], ['3_4_months', '3-4 months'], ['5_6_months', '5-6 months'], ['still_not', 'Still not there']] },
+      { t: 'text', k: 'q33a', label: 'Q33a Productivity accelerators' },
+      // 12. Future outlook
+      { t: 'single', k: 'q34', label: 'Q34 At BEL in 5 years', o: [['yes_definitely', 'Yes, definitely'], ['probably', 'Probably'], ['unsure', 'Unsure'], ['probably_not', 'Probably not'], ['definitely_not', 'Definitely not']] },
+      { t: 'multiOther', k: 'q35', label: 'Q35 Reasons for staying', o: [['meaningful_work', 'My work is meaningful and enjoyable'], ['great_relationships', 'I have a great relationship with my manager and team'], ['satisfied_compensation', 'I am satisfied with my compensation and benefits'], ['growth_opportunities', 'I see strong opportunities for career growth'], ['believe_mission', "I believe in the company's mission and leadership"], ['culture_fit', 'The company culture is a great fit for me']], selectedKey: 'q35_other_selected', textKey: 'q35_other' },
+      { t: 'multiOther', k: 'q36', label: 'Q36 Factors for leaving', o: [['compensation_concerns', 'Concerns about compensation or benefits'], ['lack_growth', 'Lack of career growth opportunities'], ['management_issues', 'Dissatisfaction with management or leadership'], ['work_not_engaging', 'The work is not engaging or meaningful'], ['culture_issues', 'Issues with company culture or work environment'], ['better_opportunities', 'Better opportunities elsewhere'], ['work_life_balance', 'Poor work-life balance']], selectedKey: 'q36_other_selected', textKey: 'q36_other' },
+      // 13. Open-ended insights
+      { t: 'text', k: 'q37', label: 'Q37 If CMD for a day - first change' },
+      { t: 'text', k: 'q38', label: 'Q38 What would make you more effective' },
+      { t: 'text', k: 'q39_1', label: 'Q39 Good in BEL-GAD unit #1' },
+      { t: 'text', k: 'q39_2', label: 'Q39 Good in BEL-GAD unit #2' },
+      { t: 'text', k: 'q39_3', label: 'Q39 Good in BEL-GAD unit #3' },
+      { t: 'text', k: 'q40_1', label: 'Q40 Change in BEL-GAD unit #1' },
+      { t: 'text', k: 'q40_2', label: 'Q40 Change in BEL-GAD unit #2' },
+      { t: 'text', k: 'q40_3', label: 'Q40 Change in BEL-GAD unit #3' },
+      { t: 'text', k: 'q41', label: 'Q41 Other feedback / suggestions' },
+    ];
+
+    // Column headers produced by a single schema entry, in order.
+    const headersFor = (e) => {
+      switch (e.t) {
+        case 'value':
+        case 'text':
+          return [e.label];
+        case 'single':
+        case 'multi':
+        case 'ranking':
+          return e.o.map(([, optLabel]) => col(e.label, optLabel));
+        case 'singleOther':
+          return [...e.o.map(([, optLabel]) => col(e.label, optLabel)), col(e.label, 'Other (text)')];
+        case 'multiOther':
+          return [...e.o.map(([, optLabel]) => col(e.label, optLabel)), col(e.label, 'Other'), col(e.label, 'Other (text)')];
+        default:
+          return [];
+      }
+    };
+
+    // Canonical, stable column order (metadata first, then questions in order).
+    const COLUMNS = [
+      ...META.map(([header]) => header),
+      ...SCHEMA.reduce((acc, e) => acc.concat(headersFor(e)), []),
+    ];
+
+    return records.map((record) => {
+      // `responses` arrives as a JSON string (Map<String,String>); parse defensively.
+      let r = {};
+      const raw = record && record.responses;
+      if (raw && typeof raw === 'object') {
+        r = raw;
+      } else if (typeof raw === 'string' && raw.trim()) {
+        try { r = JSON.parse(raw); } catch (err) { r = {}; }
+      }
+
+      const row = {};
+
+      META.forEach(([header, field]) => {
+        row[header] = field === 'submissionTimestamp'
+          ? formatDateTime(record[field])
+          : safe(record[field]);
+      });
+
+      SCHEMA.forEach((e) => {
+        switch (e.t) {
+          case 'value':
+          case 'text':
+            row[e.label] = safe(r[e.k]);
+            break;
+          case 'single':
+            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(asStr(r[e.k]) === String(code)); });
+            break;
+          case 'multi':
+            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(isTrue(r[`${e.k}_${code}`])); });
+            break;
+          case 'ranking':
+            e.o.forEach(([code, optLabel]) => {
+              const rank = asStr(r[`${e.k}_${code}`]);
+              row[col(e.label, optLabel)] = ['1', '2', '3'].includes(rank) ? rank : 'No';
+            });
+            break;
+          case 'singleOther':
+            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(asStr(r[e.k]) === String(code)); });
+            row[col(e.label, 'Other (text)')] = safe(r[e.textKey]);
+            break;
+          case 'multiOther':
+            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(isTrue(r[`${e.k}_${code}`])); });
+            row[col(e.label, 'Other')] = yn(isTrue(r[e.selectedKey]));
+            row[col(e.label, 'Other (text)')] = safe(r[e.textKey]);
+            break;
+          default:
+            break;
+        }
+      });
+
+      // Emit columns in the canonical order, filling any gaps with ''.
+      const orderedRow = {};
+      COLUMNS.forEach((c) => { orderedRow[c] = safe(row[c]); });
+      return orderedRow;
+    });
+  }
+
+  /**
    * Map general information fields
    */
   static mapGeneralFields(record, index) {
