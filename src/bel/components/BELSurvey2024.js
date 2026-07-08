@@ -900,7 +900,7 @@ const BELSurvey2024 = () => {
       },
       // Q16 is now handled as a ranking question, not multi-select
       'q26': {
-        question: 'Preferred Communication Methods (Select up to 2)',
+        question: 'Most Effective Communication Channel of BEL-GAD (Select up to 2)',
         section: 'COMMUNICATION & INFORMATION FLOW',
         options: {
           'email': 'Email/Email newsletters',
