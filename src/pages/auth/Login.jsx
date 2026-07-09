@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTranslation } from "react-i18next";
 import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
+import { isSurveyorApp } from "../../utils/appPlatform";
 import { LANGUAGES } from "../../constants";
 import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
 
@@ -46,12 +47,18 @@ export default function Login() {
         password: values.password,
       });
       if (data.success) {
-        login(data.data);
         const roles = data.data.authorities || [];
         const isAdminRole = roles.some((r) => r === ROLES.ADMIN || r.authority === ROLES.ADMIN);
         const isUnicefRole = roles.some((r) => r === ROLES.UNICEF || r.authority === ROLES.UNICEF);
         const isState = roles.some((r) => r === ROLES.STATE || r.authority === ROLES.STATE);
         const isSurveyorRole = roles.some((r) => r === ROLES.SURVEYOR || r.authority === ROLES.SURVEYOR);
+        // Surveyor-only mobile app: reject non-surveyor accounts before storing
+        // any session. No effect in a normal browser (isSurveyorApp() → false).
+        if (isSurveyorApp() && !isSurveyorRole) {
+          message.error("This app is for surveyor accounts only. Please use the web portal.");
+          return;
+        }
+        login(data.data);
         if (isAdminRole || isUnicefRole) navigate("/dashboard/admin");
         else if (isState) navigate("/dashboard/state");
         else if (isSurveyorRole) navigate("/surveys");

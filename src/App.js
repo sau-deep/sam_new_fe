@@ -17,6 +17,7 @@ import api from "./services/axiosInstance";
 import { antdTheme } from "./theme/unicef";
 import AppLayout from "./components/layout/AppLayout";
 import { ROLES } from "./config";
+import { isSurveyorApp } from "./utils/appPlatform";
 
 // Lazy load pages for code splitting
 const Login = lazy(() => import("./pages/auth/Login"));
@@ -54,10 +55,34 @@ const PageLoader = () => (
   </div>
 );
 
+// Shown inside the surveyor mobile app when a non-surveyor account signs in.
+// The mobile APK is restricted to surveyors; every other role must use the
+// web portal. This has no effect in a normal browser (isSurveyorApp() → false).
+function AppAccessRestricted({ onLogout }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24, textAlign: "center", background: "#F0F6FF" }}>
+      <div style={{ fontSize: 64, marginBottom: 16 }}>📵</div>
+      <h2 style={{ color: "#002147", marginBottom: 8 }}>Surveyor App Only</h2>
+      <p style={{ color: "#6B7280", maxWidth: 320, marginBottom: 24 }}>
+        This mobile app is for surveyor accounts only. Please sign in with a
+        surveyor account, or use the web portal for other roles.
+      </p>
+      <button
+        onClick={onLogout}
+        style={{ height: 46, padding: "0 28px", borderRadius: 12, border: "none", color: "white", fontSize: 15, fontWeight: 700, background: "linear-gradient(135deg, #1CABE2 0%, #374EA2 100%)", cursor: "pointer" }}
+      >
+        Sign out
+      </button>
+    </div>
+  );
+}
+
 function ProtectedRoute({ children, roles = [] }) {
-  const { user, loading, hasRole } = useAuth();
+  const { user, loading, hasRole, isSurveyor, logout } = useAuth();
   if (loading) return <PageLoader />;
   if (!user) return <Navigate to="/auth/login" replace />;
+  // Surveyor-only mobile app: block any signed-in non-surveyor account.
+  if (isSurveyorApp() && !isSurveyor()) return <AppAccessRestricted onLogout={logout} />;
   if (roles.length > 0 && !roles.some((r) => hasRole(r))) {
     return <Navigate to="/unauthorized" replace />;
   }
