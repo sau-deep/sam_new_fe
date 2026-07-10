@@ -1474,11 +1474,26 @@ const RoutineMonitoring = () => {
     };
 
     const handleSaveOffline = async (payload, resetForm) => {
-        await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'offline' } });
+        // Uppercase to match this form's own ONLINE/OFFLINE convention (line 376,
+        // toggled by FormObserver) — a mismatched lowercase value here used to
+        // split "offline" submissions into two distinct strings in exports/reports.
+        const saved = await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'OFFLINE' } });
+
+        if (!saved) {
+            // Both IndexedDB and the localStorage fallback failed (e.g. device
+            // storage full) — do NOT claim success or reset the form, or the
+            // surveyor's answers are lost with no trace.
+            setShowSnackBar(true);
+            setSnackBarMessage({
+                text: "Could not save form on this device (storage full?). Please free up space and try again.",
+                type: "error"
+            });
+            return;
+        }
 
         setHasUnsavedChanges(false);
         resetForm();
-        
+
         setShowSnackBar(true);
         setSnackBarMessage({
             text: "Form saved offline. It will sync when you're back online.",
@@ -2307,7 +2322,11 @@ const RoutineMonitoring = () => {
                                                     variant="outlined"
                                                     color="warning"
                                                     onClick={async () => {
-                                                        await handleSaveOffline(values, { resetForm });
+                                                        // errorPayload holds the fully-enriched submit payload
+                                                        // (aganwadiData/vhsndData/cbeData/householdData/coords) —
+                                                        // it's set alongside showSaveOfflineOption in both failure
+                                                        // branches above. Raw `values` lacks all of that.
+                                                        await handleSaveOffline(errorPayload || values, { resetForm });
                                                     }}
                                                     disabled={loadingStatus}
                                                     size="large"

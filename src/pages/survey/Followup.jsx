@@ -409,16 +409,26 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed).
+      // `otherValue` is the free-text companion field ("Specify any other food
+      // item given") describing the "foodYesterdayOtherFood" entry — without
+      // merging it in here, that text was silently dropped from the payload.
+      const processObjectField = (obj, otherValue) => {
         if (!obj) return '';
         if (Array.isArray(obj)) return '';
         if (typeof obj !== 'object') return obj || '';
-        
+
         const entries = Object.entries(obj);
         if (entries.length === 0) return '';
-        
-        return entries.map(([key, value]) => `${key} - ${value}`).join(',');
+
+        return entries
+          .map(([key, value]) => {
+            if (key === 'foodYesterdayOtherFood' && otherValue && otherValue.trim()) {
+              return `${key} - ${value} (Other - ${otherValue.trim()})`;
+            }
+            return `${key} - ${value}`;
+          })
+          .join(',');
       };
 
       // Helper function to process string fields with other option
@@ -439,7 +449,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
@@ -611,16 +621,26 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed).
+      // `otherValue` is the free-text companion field ("Specify any other food
+      // item given") describing the "foodYesterdayOtherFood" entry — without
+      // merging it in here, that text was silently dropped from the payload.
+      const processObjectField = (obj, otherValue) => {
         if (!obj) return '';
         if (Array.isArray(obj)) return '';
         if (typeof obj !== 'object') return obj || '';
-        
+
         const entries = Object.entries(obj);
         if (entries.length === 0) return '';
-        
-        return entries.map(([key, value]) => `${key} - ${value}`).join(',');
+
+        return entries
+          .map(([key, value]) => {
+            if (key === 'foodYesterdayOtherFood' && otherValue && otherValue.trim()) {
+              return `${key} - ${value} (Other - ${otherValue.trim()})`;
+            }
+            return `${key} - ${value}`;
+          })
+          .join(',');
       };
 
       // Helper function to process string fields with other option
@@ -641,7 +661,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
@@ -677,10 +697,23 @@ const Followup = () => {
       const lat = coordinates?.lat || 0;
       const lng = coordinates?.lng || 0;
 
-      await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, responseMode: 'offline' } });
+      const saved = await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, responseMode: 'offline' } });
+
+      if (!saved) {
+        // Both IndexedDB and the localStorage fallback failed (e.g. device
+        // storage full) — do NOT claim success or reset the form, or the
+        // surveyor's answers are lost with no trace.
+        if (setSubmitting) setSubmitting(false);
+        setShowSnackBar(true);
+        setSnackBarMessage({
+            text: "Could not save form on this device (storage full?). Please free up space and try again.",
+            type: "error",
+        });
+        return;
+      }
 
       setHasUnsavedChanges(false);
-      
+
       resetForm();
       setShowSnackBar(true);
       setRetryCount(0);

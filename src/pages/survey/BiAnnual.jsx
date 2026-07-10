@@ -1446,8 +1446,20 @@ const BiAnnual = () => {
     };
     
     try {
-      await saveOfflineForm({ url: '/form/biannual', data: { ...payload, responseMode: 'offline' } });
-      
+      const saved = await saveOfflineForm({ url: '/form/biannual', data: { ...payload, responseMode: 'offline' } });
+      if (!saved) {
+        // saveOfflineForm resolves false (rather than throwing) when both
+        // IndexedDB and the localStorage fallback fail — e.g. device storage
+        // full. Must be checked explicitly or this falls through as a "success".
+        setShowSnackBar(true);
+        setSnackBarMessage({
+          text: "Could not save form on this device (storage full?). Please free up space and try again.",
+          type: "error",
+        });
+        if (setSubmitting) setSubmitting(false);
+        return;
+      }
+
       // Clear auto-save draft after offline save
       await autoSave.clearDraft();
       setHasUnsavedChanges(false);
