@@ -688,7 +688,7 @@ class ExcelMappingService {
       { t: 'single', k: 'q15_market', label: 'Q15 Fair pay - vs market', o: COMPENSATION },
       { t: 'single', k: 'q15_contributions', label: 'Q15 Fair pay - vs contributions', o: COMPENSATION },
       { t: 'single', k: 'q15_colleagues', label: 'Q15 Fair pay - vs colleagues', o: COMPENSATION },
-      { t: 'ranking', k: 'q16', label: 'Q16 Benefits (rank 1-3)', o: [['medical', 'Medical policy'], ['pension', 'Pension scheme'], ['retired_health', 'Retired employee health scheme'], ['besafe', 'BESAFE Scheme'], ['leaves', 'Number of leaves granted'], ['prp_ppi', 'PRP/PPI'], ['creche', 'Creche facility'], ['quarters', 'Company quarters'], ['iut', 'IUT Benefits'], ['club', 'Club facility'], ['canteen', 'Canteen']] },
+      { t: 'ranking', k: 'q16', label: 'Q16 Benefits (rank 1-3)', o: [['medical', 'Medical policy'], ['pension', 'Pension scheme'], ['retired_health', 'Retired employee health scheme'], ['besafe', 'BESAFE Scheme'], ['leaves', 'Number of leaves granted'], ['prp_ppi', 'PRP/PPI'], ['creche', 'Creche facility'], ['quarters', 'Company quarters'], ['iut', 'Inter Unit Transfer Benefits'], ['club', 'Club facility'], ['canteen', 'Canteen']] },
       { t: 'text', k: 'q17', label: 'Q17 New benefit suggestion' },
       // 6. Technology & digital enablement
       { t: 'single', k: 'q18', label: 'Q18 Technology tools', o: [['cutting_edge', 'Cutting-edge'], ['modern', 'Modern & meets needs'], ['adequate', 'Adequate but could be better'], ['outdated', 'Outdated & slow'], ['hindering', 'Seriously hindering']] },
@@ -710,7 +710,7 @@ class ExcelMappingService {
       { t: 'singleOther', k: 'q25', label: 'Q25 Biggest innovation barrier', o: [['time_resources', 'Lack of time/resources'], ['risk_averse', 'Risk-averse culture'], ['unclear_processes', 'Unclear processes'], ['insufficient_funding', 'Insufficient funding'], ['lack_support', 'Lack of leadership support'], ['skills_gaps', 'Skills/capability gaps'], ['other', 'Other']], textKey: 'q25_other' },
       // 9. Communication & information flow
       // Q26 & Q29 are single-select on the form but stored as `<k>_<code>` booleans, so they stay 'multi' (exactly one option column resolves to "Yes").
-      { t: 'multi', k: 'q26', label: 'Q26 Most effective communication channel (BEL-GAD)', o: [['email', 'Email/Email newsletters'], ['meetings', 'Team meetings'], ['notice_board', 'Notice board'], ['digital_platforms', 'Digital workplace platforms'], ['video_messages', 'Video messages from leadership'], ['presentations', 'Department presentations'], ['one_on_one', 'One-on-one with manager'], ['anything_else', 'Any other']] },
+      { t: 'multi', k: 'q26', label: 'Q26 Most effective communication channel (BEL-GAD)', o: [['email', 'Email/Email newsletters'], ['meetings', 'Team meetings'], ['notice_board', 'Notice board'], ['digital_platforms', 'Digital workplace platforms'], ['video_messages', 'Video messages from leadership'], ['presentations', 'Department presentations'], ['one_on_one', 'Individual discussion with Manager'], ['anything_else', 'Any other']] },
       { t: 'single', k: 'q27_strategy', label: 'Q27 Comms effectiveness - Strategy & goals', o: EGFP },
       { t: 'single', k: 'q27_changes', label: 'Q27 Comms effectiveness - Role changes', o: EGFP },
       { t: 'single', k: 'q27_performance', label: 'Q27 Comms effectiveness - Performance expectations', o: EGFP },
