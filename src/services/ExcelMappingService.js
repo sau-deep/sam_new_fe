@@ -634,7 +634,6 @@ class ExcelMappingService {
     const META = [
       ['ID', 'id'],
       ['Submitted At', 'submissionTimestamp'],
-      ['Employee ID', 'employeeId'],
       ['SBU Name', 'sbuName'],
       ['Age', 'age'],
       ['Service in BEL', 'serviceInBel'],
@@ -647,13 +646,17 @@ class ExcelMappingService {
     ];
 
     // Survey questions in display order. `label` is the human-readable column
-    // prefix; each option contributes a `"<label> - <optionLabel>"` column.
-    // `t` = how to expand the question:
-    //   single      radio: one Yes/No column per option
+    // header (or prefix); multi-select options contribute a `"<label> - <optionLabel>"`
+    // column each. `t` = how to expand the question:
+    //   single      radio: ONE column (header = `label`), value = the selected option's label
+    //   singleFlag  single-select on the form but stored as `<k>_<code>` booleans (q26/q29):
+    //               ONE column, value = the label of whichever flag is true
     //   multi       checkbox: one Yes/No column per option (boolean keys `<k>_<opt>`)
-    //   singleOther radio whose options already include 'other', plus a free-text field
+    //   singleOther radio whose options already include 'other': one answer column
+    //               plus a separate free-text column
     //   multiOther  checkbox + a separate 'other' toggle (`selectedKey`) and free-text (`textKey`)
-    //   ranking     one column per item; value = the chosen rank ('1'|'2'|'3') or 'No'
+    //   ranking     one column per rank position (1..`max`, default = option count);
+    //               value = the label of whichever option was given that rank
     //   value/text  print the raw typed value in a single column (header = `label`)
     // `o` holds [responseValue, readableLabel] pairs.
     const SCHEMA = [
@@ -682,13 +685,13 @@ class ExcelMappingService {
       { t: 'single', k: 'q11', label: 'Q11 Career path clarity', o: [['very_clear', 'Yes, very clear'], ['somewhat_clear', 'Somewhat clear'], ['unclear', 'Unclear'], ['no_path', 'No path exists']] },
       { t: 'text', k: 'q11a', label: 'Q11a Career support needed' },
       { t: 'single', k: 'q12', label: 'Q12 Professional development hours', o: [['0', '0 hours'], ['1_10', '1-10 hours'], ['11_25', '11-25 hours'], ['26_50', '26-50 hours'], ['50_plus', '50+ hours']] },
-      { t: 'ranking', k: 'q13', label: 'Q13 Development priorities (rank 1-2)', o: [['technical', 'Technical/functional skills'], ['leadership', 'Leadership and management training'], ['digital', 'Digital/technology skills'], ['communication', 'Communication and presentation skills'], ['project_management', 'Project management'], ['cross_functional', 'Cross-functional experience'], ['mentoring', 'Mentoring/coaching'], ['certifications', 'Industry certifications']] },
+      { t: 'ranking', k: 'q13', max: 2, label: 'Q13 Development priorities (rank 1-2)', o: [['technical', 'Technical/functional skills'], ['leadership', 'Leadership and management training'], ['digital', 'Digital/technology skills'], ['communication', 'Communication and presentation skills'], ['project_management', 'Project management'], ['cross_functional', 'Cross-functional experience'], ['mentoring', 'Mentoring/coaching'], ['certifications', 'Industry certifications']] },
       { t: 'single', k: 'q14', label: 'Q14 Development opportunity quality', o: [['world_class', 'World-class'], ['above_average', 'Above average'], ['average', 'Average'], ['below_average', 'Below average'], ['poor', 'Poor']] },
       // 5. Compensation & total rewards
       { t: 'single', k: 'q15_market', label: 'Q15 Fair pay - vs market', o: COMPENSATION },
       { t: 'single', k: 'q15_contributions', label: 'Q15 Fair pay - vs contributions', o: COMPENSATION },
       { t: 'single', k: 'q15_colleagues', label: 'Q15 Fair pay - vs colleagues', o: COMPENSATION },
-      { t: 'ranking', k: 'q16', label: 'Q16 Benefits (rank 1-3)', o: [['medical', 'Medical policy'], ['pension', 'Pension scheme'], ['retired_health', 'Retired employee health scheme'], ['besafe', 'BESAFE Scheme'], ['leaves', 'Number of leaves granted'], ['prp_ppi', 'PRP/PPI'], ['creche', 'Creche facility'], ['quarters', 'Company quarters'], ['iut', 'Inter Unit Transfer Benefits'], ['club', 'Club facility'], ['canteen', 'Canteen']] },
+      { t: 'ranking', k: 'q16', max: 3, label: 'Q16 Benefits (rank 1-3)', o: [['medical', 'Medical policy'], ['pension', 'Pension scheme'], ['retired_health', 'Retired employee health scheme'], ['besafe', 'BESAFE Scheme'], ['leaves', 'Number of leaves granted'], ['prp_ppi', 'PRP/PPI'], ['creche', 'Creche facility'], ['quarters', 'Company quarters'], ['iut', 'Inter Unit Transfer Benefits'], ['club', 'Club facility'], ['canteen', 'Canteen']] },
       { t: 'text', k: 'q17', label: 'Q17 New benefit suggestion' },
       // 6. Technology & digital enablement
       { t: 'single', k: 'q18', label: 'Q18 Technology tools', o: [['cutting_edge', 'Cutting-edge'], ['modern', 'Modern & meets needs'], ['adequate', 'Adequate but could be better'], ['outdated', 'Outdated & slow'], ['hindering', 'Seriously hindering']] },
@@ -709,15 +712,16 @@ class ExcelMappingService {
       { t: 'single', k: 'q24_digital', label: 'Q24 Capability - Digital transformation', o: CAPABILITY },
       { t: 'singleOther', k: 'q25', label: 'Q25 Biggest innovation barrier', o: [['time_resources', 'Lack of time/resources'], ['risk_averse', 'Risk-averse culture'], ['unclear_processes', 'Unclear processes'], ['insufficient_funding', 'Insufficient funding'], ['lack_support', 'Lack of leadership support'], ['skills_gaps', 'Skills/capability gaps'], ['other', 'Other']], textKey: 'q25_other' },
       // 9. Communication & information flow
-      // Q26 & Q29 are single-select on the form but stored as `<k>_<code>` booleans, so they stay 'multi' (exactly one option column resolves to "Yes").
-      { t: 'multi', k: 'q26', label: 'Q26 Most effective communication channel (BEL-GAD)', o: [['email', 'Email/Email newsletters'], ['meetings', 'Team meetings'], ['notice_board', 'Notice board'], ['digital_platforms', 'Digital workplace platforms'], ['video_messages', 'Video messages from leadership'], ['presentations', 'Department presentations'], ['one_on_one', 'Individual discussion with Manager'], ['anything_else', 'Any other']] },
+      // Q26 & Q29 are single-select on the form (handleSingleSelectChip) but stored as `<k>_<code>` booleans;
+      // 'singleFlag' exports them as one answer column, like 'single', by finding whichever flag is true.
+      { t: 'singleFlag', k: 'q26', label: 'Q26 Most effective communication channel (BEL-GAD)', o: [['email', 'Email/Email newsletters'], ['meetings', 'Team meetings'], ['notice_board', 'Notice board'], ['digital_platforms', 'Digital workplace platforms'], ['video_messages', 'Video messages from leadership'], ['presentations', 'Department presentations'], ['one_on_one', 'Individual discussion with Manager'], ['anything_else', 'Any other']] },
       { t: 'single', k: 'q27_strategy', label: 'Q27 Comms effectiveness - Strategy & goals', o: EGFP },
       { t: 'single', k: 'q27_changes', label: 'Q27 Comms effectiveness - Role changes', o: EGFP },
       { t: 'single', k: 'q27_performance', label: 'Q27 Comms effectiveness - Performance expectations', o: EGFP },
       { t: 'single', k: 'q27_recognition', label: 'Q27 Comms effectiveness - Recognition', o: EGFP },
       // 10. Recognition & performance
       { t: 'single', k: 'q28', label: 'Q28 Recognition frequency', o: [['daily', 'Daily'], ['weekly', 'Weekly'], ['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['annually', 'Annually'], ['rarely', 'Rarely/Never']] },
-      { t: 'multi', k: 'q29', label: 'Q29 Most meaningful recognition form', o: [['public_praise', 'Public praise from manager/leadership'], ['thank_you_notes', 'Written thank you notes'], ['monetary', 'Monetary rewards/bonuses'], ['development', 'Professional development opportunities'], ['responsibilities', 'Increased responsibilities/stretch assignments'], ['peer_awards', 'Peer nominations/awards'], ['advancement', 'Career advancement']] },
+      { t: 'singleFlag', k: 'q29', label: 'Q29 Most meaningful recognition form', o: [['public_praise', 'Public praise from manager/leadership'], ['thank_you_notes', 'Written thank you notes'], ['monetary', 'Monetary rewards/bonuses'], ['development', 'Professional development opportunities'], ['responsibilities', 'Increased responsibilities/stretch assignments'], ['peer_awards', 'Peer nominations/awards'], ['advancement', 'Career advancement']] },
       { t: 'single', k: 'q30', label: 'Q30 Performance evaluated fairly', o: [['completely_fair', 'Yes, completely fair'], ['mostly_fair', 'Mostly fair'], ['somewhat_fair', 'Somewhat fair'], ['unfair', 'Unfair'], ['very_unfair', 'Very unfair']] },
       { t: 'text', k: 'q30a', label: 'Q30a Review process improvements' },
       // 11. Onboarding experience
@@ -737,14 +741,62 @@ class ExcelMappingService {
       { t: 'text', k: 'q41', label: 'Q41 Other feedback / suggestions' },
     ];
 
+    // Re-label every question as "Q<section>.<position> <heading>" to match the
+    // section layout of the survey form (BELSurvey2024.js), instead of the flat
+    // Q1..Q42 numbering. Each entry lists the base question keys for that section,
+    // in the order they appear on the form; keys sharing a base (e.g. q4_trust,
+    // q22a) are sub-parts of the same logical question and share one position.
+    const QUESTION_SECTIONS = [
+      { n: 1, keys: ['q1', 'q2', 'q3'] },
+      { n: 2, keys: ['q4', 'q5', 'q6'] },
+      { n: 3, keys: ['q8', 'q9', 'q10'] },
+      { n: 4, keys: ['q11', 'q12', 'q13', 'q14'] },
+      { n: 5, keys: ['q15', 'q16', 'q17'] },
+      { n: 6, keys: ['q18', 'q19'] },
+      { n: 7, keys: ['q20', 'q21', 'q22', 'q42'] },
+      { n: 8, keys: ['q23', 'q24', 'q25'] },
+      { n: 9, keys: ['q26', 'q27'] },
+      { n: 10, keys: ['q28', 'q29', 'q30'] },
+      { n: 11, keys: ['q31', 'q32'] },
+      { n: 12, keys: ['q34', 'q35', 'q36'] },
+      { n: 13, keys: ['q37', 'q38', 'q39', 'q40', 'q41'] },
+    ];
+    const baseKeyOf = (k) => {
+      const m = String(k).match(/^q\d+/);
+      return m ? m[0] : k;
+    };
+    const questionPosition = {};
+    QUESTION_SECTIONS.forEach(({ n, keys }) => {
+      keys.forEach((base, idx) => { questionPosition[base] = `${n}.${idx + 1}`; });
+    });
+    SCHEMA.forEach((e) => {
+      const pos = questionPosition[baseKeyOf(e.k)];
+      if (pos) e.label = e.label.replace(/^Q\d+[a-z]?\s+/, `Q${pos} `);
+    });
+
+    // Ranking questions get one column PER RANK POSITION (not per option): the
+    // value is whichever option the respondent placed at that rank. `e.max`
+    // (default: option count) caps how many rank columns are produced.
+    const rankColumns = (e) => Array.from({ length: e.max || e.o.length }, (_, i) => col(e.label, `Rank ${i + 1}`));
+    const rankValues = (e, r) => {
+      const max = e.max || e.o.length;
+      const out = {};
+      for (let rank = 1; rank <= max; rank++) {
+        const hit = e.o.find(([code]) => asStr(r[`${e.k}_${code}`]) === String(rank));
+        out[col(e.label, `Rank ${rank}`)] = hit ? hit[1] : '';
+      }
+      return out;
+    };
+
     // ---- Readable / compact layout ----------------------------------------
-    // One column PER QUESTION (no per-option split); each cell holds the actual
-    // answer(s): single-select → the chosen option label; multi-select →
-    // comma-joined labels; ranking → "1. …; 2. …"; text/numeric → the raw entry.
+    // One column PER QUESTION (no per-option split, except ranking which is
+    // one column per rank position); each cell holds the actual answer(s):
+    // single-select → the chosen option label; multi-select → comma-joined
+    // labels; text/numeric → the raw entry.
     if (mode === 'readable') {
       const READABLE_COLUMNS = [
         ...META.map(([header]) => header),
-        ...SCHEMA.map((e) => e.label),
+        ...SCHEMA.reduce((acc, e) => acc.concat(e.t === 'ranking' ? rankColumns(e) : [e.label]), []),
       ];
 
       const answerFor = (e, r) => {
@@ -754,6 +806,10 @@ class ExcelMappingService {
             return safe(r[e.k]);
           case 'single': {
             const hit = e.o.find(([code]) => String(code) === asStr(r[e.k]));
+            return hit ? hit[1] : '';
+          }
+          case 'singleFlag': {
+            const hit = e.o.find(([code]) => isTrue(r[`${e.k}_${code}`]));
             return hit ? hit[1] : '';
           }
           case 'multi':
@@ -773,13 +829,6 @@ class ExcelMappingService {
             }
             return parts.join(', ');
           }
-          case 'ranking':
-            return e.o
-              .map(([code, l]) => ({ l, rank: asStr(r[`${e.k}_${code}`]) }))
-              .filter((x) => ['1', '2', '3'].includes(x.rank))
-              .sort((a, b) => Number(a.rank) - Number(b.rank))
-              .map((x) => `${x.rank}. ${x.l}`)
-              .join('; ');
           default:
             return '';
         }
@@ -800,7 +849,10 @@ class ExcelMappingService {
             ? formatDateTime(record[field])
             : safe(record[field]);
         });
-        SCHEMA.forEach((e) => { row[e.label] = safe(answerFor(e, r)); });
+        SCHEMA.forEach((e) => {
+          if (e.t === 'ranking') Object.assign(row, rankValues(e, r));
+          else row[e.label] = safe(answerFor(e, r));
+        });
 
         const orderedRow = {};
         READABLE_COLUMNS.forEach((c) => { orderedRow[c] = safe(row[c]); });
@@ -809,17 +861,22 @@ class ExcelMappingService {
     }
 
     // Column headers produced by a single schema entry, in order.
+    // Single-select questions (single/singleFlag/singleOther) get ONE answer column
+    // each — per-option columns are only needed for genuine multi-select (checkbox)
+    // questions; ranking gets one column per rank position (see rankColumns above).
     const headersFor = (e) => {
       switch (e.t) {
         case 'value':
         case 'text':
-          return [e.label];
         case 'single':
+        case 'singleFlag':
+          return [e.label];
         case 'multi':
-        case 'ranking':
           return e.o.map(([, optLabel]) => col(e.label, optLabel));
+        case 'ranking':
+          return rankColumns(e);
         case 'singleOther':
-          return [...e.o.map(([, optLabel]) => col(e.label, optLabel)), col(e.label, 'Other (text)')];
+          return [e.label, col(e.label, 'Other (text)')];
         case 'multiOther':
           return [...e.o.map(([, optLabel]) => col(e.label, optLabel)), col(e.label, 'Other'), col(e.label, 'Other (text)')];
         default:
@@ -857,22 +914,28 @@ class ExcelMappingService {
           case 'text':
             row[e.label] = safe(r[e.k]);
             break;
-          case 'single':
-            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(asStr(r[e.k]) === String(code)); });
+          case 'single': {
+            const hit = e.o.find(([code]) => String(code) === asStr(r[e.k]));
+            row[e.label] = hit ? hit[1] : '';
             break;
+          }
+          case 'singleFlag': {
+            const hit = e.o.find(([code]) => isTrue(r[`${e.k}_${code}`]));
+            row[e.label] = hit ? hit[1] : '';
+            break;
+          }
           case 'multi':
             e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(isTrue(r[`${e.k}_${code}`])); });
             break;
           case 'ranking':
-            e.o.forEach(([code, optLabel]) => {
-              const rank = asStr(r[`${e.k}_${code}`]);
-              row[col(e.label, optLabel)] = ['1', '2', '3'].includes(rank) ? rank : 'No';
-            });
+            Object.assign(row, rankValues(e, r));
             break;
-          case 'singleOther':
-            e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(asStr(r[e.k]) === String(code)); });
+          case 'singleOther': {
+            const hit = e.o.find(([code]) => String(code) === asStr(r[e.k]));
+            row[e.label] = hit ? hit[1] : '';
             row[col(e.label, 'Other (text)')] = safe(r[e.textKey]);
             break;
+          }
           case 'multiOther':
             e.o.forEach(([code, optLabel]) => { row[col(e.label, optLabel)] = yn(isTrue(r[`${e.k}_${code}`])); });
             row[col(e.label, 'Other')] = yn(isTrue(r[e.selectedKey]));
