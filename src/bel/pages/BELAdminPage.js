@@ -101,7 +101,7 @@ const BELAdminPage = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  const [activeMenu, setActiveMenu] = useState('walkin'); // 'survey', 'walkin', or 'codes'
+  const [activeMenu, setActiveMenu] = useState('survey'); // 'survey', 'walkin', or 'codes'
   const [responses, setResponses] = useState([]);
   const [filteredResponses, setFilteredResponses] = useState([]);
   const [walkinData, setWalkinData] = useState([]);

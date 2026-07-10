@@ -933,7 +933,7 @@ const BELSurvey2024 = () => {
           'digital_platforms': 'Digital workplace platforms',
           'video_messages': 'Video messages from leadership',
           'presentations': 'Department presentations',
-          'one_on_one': 'One-on-one with manager',
+          'one_on_one': 'Individual discussion with Manager',
           'anything_else': 'Any other'
         }
       },
@@ -1035,7 +1035,7 @@ const BELSurvey2024 = () => {
           'q16_prp_ppi': 'PRP/PPI',
           'q16_creche': 'Creche facility',
           'q16_quarters': 'Company quarters',
-          'q16_iut': 'IUT Benefits',
+          'q16_iut': 'Inter Unit Transfer Benefits',
           'q16_club': 'Club facility',
           'q16_canteen': 'Canteen'
         };

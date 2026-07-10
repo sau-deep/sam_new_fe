@@ -68,16 +68,16 @@
       "overall": "OVERALL JOB SATISFACTION & ENGAGEMENT",
       "environment": "WORK ENVIRONMENT & CULTURE", 
       "leadership": "LEADERSHIP & MANAGEMENT EXCELLENCE",
-      "growth": "CAREER GROWTH & DEVELOPMENT",
-      "compensation": "COMPENSATION & TOTAL REWARDS",
+      "growth": "CAREER GROWTH & PROFESSIONAL DEVELOPMENT",
+      "compensation": "SALARY & OTHER BENEFITS",
       "technology": "TECHNOLOGY & DIGITAL ENABLEMENT",
-      "worklife": "WORK-LIFE INTEGRATION & WELLBEING",
+      "worklife": "WORK LIFE BALANCE AND EMPLOYEE WELL BEING",
       "innovation": "INNOVATION & FUTURE FOCUS",
       "communication": "COMMUNICATION & INFORMATION FLOW",
       "recognition": "RECOGNITION & PERFORMANCE",
       "onboarding": "ONBOARDING EXPERIENCE",
       "future": "FUTURE OUTLOOK",
-      "insights": "OPEN-ENDED INSIGHTS"
+      "insights": "OPEN ENDED FEEDBACK"
     },
     "questions": {
       "q1": "How often do you feel enthusiastic and motivated about your work at BEL?",
@@ -268,7 +268,7 @@
         "prp_ppi": "💵 PRP/PPI",
         "creche": "👶 Creche facility",
         "quarters": "🏠 Company quarters",
-        "iut": "🎓 IUT Benefits",
+        "iut": "🎓 Inter Unit Transfer Benefits",
         "club": "🎾 Club facility",
         "canteen": "🍽️ Canteen"
       },
@@ -326,7 +326,7 @@
         "digital_platforms": "💻 Digital workplace platforms/BEL Sampark/SAMVAD/BEL Jharokha",
         "video_messages": "📹 Video messages from leadership",
         "presentations": "📊 Department presentations",
-        "one_on_one": "👤 One-on-one with manager",
+        "one_on_one": "👤 Individual discussion with Manager",
         "anything_else": "✏️ Any other"
       },
       "recognition_frequency": {
