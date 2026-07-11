@@ -624,7 +624,7 @@ class ExcelMappingService {
     // Reusable option sets as [responseValue, readableLabel] pairs (display order).
     const AGREEMENT = [['strongly_agree', 'Strongly Agree'], ['agree', 'Agree'], ['neutral', 'Neutral'], ['disagree', 'Disagree'], ['strongly_disagree', 'Strongly Disagree']];
     const RATING_1_5 = [['1', '1 - Poor'], ['2', '2 - Below Average'], ['3', '3 - Average'], ['4', '4 - Good'], ['5', '5 - Excellent']];
-    const GRADE = [['a_plus', 'A+'], ['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D'], ['f', 'F']];
+    const GRADE = [['a_plus', 'A+'], ['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D']];
     const EGFP = [['excellent', 'Excellent'], ['good', 'Good'], ['fair', 'Fair'], ['poor', 'Poor']];
     const COMPENSATION = [['much_above', 'Much above'], ['above', 'Above'], ['fair', 'Fair'], ['below', 'Below'], ['much_below', 'Much below']];
     const CAPABILITY = [['leading', 'Leading'], ['following', 'Following'], ['lagging', 'Lagging'], ['struggling', 'Struggling']];
