@@ -27,7 +27,8 @@ import {
   LinearProgress,
   Fade,
   Zoom,
-  CircularProgress
+  CircularProgress,
+  Tooltip
 } from '@mui/material';
 import { styled, keyframes } from '@mui/material/styles';
 import { 
@@ -39,6 +40,7 @@ import {
 import belLogo from '../assets/bel_logo.png';
 import apiService from '../../services/api';
 import belI18n from '../i18n-beltest';
+import { useBackendHealth } from '../../hooks/useBackendHealth';
 import BELPersonalInfoForm from './BELPersonalInfoForm';
 import {
   EMPTY_PERSONAL_INFO,
@@ -290,7 +292,8 @@ const BELSurvey2024 = () => {
   const { t, i18n } = useTranslation('translation', { i18n: belI18n });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
+  const backendStatus = useBackendHealth();
+
   const [formData, setFormData] = useState({});
   const [language, setLanguage] = useState('en');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -1662,6 +1665,31 @@ const BELSurvey2024 = () => {
       <HeaderContainer>
         <Zoom in timeout={1000}>
           <Box sx={{ position: 'relative', zIndex: 1 }}>
+            <Tooltip
+              title={
+                backendStatus === 'up'
+                  ? 'Server connected'
+                  : backendStatus === 'down'
+                    ? 'Server unreachable — check that the SAM backend is running'
+                    : 'Checking server connection…'
+              }
+            >
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  bgcolor:
+                    backendStatus === 'up' ? '#4caf50' : backendStatus === 'down' ? '#f44336' : '#ffb300',
+                  boxShadow: backendStatus === 'up' ? '0 0 6px 2px rgba(76,175,80,0.6)' : 'none',
+                  border: '1px solid rgba(255,255,255,0.6)',
+                  transition: 'background-color 0.3s ease',
+                }}
+              />
+            </Tooltip>
             <Box display="flex" alignItems="center" justifyContent="center" gap={isMobile ? 1.5 : 2} mb={isMobile ? 1 : 1.5}>
               <img src={belLogo} alt="BEL Logo" style={{ height: isMobile ? '35px' : '50px' }} />
               <Box textAlign={isMobile ? 'center' : 'left'}>
