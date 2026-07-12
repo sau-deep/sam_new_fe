@@ -66,7 +66,7 @@
     "reset": "Reset Form",
     "sections": {
       "overall": "OVERALL JOB SATISFACTION & ENGAGEMENT",
-      "environment": "WORK ENVIRONMENT & CULTURE", 
+      "environment": "WORK ENVIRONMENT & CULTURE",
       "leadership": "LEADERSHIP & MANAGEMENT EXCELLENCE",
       "growth": "CAREER GROWTH & PROFESSIONAL DEVELOPMENT",
       "compensation": "SALARY & OTHER BENEFITS",
@@ -87,7 +87,7 @@
       "q3a": "If you selected \"somewhat dissatisfied\" or \"actively looking,\" what are the main reasons?",
       "q4": "Rate the following aspects of our workplace culture (1=Poor, 5=Excellent):",
       "q4_psychological": "Psychological safety",
-      "q4_innovation": "Innovation encouragement", 
+      "q4_innovation": "Innovation encouragement",
       "q4_diversity": "Diversity & inclusion",
       "q4_communication": "Open communication",
       "q4_trust": "Trust among colleagues",
@@ -98,7 +98,7 @@
       "q9": "I have a clear understanding of my role and how it contributes to the company's goals and growth of the Unit.",
       "q10": "Rate senior leadership's effectiveness in:",
       "q10_vision": "Vision & strategy communication",
-      "q10_transparency": "Transparency in decision-making", 
+      "q10_transparency": "Transparency in decision-making",
       "q10_feedback": "Acting on employee feedback",
       "q10_change": "Leading through change",
       "q11": "Do you have a clear understanding of your career path at BEL?",
@@ -116,7 +116,7 @@
       "q19": "How well does our technology enable you to:",
       "q19_efficiency": "Work efficiently",
       "q19_collaborate": "Collaborate with colleagues",
-      "q19_customers": "Serve customers effectively", 
+      "q19_customers": "Serve customers effectively",
       "q19_information": "Access information quickly",
       "q20": "My current work-life balance is:",
       "q21": "I am able to disconnect from work-related duties outside of my working hours.",
@@ -163,19 +163,28 @@
         "never": "Never"
       },
       "nps": {
-        "0": "0", "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
-        "6": "6", "7": "7", "8": "8", "9": "9", "10": "😍 10"
+        "0": "0",
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5",
+        "6": "6",
+        "7": "7",
+        "8": "8",
+        "9": "9",
+        "10": "😍 10"
       },
       "satisfaction": {
         "love_job": "I love my job and look forward to coming to work",
-        "generally_satisfied": "I'm generally satisfied with my work", 
+        "generally_satisfied": "I'm generally satisfied with my work",
         "meets_needs": "My job meets my basic needs",
         "somewhat_dissatisfied": "I'm somewhat dissatisfied with my work",
         "looking_opportunities": "I'm actively looking for other opportunities"
       },
       "rating_1_5": {
         "1": "😞 1 - Poor",
-        "2": "😕 2 - Below Average", 
+        "2": "😕 2 - Below Average",
         "3": "😐 3 - Average",
         "4": "😊 4 - Good",
         "5": "😍 5 - Excellent"
@@ -188,7 +197,7 @@
       },
       "culture_words": {
         "collaborative": "🤝 Collaborative",
-        "competitive": "🏆 Competitive", 
+        "competitive": "🏆 Competitive",
         "innovative": "💡 Innovative",
         "hierarchical": "📊 Hierarchical",
         "flexible": "🤸 Flexible",
@@ -218,21 +227,21 @@
       "grades": {
         "a_plus": "A+",
         "a": "A",
-        "b": "B", 
+        "b": "B",
         "c": "C",
         "d": "D"
       },
       "career_clarity": {
         "very_clear": "😍 Yes, very clear",
         "somewhat_clear": "😊 Somewhat clear",
-        "unclear": "😕 Unclear", 
+        "unclear": "😕 Unclear",
         "no_path": "😞 No path exists"
       },
       "development_hours": {
         "0": "😞 0 hours",
         "1_10": "😕 1-10 hours",
         "11_25": "😐 11-25 hours",
-        "26_50": "😊 26-50 hours", 
+        "26_50": "😊 26-50 hours",
         "50_plus": "😍 50+ hours"
       },
       "development_priorities": {
@@ -254,14 +263,14 @@
       },
       "compensation": {
         "much_above": "😍 Much above",
-        "above": "😊 Above", 
+        "above": "😊 Above",
         "fair": "😐 Fair",
         "below": "😕 Below",
         "much_below": "😞 Much below"
       },
       "benefits": {
         "medical": "🏥 Medical policy",
-        "pension": "💰 Pension scheme", 
+        "pension": "💰 Pension scheme",
         "retired_health": "👴 Retired employee health scheme",
         "besafe": "🛡️ BESAFE Scheme",
         "leaves": "🏖️ Number of leaves granted",
@@ -275,7 +284,7 @@
       "technology": {
         "cutting_edge": "🚀 Cutting-edge and give us competitive advantage",
         "modern": "😍 Modern and meet my needs well",
-        "adequate": "😐 Adequate but could be better", 
+        "adequate": "😐 Adequate but could be better",
         "outdated": "😕 Outdated and slow me down",
         "hindering": "😞 Seriously hindering my productivity"
       },
@@ -411,7 +420,12 @@
     "validation": {
       "required": "This field is required",
       "select_max": "Please select maximum {{max}} options",
-      "select_min": "Please select at least {{min}} options"
+      "select_min": "Please select at least {{min}} options",
+      "select_one": "Please select at least one option",
+      "complete_rankings": "Please complete all {{count}} rankings",
+      "specify_other": "Please specify",
+      "summary": "Please complete all required fields marked with * ({{count}} fields missing)",
+      "max_options": "Maximum {{max}} options are allowed. Please deselect an option first."
     }
   },
   "footer": {

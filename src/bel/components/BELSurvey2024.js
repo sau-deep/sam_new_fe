@@ -546,7 +546,7 @@ const BELSurvey2024 = () => {
       ).length;
       if (selectedCount >= limit) {
         setShowMaxSelectionAlert(true);
-        setErrorMessage(`Maximum ${limit} options are allowed. Please deselect an option first.`);
+        setErrorMessage(t('survey.validation.max_options', { max: limit }));
         return;
       }
     }
@@ -711,13 +711,14 @@ const BELSurvey2024 = () => {
       return false;
     };
 
-    // Helper function to add validation error
-    const addError = (field, message = 'This field is required') => {
+    // Helper function to add validation error (messages come from the locale
+    // files so they follow the selected language, incl. Hindi)
+    const addError = (field, message = t('survey.validation.required')) => {
       missingFields.push(field);
       newValidationErrors[field] = message;
     };
 
-    // All questions are mandatory except text inputs (excluding Section 13)
+    // All questions are mandatory except the last text input (Q41)
     
     // Single-select questions (mandatory)
     const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q25', 'q28', 'q30', 'q31', 'q32', 'q34'];
@@ -746,7 +747,7 @@ const BELSurvey2024 = () => {
       const hasSelection = Object.keys(formData).some(key =>
         key.startsWith(qKey + '_') && formData[key]
       );
-      if (!hasSelection) addError(qKey, 'Please select at least one option');
+      if (!hasSelection) addError(qKey, t('survey.validation.select_one'));
     });
 
     // Ranking questions (mandatory - all required ranks must be filled)
@@ -756,7 +757,7 @@ const BELSurvey2024 = () => {
       const rankings = Object.keys(formData).filter(key =>
         key.startsWith(qKey + '_') && ['1', '2', '3'].includes(formData[key])
       ).length;
-      if (rankings < need) addError(qKey, `Please complete all ${need} rankings`);
+      if (rankings < need) addError(qKey, t('survey.validation.complete_rankings', { count: need }));
     });
 
     // All text inputs are mandatory except the last question (Q41)
@@ -782,7 +783,7 @@ const BELSurvey2024 = () => {
 
     // Q25 - If 'other' is selected, text is mandatory
     if (formData['q25'] === 'other' && isEmpty(formData['q25_other'])) {
-      addError('q25_other', 'Please specify the other barrier');
+      addError('q25_other', t('survey.validation.specify_other'));
     }
 
     // Q35 - Stay reasons (conditional: only if answered 'yes' or 'probably' to Q34)
@@ -790,11 +791,11 @@ const BELSurvey2024 = () => {
       const q35Selected = Object.keys(formData).filter(key => 
         (key.startsWith('q35_') && formData[key]) || (key === 'q35_other_selected' && formData[key])
       ).length;
-      if (q35Selected === 0) addError('q35', 'Please select at least one reason for staying');
+      if (q35Selected === 0) addError('q35', t('survey.validation.select_one'));
       
       // If 'other' is selected, its text is mandatory
       if (formData['q35_other_selected'] && isEmpty(formData['q35_other'])) {
-        addError('q35_other', 'Please specify the other reason');
+        addError('q35_other', t('survey.validation.specify_other'));
       }
     }
 
@@ -803,21 +804,18 @@ const BELSurvey2024 = () => {
       const q36Selected = Object.keys(formData).filter(key =>
         (key.startsWith('q36_') && key !== 'q36_other' && formData[key])
       ).length;
-      if (q36Selected === 0) addError('q36', 'Please select at least one factor');
+      if (q36Selected === 0) addError('q36', t('survey.validation.select_one'));
     }
     // If 'other' is selected, its text is mandatory
     if (formData['q36_other_selected'] && isEmpty(formData['q36_other'])) {
-      addError('q36_other', 'Please specify the other factor');
+      addError('q36_other', t('survey.validation.specify_other'));
     }
 
     // Section 13 - Open-ended Insights (mandatory except Q41)
     if (isEmpty(formData['q37'])) addError('q37');
     if (isEmpty(formData['q38'])) addError('q38');
-    ['q39_1', 'q39_2'].forEach(field => {
-      if (isEmpty(formData[field])) addError(field, 'Please provide all 2 improvements');
-    });
-    ['q40_1', 'q40_2'].forEach(field => {
-      if (isEmpty(formData[field])) addError(field, 'Please provide all 2 things working well');
+    ['q39_1', 'q39_2', 'q40_1', 'q40_2'].forEach(field => {
+      if (isEmpty(formData[field])) addError(field);
     });
     // Q41 is optional text input
 
@@ -825,7 +823,7 @@ const BELSurvey2024 = () => {
     setValidationErrors(newValidationErrors);
 
     if (missingFields.length > 0) {
-      errors.push(`Please complete all required fields marked with * (${missingFields.length} fields missing)`);
+      errors.push(t('survey.validation.summary', { count: missingFields.length }));
       
       // Scroll to first missing field
       setTimeout(() => {
