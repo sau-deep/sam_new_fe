@@ -320,8 +320,10 @@ const BELSurvey2024 = () => {
   useEffect(() => {
     const getRequiredFields = () => {
       const required = [
-        // All questions are mandatory except text inputs (excluding Section 13)
-        'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34',
+        // All questions are mandatory except the last text input (Q41)
+        'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q25', 'q28', 'q30', 'q31', 'q32', 'q34',
+        // Standalone text inputs (mandatory)
+        'q17', 'q22a', 'q30a',
         // Multi-part questions
         'q4_psychological', 'q4_innovation', 'q4_diversity', 'q4_communication', 'q4_trust',
         'q10_vision', 'q10_transparency', 'q10_feedback', 'q10_change',
@@ -334,10 +336,10 @@ const BELSurvey2024 = () => {
         'q39_1', 'q39_2', 'q40_1', 'q40_2'
       ];
       
-      // Add conditional required fields
-      // Q2a is optional text input
-      // Q3a is optional text input
-      // Q11a is optional text input
+      // Add conditional required fields (text inputs are mandatory when visible)
+      if (formData['q2'] && parseInt(formData['q2']) <= 8) required.push('q2a');
+      if (formData['q3'] === 'somewhat_dissatisfied' || formData['q3'] === 'looking_opportunities') required.push('q3a');
+      if (formData['q11'] === 'unclear' || formData['q11'] === 'no_path') required.push('q11a');
       if (formData['q25'] === 'other') required.push('q25_other');
       if (formData['q34'] && (formData['q34'] === 'yes_definitely' || formData['q34'] === 'probably')) {
         // At least one Q35 option must be selected
@@ -643,10 +645,13 @@ const BELSurvey2024 = () => {
 
   // Function to check if a question is required
   const isQuestionRequired = (questionKey) => {
-    // All questions are required except text inputs (excluding Section 13)
+    // All questions are required except the last text input (Q41)
     const alwaysRequired = [
-      'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34',
-      'q37', 'q38', 'q39', 'q40'
+      'q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q25', 'q28', 'q30', 'q31', 'q32', 'q34',
+      'q17', 'q22a', 'q30a',
+      'q37', 'q38', 'q39', 'q40',
+      // Multi-select / ranking groups (mandatory - shown with * on the title)
+      'q6', 'q8', 'q13', 'q16', 'q26', 'q29'
     ];
     
     // Multi-part questions that are required
@@ -661,12 +666,13 @@ const BELSurvey2024 = () => {
       'q40_1', 'q40_2'
     ];
     
-    // Conditionally required questions
+    // Conditionally required questions (text inputs mandatory when visible)
     const conditionallyRequired = {
-      // 'q2a': () => formData['q2'] && parseInt(formData['q2']) <= 8, // Optional text input
-      // 'q3a': () => formData['q3'] && (formData['q3'] === 'somewhat_dissatisfied' || formData['q3'] === 'looking_opportunities'), // Optional text input
-      // 'q11a': () => formData['q11'] && (formData['q11'] === 'unclear' || formData['q11'] === 'no_path'), // Optional text input
+      'q2a': () => formData['q2'] && parseInt(formData['q2']) <= 8,
+      'q3a': () => formData['q3'] === 'somewhat_dissatisfied' || formData['q3'] === 'looking_opportunities',
+      'q11a': () => formData['q11'] === 'unclear' || formData['q11'] === 'no_path',
       'q35': () => formData['q34'] && (formData['q34'] === 'yes_definitely' || formData['q34'] === 'probably'),
+      'q36': () => formData['q34'] && formData['q34'] !== 'yes_definitely' && formData['q34'] !== 'probably',
       'q25_other': () => formData['q25'] === 'other',
       'q35_other': () => formData['q35_other_selected'],
       'q36_other': () => formData['q36_other_selected']
@@ -714,7 +720,7 @@ const BELSurvey2024 = () => {
     // All questions are mandatory except text inputs (excluding Section 13)
     
     // Single-select questions (mandatory)
-    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q28', 'q30', 'q31', 'q32', 'q34'];
+    const singleSelectQuestions = ['q1', 'q2', 'q3', 'q5', 'q9', 'q11', 'q12', 'q14', 'q18', 'q20', 'q21', 'q22', 'q42', 'q23', 'q25', 'q28', 'q30', 'q31', 'q32', 'q34'];
     singleSelectQuestions.forEach(field => {
       if (isEmpty(formData[field])) addError(field);
     });
@@ -737,12 +743,12 @@ const BELSurvey2024 = () => {
     // Multi-select questions (mandatory - at least one selection)
     const multiSelectRequired = ['q6', 'q8', 'q26', 'q29'];
     multiSelectRequired.forEach(qKey => {
-      const hasSelection = Object.keys(formData).some(key => 
+      const hasSelection = Object.keys(formData).some(key =>
         key.startsWith(qKey + '_') && formData[key]
       );
-      if (!hasSelection) addError(qKey + '_required', 'Please select at least one option');
+      if (!hasSelection) addError(qKey, 'Please select at least one option');
     });
-    
+
     // Ranking questions (mandatory - all required ranks must be filled)
     const rankingRequired = ['q13', 'q16'];
     rankingRequired.forEach(qKey => {
@@ -750,21 +756,31 @@ const BELSurvey2024 = () => {
       const rankings = Object.keys(formData).filter(key =>
         key.startsWith(qKey + '_') && ['1', '2', '3'].includes(formData[key])
       ).length;
-      if (rankings < need) addError(qKey + '_required', `Please complete all ${need} rankings`);
+      if (rankings < need) addError(qKey, `Please complete all ${need} rankings`);
     });
 
-    // Handle conditional validations for text inputs (optional except Section 13)
-    // Q2a - Conditional: Show only if NPS score is 8 or below (optional - no validation)
-    // Q3a - Conditional: Show only if dissatisfied or looking (optional - no validation)
-    // Q11a - Conditional: Show only if unclear or no path (optional)
-    // Q17 - New benefit suggestion (optional)
-    // Q22a - Wellbeing support (optional)
-    // Q25_other - Innovation barrier other (optional)
-    // Q30a - Performance review improvement (optional)
-    // Q33a - Productivity acceleration (optional)
-    // Q35_other, Q36_other - Stay/leave reasons other (optional)
+    // All text inputs are mandatory except the last question (Q41)
 
-    // Q25 - If 'other' is selected, check if text is provided (optional)
+    // Standalone text inputs (always visible - mandatory)
+    if (isEmpty(formData['q17'])) addError('q17');
+    if (isEmpty(formData['q22a'])) addError('q22a');
+    if (isEmpty(formData['q30a'])) addError('q30a');
+
+    // Conditional text inputs (mandatory when visible)
+    // Q2a - Show only if NPS score is 8 or below
+    if (formData['q2'] && parseInt(formData['q2']) <= 8 && isEmpty(formData['q2a'])) {
+      addError('q2a');
+    }
+    // Q3a - Show only if dissatisfied or looking
+    if ((formData['q3'] === 'somewhat_dissatisfied' || formData['q3'] === 'looking_opportunities') && isEmpty(formData['q3a'])) {
+      addError('q3a');
+    }
+    // Q11a - Show only if unclear or no path
+    if ((formData['q11'] === 'unclear' || formData['q11'] === 'no_path') && isEmpty(formData['q11a'])) {
+      addError('q11a');
+    }
+
+    // Q25 - If 'other' is selected, text is mandatory
     if (formData['q25'] === 'other' && isEmpty(formData['q25_other'])) {
       addError('q25_other', 'Please specify the other barrier');
     }
@@ -776,13 +792,20 @@ const BELSurvey2024 = () => {
       ).length;
       if (q35Selected === 0) addError('q35', 'Please select at least one reason for staying');
       
-      // If 'other' is selected, check if text is provided (optional)
+      // If 'other' is selected, its text is mandatory
       if (formData['q35_other_selected'] && isEmpty(formData['q35_other'])) {
         addError('q35_other', 'Please specify the other reason');
       }
     }
 
-    // Q36 - Leave factors (optional for all, but if any selected and 'other' chosen, text required)
+    // Q36 - Leave factors (conditional: only if NOT planning to stay)
+    if (formData['q34'] && formData['q34'] !== 'yes_definitely' && formData['q34'] !== 'probably') {
+      const q36Selected = Object.keys(formData).filter(key =>
+        (key.startsWith('q36_') && key !== 'q36_other' && formData[key])
+      ).length;
+      if (q36Selected === 0) addError('q36', 'Please select at least one factor');
+    }
+    // If 'other' is selected, its text is mandatory
     if (formData['q36_other_selected'] && isEmpty(formData['q36_other'])) {
       addError('q36_other', 'Please specify the other factor');
     }
@@ -1726,7 +1749,9 @@ const BELSurvey2024 = () => {
       {/* Survey Form */}
       {step === 'survey' && (
       <SurveyContainer>
-        <form onSubmit={handleSubmit}>
+        {/* noValidate: our JS validation shows every missing field at once;
+            native browser validation would silently block submit instead */}
+        <form onSubmit={handleSubmit} noValidate>
           
           {/* Section 1: Overall Job Satisfaction & Engagement */}
           <Fade in timeout={800}>
@@ -2347,6 +2372,8 @@ const BELSurvey2024 = () => {
                     onChange={(e) => handleFieldChange('q17', e.target.value)}
                     placeholder={language === 'hi' ? 'कृपया नए लाभ का उल्लेख करें जिसे आप जोड़ना चाहते हैं...' : 'Please mention the new benefit you would like to add...'}
                     variant="outlined"
+                    error={!!validationErrors['q17']}
+                    helperText={validationErrors['q17']}
                     sx={{ mt: 1 }}
                   />
                 </QuestionBox>
@@ -2818,6 +2845,8 @@ const BELSurvey2024 = () => {
                         onChange={(e) => handleFieldChange('q25_other', e.target.value)}
                         placeholder={language === 'hi' ? 'कृपया निर्दिष्ट करें...' : 'Please specify...'}
                         variant="outlined"
+                        error={!!validationErrors['q25_other']}
+                        helperText={validationErrors['q25_other']}
                         sx={{ mt: 1 }}
                       />
                     )}
@@ -3042,6 +3071,8 @@ const BELSurvey2024 = () => {
                     onChange={(e) => handleFieldChange('q30a', e.target.value)}
                     placeholder={t('survey.placeholders.text_response')}
                     variant="outlined"
+                    error={!!validationErrors['q30a']}
+                    helperText={validationErrors['q30a']}
                     sx={{ mt: 1 }}
                   />
                 </QuestionBox>
@@ -3260,6 +3291,8 @@ const BELSurvey2024 = () => {
                           onChange={(e) => handleFieldChange('q35_other', e.target.value)}
                           placeholder={language === 'hi' ? 'कृपया निर्दिष्ट करें...' : 'Please specify...'}
                           variant="outlined"
+                          error={!!validationErrors['q35_other']}
+                          helperText={validationErrors['q35_other']}
                           sx={{ mt: 1 }}
                         />
                       )}
@@ -3269,7 +3302,7 @@ const BELSurvey2024 = () => {
 
                 {/* Q36 - Conditional: Show only if NOT planning to stay */}
                 {(formData['q34'] && formData['q34'] !== 'yes_definitely' && formData['q34'] !== 'probably') && (
-                  <QuestionBox hasError={!!validationErrors['q36_other']} data-question="q36">
+                  <QuestionBox hasError={!!(validationErrors['q36'] || validationErrors['q36_other'])} data-question="q36">
                     {renderQuestionTitle('q36', t('survey.questions.q36'))}
                   {renderCheckboxGroup('q36', {
                     compensation_concerns: t('survey.options.leaving_factors.compensation_concerns'),
@@ -3316,6 +3349,8 @@ const BELSurvey2024 = () => {
                         onChange={(e) => handleFieldChange('q36_other', e.target.value)}
                         placeholder={language === 'hi' ? 'कृपया निर्दिष्ट करें...' : 'Please specify...'}
                         variant="outlined"
+                        error={!!validationErrors['q36_other']}
+                        helperText={validationErrors['q36_other']}
                         sx={{ mt: 1 }}
                       />
                     )}
@@ -3346,6 +3381,8 @@ const BELSurvey2024 = () => {
                       onChange={(e) => handleFieldChange(`q${qNum}`, e.target.value)}
                       placeholder={t('survey.placeholders.text_response')}
                       variant="outlined"
+                      error={!!validationErrors[`q${qNum}`]}
+                      helperText={validationErrors[`q${qNum}`]}
                       sx={{ mt: 1 }}
                     />
                   </QuestionBox>
@@ -3363,6 +3400,8 @@ const BELSurvey2024 = () => {
                       onChange={(e) => handleFieldChange(`q39_${num}`, e.target.value)}
                       placeholder={language === 'hi' ? `${num}. कृपया अपना उत्तर प्रदान करें...` : `${num}. Please provide your response...`}
                       variant="outlined"
+                      error={!!validationErrors[`q39_${num}`]}
+                      helperText={validationErrors[`q39_${num}`]}
                       sx={{ mt: 1, mb: 1 }}
                     />
                   ))}
@@ -3380,6 +3419,8 @@ const BELSurvey2024 = () => {
                       onChange={(e) => handleFieldChange(`q40_${num}`, e.target.value)}
                       placeholder={language === 'hi' ? `${num}. कृपया अपना उत्तर प्रदान करें...` : `${num}. Please provide your response...`}
                       variant="outlined"
+                      error={!!validationErrors[`q40_${num}`]}
+                      helperText={validationErrors[`q40_${num}`]}
                       sx={{ mt: 1, mb: 1 }}
                     />
                   ))}
