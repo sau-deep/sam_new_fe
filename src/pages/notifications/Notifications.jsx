@@ -58,7 +58,8 @@ export default function Notifications() {
     }
   };
 
-  useEffect(() => { fetchNotifications(); }, [activeTab]);
+  // Fetch once on mount — tabs filter client-side, so switching tabs must not refetch.
+  useEffect(() => { fetchNotifications(); }, []);
 
   // For these endpoints the SAMResponse wrapper uses success===true / statusCode 200 to mean OK.
   const isOk = (res) => {
@@ -71,7 +72,9 @@ export default function Notifications() {
       const res = await api.post(`/form/routine-monitoring/edit-notifications/${id}/approve`);
       if (isOk(res)) {
         message.success(res.data?.message || "Edit approved and applied");
-        fetchNotifications();
+        // Optimistic update — the row is already in memory; avoid a 3-endpoint refetch.
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, status: "APPROVED" } : n)));
       } else {
         message.error(res.data?.message || "Failed to approve");
       }
@@ -86,9 +89,12 @@ export default function Notifications() {
       );
       if (isOk(res)) {
         message.success(res.data?.message || "Edit rejected");
+        // Optimistic update — the row is already in memory; avoid a 3-endpoint refetch.
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === id ? { ...n, status: "REJECTED", rejectionReason: rejectComment } : n));
         setDetailModal(false);
         setRejectComment("");
-        fetchNotifications();
       } else {
         message.error(res.data?.message || "Failed to reject");
       }

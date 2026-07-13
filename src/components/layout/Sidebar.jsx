@@ -10,6 +10,7 @@ import {
   UserOutlined, SettingOutlined, GlobalOutlined, HomeOutlined,
   PieChartOutlined, LineChartOutlined, HeatMapOutlined, AppstoreOutlined,
   EnvironmentOutlined, FlagOutlined, UnorderedListOutlined, CalendarOutlined,
+  FileSearchOutlined,
 } from "@ant-design/icons";
 
 const { Sider } = Layout;
@@ -112,6 +113,7 @@ function buildMenuItems(role, notifCount) {
       label: "Notifications",
       children: [
         { key: "/notifications", icon: <BellOutlined />, label: "Edit Approvals" },
+        { key: "/surveys/record-edit", icon: <FileSearchOutlined />, label: "Record Search & Edit" },
         { key: "/notifications/report-issue", icon: <FlagOutlined />, label: "Report Issue" },
       ],
     });
@@ -163,7 +165,7 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
     }
     if (path.startsWith("/users")) return ["users"];
     if (path.startsWith("/locations")) return ["locations"];
-    if (path.startsWith("/notifications")) return ["notifications"];
+    if (path.startsWith("/notifications") || path === "/surveys/record-edit") return ["notifications"];
     return [];
   };
 
