@@ -5,8 +5,9 @@ import iegLogo from "../../assets/img/IELogo.png";
 const TEAM_MEMBERS = [
   { name: "Dr. William Joe", role: "Principal Investigator - SAM Hotspot Project" },
   { name: "Dr. Rakesh Kumar", role: "Senior Consultant – SAM Hotspot Project" },
-  { name: "Dr. Arun Kumar Yadav", role: "Junior Consultant - SAM Hotspot Project" },
+  { name: "Pavan Kumar Singh", role: "Data Manager - SAM Hotspot Project" },
   { name: "Dr. Chanda Murya", role: "Junior Consultant - SAM Hotspot Project" },
+  { name: "Dr. Tulika Rohilla", role: "Senior Research Analyst - SAM Hotspot Project" },
   { name: "Diva Enterprises", role: "IT Support" },
 ];
 
