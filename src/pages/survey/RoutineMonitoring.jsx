@@ -65,8 +65,38 @@ import {
 } from '../../utils/routineMonitoringPreferences';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
 
-const { getStateOptions, getDistrictOptions, getBlockOptions } =
-  getFormLocationHelpers("ROUTINE_MONITORING");
+const {
+  getStateOptions,
+  getDistrictOptions,
+  getBlockOptions,
+  getDistrictOptionsByStateName,
+  getBlockOptionsByDistrictName,
+} = getFormLocationHelpers("ROUTINE_MONITORING");
+
+/** Re-derive location codes from selected labels so payload always has codes. */
+function enrichRoutineMonitoringLocationCodes(v) {
+  if (!v) return v;
+  const out = { ...v };
+  if (out.state) {
+    const stateOpt = getStateOptions(out.state)?.[0];
+    if (stateOpt?.state_code != null && stateOpt.state_code !== "") {
+      out.stateCode = String(stateOpt.state_code);
+    }
+  }
+  if (out.state && out.district) {
+    const districtOpt = getDistrictOptionsByStateName(out.state)?.find((d) => d.text === out.district);
+    if (districtOpt?.district_code != null && districtOpt.district_code !== "") {
+      out.districtCode = String(districtOpt.district_code).padStart(3, "0");
+    }
+  }
+  if (out.state && out.district && out.block) {
+    const blockOpt = getBlockOptionsByDistrictName(out.state, out.district)?.find((b) => b.text === out.block);
+    if (blockOpt?.block_code != null && blockOpt.block_code !== "") {
+      out.blockCode = String(blockOpt.block_code).padStart(4, "0");
+    }
+  }
+  return out;
+}
 
 const ITEM_HEIGHT = 35;
 const ITEM_PADDING_TOP = 4;
@@ -375,8 +405,11 @@ const RoutineMonitoring = () => {
     const initialValues = {
         responseMode: 'ONLINE',
         state: savedPreferences.state || 'Uttar Pradesh',
+        stateCode: '',
         block: savedPreferences.block || 'Agra',
+        blockCode: '',
         district: savedPreferences.district || 'Agra',
+        districtCode: '',
         icdsProject: savedPreferences.icdsProject || 'Test ICDS Project',
         sector: savedPreferences.sector || 'Test Sector',
         village: savedPreferences.village || 'Test Village',
@@ -853,7 +886,8 @@ const RoutineMonitoring = () => {
         setShowSaveOfflineOption(false);
 
         // Create clean payload without section flags
-        const { section8, section9, section10, section11, householdSection, ...cleanValues } = values;
+        const enrichedValues = enrichRoutineMonitoringLocationCodes(values);
+        const { section8, section9, section10, section11, householdSection, ...cleanValues } = enrichedValues;
         
         const payload = {
             ...cleanValues,
@@ -1847,10 +1881,14 @@ const RoutineMonitoring = () => {
                                                     value={values.state}
                                                     onChange={(e) => {
                                                         const { value } = e.target;
+                                                        const stateData = getStateOptions(value)[0];
                                                         setFieldValue("state", value);
                                                         setFieldValue("district", '');
                                                         setFieldValue("block", '');
-                                                        setAddress(getStateOptions(value)[0])
+                                                        setFieldValue("stateCode", stateData?.state_code != null ? stateData.state_code.toString() : '');
+                                                        setFieldValue("districtCode", '');
+                                                        setFieldValue("blockCode", '');
+                                                        setAddress(stateData || {});
                                                     }}
                                                     onBlur={handleBlur}
                                                     error={touched.state && !!errors.state}
@@ -1880,9 +1918,11 @@ const RoutineMonitoring = () => {
                                                     value={values.district}
                                                     onChange={(e) => {
                                                         const { value } = e.target;
+                                                        const districtData = address.state_code ? getDistrictOptions(address.state_code).find(e => e.text === value) : null;
                                                         setFieldValue("district", value);
                                                         setFieldValue("block", '');
-                                                        const districtData = address.state_code ? getDistrictOptions(address.state_code).find(e => e.text === value) : null;
+                                                        setFieldValue("districtCode", districtData?.district_code != null ? districtData.district_code.toString() : '');
+                                                        setFieldValue("blockCode", '');
                                                         setAddress(districtData || {});
                                                     }}
                                                     onBlur={handleBlur}
@@ -1913,8 +1953,9 @@ const RoutineMonitoring = () => {
                                                     value={values.block}
                                                     onChange={(e) => {
                                                         const { value } = e.target;
-                                                        setFieldValue("block", value);
                                                         const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
+                                                        setFieldValue("block", value);
+                                                        setFieldValue("blockCode", blockData?.block_code != null ? blockData.block_code.toString() : '');
                                                         setAddress(blockData || {});
                                                     }}
                                                     onBlur={handleBlur}

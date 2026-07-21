@@ -44,8 +44,38 @@ import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsa
 import { getConsentStatus } from '../../utils/consentManager';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
 
-const { getDistrictOptions, getStateOptions, getBlockOptions } =
-  getFormLocationHelpers("FOLLOWUP");
+const {
+  getDistrictOptions,
+  getStateOptions,
+  getBlockOptions,
+  getDistrictOptionsByStateName,
+  getBlockOptionsByDistrictName,
+} = getFormLocationHelpers("FOLLOWUP");
+
+/** Re-derive location codes from selected labels so payload always has codes. */
+function enrichFollowupLocationCodes(v) {
+  if (!v) return v;
+  const out = { ...v };
+  if (out.state) {
+    const stateOpt = getStateOptions(out.state)?.[0];
+    if (stateOpt?.state_code != null && stateOpt.state_code !== "") {
+      out.stateCode = String(stateOpt.state_code);
+    }
+  }
+  if (out.state && out.district) {
+    const districtOpt = getDistrictOptionsByStateName(out.state)?.find((d) => d.text === out.district);
+    if (districtOpt?.district_code != null && districtOpt.district_code !== "") {
+      out.districtCode = String(districtOpt.district_code).padStart(3, "0");
+    }
+  }
+  if (out.state && out.district && out.block) {
+    const blockOpt = getBlockOptionsByDistrictName(out.state, out.district)?.find((b) => b.text === out.block);
+    if (blockOpt?.block_code != null && blockOpt.block_code !== "") {
+      out.blockCode = String(blockOpt.block_code).padStart(4, "0");
+    }
+  }
+  return out;
+}
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -264,8 +294,11 @@ const Followup = () => {
         responseMode: 'online',
         visitDate: getCurrentDate(),
         state: '',
+        stateCode: '',
         district: '',
+        districtCode: '',
         block: '',
+        blockCode: '',
         village: '',
         icdsProject: '',
         childCode: '',
@@ -435,7 +468,7 @@ const Followup = () => {
 
       // Process the form data to convert arrays to strings and handle other options
       const processedValues = {
-        ...values,
+        ...enrichFollowupLocationCodes(values),
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
@@ -637,7 +670,7 @@ const Followup = () => {
 
       // Process the form data to convert arrays to strings and handle other options
       const processedValues = {
-        ...values,
+        ...enrichFollowupLocationCodes(values),
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
@@ -942,10 +975,15 @@ const Followup = () => {
                                                             value={values.state}
                                                             onChange={(e) => {
                                                                 const {value} = e.target;
+                                                                const stateData = getStateOptions(value)[0];
                                                                 setFieldValue("state", value);
                                                                 setFieldValue("district", '');
+                                                                setFieldValue("block", '');
+                                                                setFieldValue("stateCode", stateData?.state_code != null ? stateData.state_code.toString() : '');
+                                                                setFieldValue("districtCode", '');
+                                                                setFieldValue("blockCode", '');
                                                                 //              setFieldValue("subDistrict", '');
-                                                                setAddress(getStateOptions(value)[0])
+                                                                setAddress(stateData || {});
                                                             }}
                                                             onBlur={handleBlur}
                                                             error={touched.state && !!errors.state}
@@ -977,10 +1015,12 @@ const Followup = () => {
                                                             value={values.district}
                                                             onChange={(e) => {
                                                                 const {value} = e.target;
+                                                                const districtData = address.state_code ? getDistrictOptions(address.state_code).find(e => e.text === value) : null;
                                                                 setFieldValue("district", value);
                                                                 setFieldValue("block", '');
                                                                 setFieldValue("village", '');
-                                                                const districtData = address.state_code ? getDistrictOptions(address.state_code).find(e => e.text === value) : null;
+                                                                setFieldValue("districtCode", districtData?.district_code != null ? districtData.district_code.toString() : '');
+                                                                setFieldValue("blockCode", '');
                                                                 setAddress(districtData || {});
                                                             }}
                                                             onBlur={handleBlur}
@@ -1013,9 +1053,10 @@ const Followup = () => {
                                                             value={values.block}
                                                             onChange={(e) => {
                                                                 const {value} = e.target;
+                                                                const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
                                                                 setFieldValue("block", value);
                                                                 setFieldValue("village", '');
-                                                                const blockData = address.district_code ? getBlockOptions(address.state_code, address.district_code).find(e => e.text === value) : null;
+                                                                setFieldValue("blockCode", blockData?.block_code != null ? blockData.block_code.toString() : '');
                                                                 setAddress(blockData || {});
                                                             }}
                                                             onBlur={handleBlur}
