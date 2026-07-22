@@ -257,7 +257,9 @@ class ExcelMappingService {
       'anth5',
       'haz06',
       'waz06',
-      'whz06'
+      'whz06',
+      'latitude',
+      'longitude'
     ];
 
     const safe = (val) => (val === null || val === undefined ? '' : val);
@@ -578,6 +580,10 @@ class ExcelMappingService {
       excelRow.haz06 = safe(record.haz06);
       excelRow.waz06 = safe(record.waz06);
       excelRow.whz06 = safe(record.whz06);
+
+      // Geolocation captured at submission time
+      excelRow.latitude = safe(record.latitude);
+      excelRow.longitude = safe(record.longitude);
 
       // Ensure every template column exists (and in the correct insertion order).
       const orderedRow = {};
