@@ -7,7 +7,8 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useNetworkStatus, useEffectiveNetworkStatus, setForcedOffline } from "../../utils/networkState";
+import { useEffectiveNetworkStatus, setForcedOffline } from "../../utils/networkState";
+
 import { ROLES } from "../../config";
 import api from "../../services/axiosInstance";
 import { LANGUAGES } from "../../constants";
@@ -26,7 +27,7 @@ const ROLE_COLORS = {
 // Compact mobile header for surveyor role — no sidebar toggle, no language
 function SurveyorMobileHeader({ user, userMenuItems }) {
   const navigate = useNavigate();
-  const { isOnline, forcedOffline, realOnline } = useEffectiveNetworkStatus();
+  const { isOnline, forcedOffline, realOnline, serverDown } = useEffectiveNetworkStatus();
   const [issueCount, setIssueCount] = useState(0);
   const initials = (user?.name || user?.username || "U")
     .split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
@@ -49,14 +50,20 @@ function SurveyorMobileHeader({ user, userMenuItems }) {
   const handleNetworkToggle = () => {
     if (forcedOffline) {
       setForcedOffline(false);
-      if (realOnline) {
-        message.success("Back online — forms will be uploaded automatically.");
-      } else {
+      if (!realOnline) {
         message.info("Online mode selected — will activate when network is available.");
+      } else if (serverDown) {
+        message.info("Online mode selected — will activate when the server is reachable.");
+      } else {
+        message.success("Back online — forms will be uploaded automatically.");
       }
     } else {
       if (!realOnline) {
         message.warning("No network connection available.");
+        return;
+      }
+      if (serverDown) {
+        message.warning("Server is unreachable — already in offline mode.");
         return;
       }
       setForcedOffline(true);
@@ -64,15 +71,18 @@ function SurveyorMobileHeader({ user, userMenuItems }) {
     }
   };
 
-  // Pill colour: green = online, orange = forced-offline (network OK), red = no network
-  const pillColor  = isOnline ? "#6DCC36" : (forcedOffline && realOnline ? "#FF7A3D" : "#FF4D4F");
-  const pillBg     = isOnline ? "rgba(74,140,28,0.25)" : (forcedOffline && realOnline ? "rgba(212,88,0,0.3)" : "rgba(255,77,79,0.15)");
-  const pillBorder = isOnline ? "#4A8C1C" : (forcedOffline && realOnline ? "#D45800" : "#FF4D4F");
+  // Pill colour: green = online, orange = forced-offline (network OK), red = no network / server down
+  const softOffline = forcedOffline && realOnline && !serverDown;
+  const pillColor  = isOnline ? "#6DCC36" : (softOffline ? "#FF7A3D" : "#FF4D4F");
+  const pillBg     = isOnline ? "rgba(74,140,28,0.25)" : (softOffline ? "rgba(212,88,0,0.3)" : "rgba(255,77,79,0.15)");
+  const pillBorder = isOnline ? "#4A8C1C" : (softOffline ? "#D45800" : "#FF4D4F");
   const tooltipText = isOnline
     ? "Online — tap to switch to offline mode"
     : forcedOffline
       ? "Offline mode active — tap to go back online"
-      : "No network connection";
+      : serverDown
+        ? "Server unreachable — offline mode (forms saved locally)"
+        : "No network connection";
 
   return (
     <div style={{
@@ -161,9 +171,11 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
   const { user, logout, getPrimaryRole } = useAuth();
   const navigate = useNavigate();
   const { i18n } = useTranslation();
-  const isOnline = useNetworkStatus();
+  // Effective status: browser online AND backend /health reachable AND not forced offline
+  const { isOnline, serverDown } = useEffectiveNetworkStatus();
   const role = getPrimaryRole();
   const roleStyle = ROLE_COLORS[role] || { bg: "#F3F4F6", color: "#6B7280", label: "User" };
+
 
   const userMenuItems = [
     {
@@ -220,8 +232,14 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
       </div>
 
       <Space size={8}>
-        {/* Network status */}
-        <Tooltip title={isOnline ? "Online" : "Offline — forms saved locally"}>
+        {/* Network status — flips to Offline when /health reports server down */}
+        <Tooltip title={
+          isOnline
+            ? "Online"
+            : serverDown
+              ? "Server unreachable — offline mode (forms saved locally)"
+              : "Offline — forms saved locally"
+        }>
           <div style={{
             display: "flex", alignItems: "center", gap: 5,
             background: isOnline ? "#EBF9E0" : "#FEF3E8",

@@ -1,6 +1,50 @@
 import { useState } from "react";
 import { Modal, Button } from "antd";
 import iegLogo from "../../assets/img/IELogo.png";
+import { HEALTH_URL, useServerHealth } from "../../utils/networkState";
+
+/**
+ * Small status pill shown in the footer: shares the app-wide /health poller
+ * from networkState. When the server is unreachable the same poller flips the
+ * app into offline mode (header pill, banners, form save-offline paths).
+ */
+function ServerHealthIndicator() {
+  // 'checking' | 'up' | 'down' — driven by the shared poller in networkState
+  const status = useServerHealth();
+
+  const config = {
+    up: { color: "#22c55e", label: "Server online" },
+    down: { color: "#ef4444", label: "Server offline — app in offline mode" },
+    checking: { color: "#9ca3af", label: "Checking server…" },
+  }[status];
+
+  return (
+    <span
+      title={`${config.label} · ${HEALTH_URL}`}
+      aria-label={config.label}
+      role="status"
+      style={{ display: "flex", alignItems: "center" }}
+    >
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          background: config.color,
+          boxShadow: `0 0 6px ${config.color}`,
+          transition: "background 0.3s ease, box-shadow 0.3s ease",
+          flexShrink: 0,
+          ...(status === "up" ? { animation: "samHealthPulse 1.8s ease-in-out infinite" } : {}),
+        }}
+      />
+      <style>{`@keyframes samHealthPulse {
+        0%   { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
+        70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+        100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+      }`}</style>
+    </span>
+  );
+}
 
 const TEAM_MEMBERS = [
   { name: "Dr. William Joe", role: "Principal Investigator - SAM Hotspot Project" },
@@ -40,22 +84,25 @@ export default function Footer() {
           />
         </a>
 
-        {/* Right — Team button */}
-        <Button
-          type="text"
-          onClick={() => setTeamOpen(true)}
-          style={{
-            color: "white",
-            fontWeight: 600,
-            fontSize: 13,
-            border: "1px solid rgba(255,255,255,0.35)",
-            borderRadius: 6,
-            padding: "4px 16px",
-            height: "auto",
-          }}
-        >
-          Team
-        </Button>
+        {/* Right — Team button + server health light (light at far right) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Button
+            type="text"
+            onClick={() => setTeamOpen(true)}
+            style={{
+              color: "white",
+              fontWeight: 600,
+              fontSize: 13,
+              border: "1px solid rgba(255,255,255,0.35)",
+              borderRadius: 6,
+              padding: "4px 16px",
+              height: "auto",
+            }}
+          >
+            Team
+          </Button>
+          <ServerHealthIndicator />
+        </div>
       </footer>
 
       <Modal

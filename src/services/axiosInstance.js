@@ -1,5 +1,6 @@
 import axios from "axios";
 import { API_BASE_URL, JWT_KEY } from "../config";
+import { pingServerNow } from "../utils/networkState";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -51,6 +52,15 @@ api.interceptors.response.use(
     return res;
   },
   (error) => {
+    // No response object => the request never reached the server (connection
+    // refused, DNS/network failure, or timeout). Trigger an immediate backend
+    // health re-check so the app flips into offline mode right away instead of
+    // waiting for the next poll tick. A response with any status (4xx/5xx) means
+    // the server IS reachable, so we don't treat those as "server down".
+    if (!error.response) {
+      pingServerNow();
+    }
+
     if (error.response?.status === 401) {
       const isDevBypass = process.env.NODE_ENV === "development" && localStorage.getItem("sam_dev_user");
       if (!isDevBypass) {

@@ -163,7 +163,12 @@ export default function HouseholdChildList() {
         message.success(`Found ${unique.length} record${unique.length !== 1 ? "s" : ""}.`);
       }
     } catch (err) {
-      message.error(`Search failed: ${err.response?.data?.message || err.message}`);
+      if (err.response?.status === 413) {
+        // Server rejected the range as too large to load safely.
+        message.warning(err.response?.data?.message || "Too many records — please narrow the date range or apply a location filter.");
+      } else {
+        message.error(`Search failed: ${err.response?.data?.message || err.message}`);
+      }
       setResults([]);
       setSearched(true);
     } finally {
