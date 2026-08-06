@@ -69,15 +69,32 @@ const DailyCountCalendar = ({ open, onClose, formType = 'routine' }) => {
   const formDisplayName = formDisplayNames[formType] || 'Survey';
   const colors = FORM_COLORS[formType] || FORM_COLORS['routine'];
 
-  // Fetch and sync data when dialog opens
+  // Fetch and sync data when dialog opens.
+  //
+  // The backend is the single source of truth here — the same data the "Today"
+  // card reads. We pull the whole history in one grouped range query so every
+  // cell (today and past days) matches the card. localStorage is only a
+  // fallback for the offline case; it used to be the primary source, which is
+  // what let the calendar drift below the card (offline uploads, multi-device,
+  // and sync races never updated the local cache).
   useEffect(() => {
     if (open) {
       const loadData = async () => {
         setSyncing(true);
         try {
-          // Check localStorage first, fetch from API if empty or count is 0
-          const counts = await getDailyCountsWithFallback(apiService, formType);
-          setDailyCounts(counts);
+          const today = new Date();
+          const start = new Date(today);
+          start.setFullYear(start.getFullYear() - 2); // cover all realistic history
+          const startStr = formatDateStr(start);
+          const endStr = formatDateStr(today);
+
+          const counts = await fetchDailyCountsByDateRange(apiService, startStr, endStr, formType);
+          if (counts && Object.keys(counts).length > 0) {
+            setDailyCounts(counts);
+          } else {
+            // Empty backend result (or offline) — fall back to cached counts.
+            setDailyCounts(await getDailyCountsWithFallback(apiService, formType));
+          }
         } catch (error) {
           console.error('Error loading daily counts:', error);
           // Fallback to localStorage if API fails

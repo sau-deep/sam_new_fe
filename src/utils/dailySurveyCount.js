@@ -22,6 +22,23 @@ const getStorageKey = (formType) => {
 const LEGACY_STORAGE_KEY = 'routineMonitoringDailyCounts';
 
 /**
+ * Today's date as YYYY-MM-DD using LOCAL calendar components.
+ *
+ * IMPORTANT: do not use `new Date().toISOString()` here. toISOString() is UTC,
+ * so before ~05:30 IST it returns the previous day. The backend buckets by its
+ * own local day (LocalDate.now()) and the calendar renders date keys with local
+ * components, so a UTC key would land in the wrong bucket and make the card and
+ * the calendar disagree. Keep every date key local and consistent.
+ */
+const getLocalToday = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Get all daily counts for the current user for a specific form type
  * @param {string} formType - Form type: 'household', 'concurrent', 'followup', 'routine'
  * @returns {Object} Object with date strings as keys and counts as values (e.g., { '2025-01-15': 3 })
@@ -66,7 +83,7 @@ export const getCountForDate = (dateString, formType = 'routine') => {
  * @returns {number} Today's count
  */
 export const getTodayCount = (formType = 'routine') => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   return getCountForDate(today, formType);
 };
 
@@ -83,7 +100,7 @@ export const incrementDailyCount = (dateString = null, formType = 'routine') => 
       return;
     }
 
-    const targetDate = dateString || new Date().toISOString().split('T')[0];
+    const targetDate = dateString || getLocalToday();
     const storageKey = getStorageKey(formType);
     
     // Get existing data
@@ -162,8 +179,8 @@ export const fetchAndSyncDailyCounts = async (apiService, formType = 'routine') 
       const formCounts = response.data.formCounts || {};
       const backendFormName = FORM_TYPE_MAPPING[formType] || FORM_TYPE_MAPPING['routine'];
       const formCount = formCounts[backendFormName] || 0;
-      const today = new Date().toISOString().split('T')[0];
-      
+      const today = getLocalToday();
+
       // Get username
       const username = localStorage.getItem('iegUsername');
       if (!username) {
@@ -178,8 +195,13 @@ export const fetchAndSyncDailyCounts = async (apiService, formType = 'routine') 
         allData[username] = {};
       }
 
-      // Update today's count from API (this is the source of truth)
-      allData[username][today] = formCount;
+      // Update today's count from API. Never let a stale/lagging backend read
+      // clobber a higher optimistic increment: if this sync fires immediately
+      // after a submit and the new row isn't visible to the read yet, the API
+      // may still return the pre-submit count. Keep the larger of the two so an
+      // optimistic +1 is not silently reverted.
+      const existingToday = allData[username][today] || 0;
+      allData[username][today] = Math.max(existingToday, formCount);
 
       // Save back to localStorage
       localStorage.setItem(storageKey, JSON.stringify(allData));
@@ -204,7 +226,7 @@ export const fetchAndSyncDailyCounts = async (apiService, formType = 'routine') 
  */
 export const getDailyCountsWithFallback = async (apiService, formType = 'routine') => {
   const dailyCounts = getDailyCounts(formType);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   const todayCount = dailyCounts[today] || 0;
   const hasAnyData = Object.keys(dailyCounts).length > 0;
 
@@ -254,34 +276,32 @@ export const fetchDailyCountsByDateRange = async (apiService, startDate, endDate
     
     if (response && response.success && response.data) {
       const dailyCounts = response.data.dailyCounts || {};
-      
-      // Get username
+
+      // Cache into localStorage for offline use, but return the backend map
+      // itself as the source of truth for the requested range. Returning the
+      // merged per-user object would fold stale local-only dates back into the
+      // result, which is exactly the drift that made the calendar disagree with
+      // the "Today" card.
       const username = localStorage.getItem('iegUsername');
-      if (!username) {
-        console.warn('No username found, cannot sync daily counts');
-        return dailyCounts;
+      if (username) {
+        const storageKey = getStorageKey(formType);
+        const allData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (!allData[username]) {
+          allData[username] = {};
+        }
+        Object.entries(dailyCounts).forEach(([date, count]) => {
+          allData[username][date] = count;
+        });
+        localStorage.setItem(storageKey, JSON.stringify(allData));
+      } else {
+        console.warn('No username found, cannot cache daily counts');
       }
 
-      // Merge with existing localStorage data
-      const storageKey = getStorageKey(formType);
-      const allData = JSON.parse(localStorage.getItem(storageKey) || '{}');
-      if (!allData[username]) {
-        allData[username] = {};
-      }
-
-      // Update counts from API (this is the source of truth for historical data)
-      Object.entries(dailyCounts).forEach(([date, count]) => {
-        allData[username][date] = count;
-      });
-
-      // Save back to localStorage
-      localStorage.setItem(storageKey, JSON.stringify(allData));
-      
       console.log(`✅ Fetched daily counts from API for date range ${startDate} to ${endDate} for ${formType}`);
-      
-      return allData[username];
+
+      return dailyCounts;
     }
-    
+
     return {};
   } catch (error) {
     console.error('Error fetching daily counts by date range from API:', error);

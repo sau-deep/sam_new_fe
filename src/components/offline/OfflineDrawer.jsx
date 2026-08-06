@@ -23,9 +23,21 @@ import {
 import RouterSharpIcon from "@mui/icons-material/RouterSharp";
 import { getOfflineForms, deleteForm } from "../../utils/indexDB";
 import { useEffectiveNetworkStatus } from "../../utils/networkState";
+import { isSurveyorUser, syncAfterSubmission } from "../../utils/dailySurveyCount";
 import apiService from "../../services/api";
 
 const { Text } = Typography;
+
+// Map a stored form url to the daily-count form type so an offline upload
+// refreshes the local counter the same way an online submit does. Without this,
+// synced offline forms raise the backend count but not the local cache, so the
+// calendar under-counts relative to the "Today" card.
+const URL_TO_FORM_TYPE = {
+  "/form/routine": "routine",
+  "/form/household": "household",
+  "/form/biannual": "concurrent",
+  "/form/followup": "followup",
+};
 
 // FloatButton appearance
 const ACCENT_COLOR = "#0F766E"; // teal — distinct from the navy app shell
@@ -104,6 +116,14 @@ export default function OfflineDrawer() {
     const res = await apiService.post(form.url, form.data);
     if (res?.statusCode === 200) {
       await deleteForm(form.id);
+      // Keep the local daily counter in step with the backend for surveyors,
+      // mirroring the online submit path.
+      const formType = URL_TO_FORM_TYPE[form.url];
+      if (formType && isSurveyorUser()) {
+        syncAfterSubmission(apiService, formType).catch((err) => {
+          console.error("Error syncing daily count after offline upload:", err);
+        });
+      }
       return true;
     }
     return false;
