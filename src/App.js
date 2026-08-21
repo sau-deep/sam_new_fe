@@ -47,6 +47,7 @@ const Settings = lazy(() => import("./pages/settings/Settings"));
 const VillageManagement = lazy(() => import("./pages/locations/VillageManagement"));
 const FormLocationManagement = lazy(() => import("./pages/forms/FormLocationManagement"));
 const HouseholdChildList = lazy(() => import("./pages/data/HouseholdChildList"));
+const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy"));
 
 const PageLoader = () => (
   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -155,6 +156,7 @@ function AppRoutes() {
       <Routes>
         {/* Public */}
         <Route path="/auth/login" element={<Login />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/unauthorized" element={<Unauthorized />} />
 
         {/* BEL Survey Routes */}

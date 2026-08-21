@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Modal, Button } from "antd";
+import { Link } from "react-router-dom";
 import iegLogo from "../../assets/img/IELogo.png";
 import { HEALTH_URL, useServerHealth } from "../../utils/networkState";
 
@@ -84,8 +85,19 @@ export default function Footer() {
           />
         </a>
 
-        {/* Right — Team button + server health light (light at far right) */}
+        {/* Right — Privacy + Team button + server health light (light at far right) */}
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Link
+            to="/privacy-policy"
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: 600,
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
+            Privacy Policy
+          </Link>
           <Button
             type="text"
             onClick={() => setTeamOpen(true)}

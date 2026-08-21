@@ -301,6 +301,15 @@ export default function Login() {
           <span style={{ fontSize: 11, color: "#C3D4E8" }}>
             CMAM Programme v2.0 · IEG · All rights reserved
           </span>
+          <div style={{ marginTop: 6 }}>
+            <a
+              href={`${process.env.PUBLIC_URL || ""}/privacy-policy`}
+              onClick={(e) => { e.preventDefault(); navigate("/privacy-policy"); }}
+              style={{ fontSize: 11, color: "#1CABE2", fontWeight: 600, textDecoration: "none" }}
+            >
+              Privacy Policy
+            </a>
+          </div>
         </div>
       </div>
     </div>

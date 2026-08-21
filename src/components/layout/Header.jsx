@@ -3,6 +3,7 @@ import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip, message }
 import {
   MenuFoldOutlined, MenuUnfoldOutlined, BellOutlined, UserOutlined,
   LogoutOutlined, GlobalOutlined, WifiOutlined, DisconnectOutlined,
+  SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -192,6 +193,12 @@ export default function AppHeader({ collapsed, onToggle, notifCount = 0, hideSid
           onClick: () => navigate("/notifications/my-issues"),
         }]
       : []),
+    {
+      key: "privacy",
+      icon: <SafetyCertificateOutlined />,
+      label: "Privacy Policy",
+      onClick: () => navigate("/privacy-policy"),
+    },
     { type: "divider" },
     {
       key: "logout",
