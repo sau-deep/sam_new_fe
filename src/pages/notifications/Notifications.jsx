@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   Table, Button, Tag, Modal, Descriptions, Space, Card, Typography,
-  Badge, message, Popconfirm, Input, Tabs, Empty, Alert,
+  Badge, message, Popconfirm, Input, Tabs, Empty, Alert, Spin,
 } from "antd";
 import {
   CheckOutlined, CloseOutlined, EyeOutlined, BellOutlined,
@@ -21,11 +21,20 @@ const STATUS_CONFIG = {
   REJECTED: { color: "error", icon: <CloseOutlined /> },
 };
 
+const BASE = "/form/routine-monitoring/edit-notifications";
+const STATUS_ENDPOINT = {
+  PENDING: `${BASE}/pending`,
+  APPROVED: `${BASE}/approved`,
+  REJECTED: `${BASE}/rejected`,
+};
+
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadedStatuses, setLoadedStatuses] = useState({}); // { PENDING: true, ... }
   const [selected, setSelected] = useState(null);
   const [detailModal, setDetailModal] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [activeTab, setActiveTab] = useState("PENDING");
   const { isAdmin, isIEG } = useAuth();
@@ -34,32 +43,67 @@ export default function Notifications() {
   const unwrap = (res) =>
     Array.isArray(res?.value?.data) ? res.value.data : (res?.value?.data?.data || []);
 
-  const fetchNotifications = async () => {
+  // Fetch one or more status lists. Statuses already loaded this session are skipped
+  // unless `force` is set (Refresh). The pending/approved/rejected list endpoints no
+  // longer carry the heavy form-data blobs — those are fetched per-row by the detail
+  // modal — so each list is small and cheap.
+  const fetchStatuses = async (statuses, { force = false } = {}) => {
+    const toFetch = force ? statuses : statuses.filter((s) => !loadedStatuses[s]);
+    if (toFetch.length === 0) return;
     setLoading(true);
     try {
-      // Admin review screen — fetch pending + history in parallel.
-      const [pendingRes, approvedRes, rejectedRes] = await Promise.allSettled([
-        api.get("/form/routine-monitoring/edit-notifications/pending", { noCache: true }),
-        api.get("/form/routine-monitoring/edit-notifications/approved", { noCache: true }),
-        api.get("/form/routine-monitoring/edit-notifications/rejected", { noCache: true }),
-      ]);
-      const pendingArr = pendingRes.status === "fulfilled" ? unwrap(pendingRes) : [];
-      const approvedArr = approvedRes.status === "fulfilled" ? unwrap(approvedRes) : [];
-      const rejectedArr = rejectedRes.status === "fulfilled" ? unwrap(rejectedRes) : [];
-
-      const withStatus = [
-        ...pendingArr.map((n) => ({ ...n, status: n.status || "PENDING" })),
-        ...approvedArr.map((n) => ({ ...n, status: n.status || "APPROVED" })),
-        ...rejectedArr.map((n) => ({ ...n, status: n.status || "REJECTED" })),
-      ];
-      setNotifications(withStatus);
+      const results = await Promise.allSettled(
+        toFetch.map((s) => api.get(STATUS_ENDPOINT[s], force ? { noCache: true } : {}))
+      );
+      setNotifications((prev) => {
+        // Replace the rows for the statuses we just fetched; keep the rest.
+        let next = prev.filter((n) => !toFetch.includes(n.status));
+        results.forEach((res, i) => {
+          if (res.status === "fulfilled") {
+            const arr = unwrap(res).map((n) => ({ ...n, status: n.status || toFetch[i] }));
+            next = next.concat(arr);
+          }
+        });
+        return next;
+      });
+      setLoadedStatuses((prev) => {
+        const upd = { ...prev };
+        results.forEach((res, i) => { if (res.status === "fulfilled") upd[toFetch[i]] = true; });
+        return upd;
+      });
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
   };
 
-  // Fetch once on mount — tabs filter client-side, so switching tabs must not refetch.
-  useEffect(() => { fetchNotifications(); }, []);
+  const statusesForTab = (tab) =>
+    tab === "ALL" ? ["PENDING", "APPROVED", "REJECTED"] : [tab];
+
+  // On mount only load the default (PENDING) tab. History tabs load lazily on first
+  // visit, so the initial render no longer waits on approved+rejected history.
+  useEffect(() => { fetchStatuses(["PENDING"]); }, []);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    fetchStatuses(statusesForTab(tab));
+  };
+
+  const handleRefresh = () => fetchStatuses(statusesForTab(activeTab), { force: true });
+
+  // Load the full form-data (not present in list responses) for the diff view.
+  const openDetail = async (row) => {
+    setSelected(row);
+    setDetailModal(true);
+    if (row?.originalFormData != null || row?.updatedFormData != null) return; // already have it
+    setDetailLoading(true);
+    try {
+      const res = await api.get(`${BASE}/${row.id}`);
+      const data = res?.data?.data || (res?.data && !res.data.success ? res.data : null);
+      if (data) setSelected((prev) => (prev && prev.id === row.id ? { ...prev, ...data } : prev));
+    } catch { /* ignore — diff will show no changes */ } finally {
+      setDetailLoading(false);
+    }
+  };
 
   // For these endpoints the SAMResponse wrapper uses success===true / statusCode 200 to mean OK.
   const isOk = (res) => {
@@ -176,7 +220,7 @@ export default function Notifications() {
       title: "Actions",
       render: (_, r) => (
         <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => { setSelected(r); setDetailModal(true); }}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(r)}>
             Review
           </Button>
           {r.status === "PENDING" && (isAdmin() || isIEG()) && (
@@ -185,7 +229,7 @@ export default function Notifications() {
                 <Button size="small" type="primary" icon={<CheckOutlined />}>Approve</Button>
               </Popconfirm>
               <Button size="small" danger icon={<CloseOutlined />}
-                onClick={() => { setSelected(r); setDetailModal(true); }}>
+                onClick={() => openDetail(r)}>
                 Reject
               </Button>
             </>
@@ -217,12 +261,12 @@ export default function Notifications() {
               Report Issue
             </Button>
           )}
-          <Button icon={<SyncOutlined />} onClick={fetchNotifications} loading={loading}>Refresh</Button>
+          <Button icon={<SyncOutlined />} onClick={handleRefresh} loading={loading}>Refresh</Button>
         </Space>
       </div>
 
       <Card style={{ borderRadius: 16 }}>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <Tabs activeKey={activeTab} onChange={handleTabChange}>
           {["PENDING", "APPROVED", "REJECTED", "ALL"].map((t) => {
             const count = t === "ALL" ? notifications.length : notifications.filter((n) => n.status === t).length;
             return (
@@ -297,7 +341,11 @@ export default function Notifications() {
             </Descriptions>
 
             {/* Field-level diff */}
-            {(() => {
+            {detailLoading ? (
+              <div style={{ textAlign: "center", padding: 32 }}>
+                <Spin tip="Loading changes..." />
+              </div>
+            ) : (() => {
               const changes = getChanges(selected);
               return (
                 <>
