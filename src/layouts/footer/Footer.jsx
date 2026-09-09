@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal, Button } from "antd";
 import { Link } from "react-router-dom";
 import iegLogo from "../../assets/img/IELogo.png";
+import divaLogo from "../../assets/img/DivaLogo.png";
 import { HEALTH_URL, useServerHealth } from "../../utils/networkState";
 
 /**
@@ -62,6 +63,7 @@ export default function Footer() {
   return (
     <>
       <footer style={{
+        position: "relative",
         background: "#002147",
         display: "flex",
         flexDirection: "row",
@@ -82,6 +84,31 @@ export default function Footer() {
             src={iegLogo}
             alt="Institute of Economic Growth"
             style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+          />
+        </a>
+
+        {/* Center — "Powered by" DIVA credit */}
+        <a
+          href="https://diva-it.in/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            color: "rgba(255,255,255,0.85)",
+            textDecoration: "none",
+          }}
+        >
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Powered by</span>
+          <img
+            src={divaLogo}
+            alt="DIVA"
+            style={{ height: 32, objectFit: "contain" }}
           />
         </a>
 
