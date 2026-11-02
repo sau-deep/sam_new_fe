@@ -627,13 +627,13 @@ export const generateQuestionnairePDF = () => {
   r.y = MT;
   r.section(7, 'Micronutrient Supplementation (MN1–MN4)', 'Vitamin and mineral supplement intake');
 
-  q(r, 'MN1', 'Has the child received Vitamin A syrup in the past 6 months?', true, 'Applicable for children older than 9 months.', 'Child age > 9 months',
+  q(r, 'MN1', 'Has the child received Vitamin A syrup in the past 6 months?', true, 'Applicable for children aged 9 months and above.', 'Child age >= 9 months',
     R => R.radio(['Yes', 'No', "Don't Know"]));
-  q(r, 'MN2', 'Has the child received deworming medicine in the past 1 year?', true, 'Applicable for children older than 12 months.', 'Child age > 12 months',
+  q(r, 'MN2', 'Has the child received deworming medicine in the past 1 year?', true, 'Applicable for children aged 12 months and above.', 'Child age >= 12 months',
     R => R.radio(['Yes', 'No', "Don't Know"]));
-  q(r, 'MN3', 'Has the child received iron syrup in the past month?', true, 'Applicable for children older than 6 months.', 'Child age > 6 months',
+  q(r, 'MN3', 'Has the child received iron syrup in the past month?', true, 'Applicable for children aged 6 months and above.', 'Child age >= 6 months',
     R => R.radio(['Yes', 'No', "Don't Know"]));
-  q(r, 'MN4', 'How many doses of iron syrup did the child receive in the last month?', true, 'Range: 0–999.', 'MN3 = Yes and child age > 6 months',
+  q(r, 'MN4', 'How many doses of iron syrup did the child receive in the last month?', true, 'Range: 0–999.', 'MN3 = Yes and child age >= 6 months',
     R => R.textBox('Enter number of doses'));
 
   // ══════════════════════════════════════════════════════════════════════════

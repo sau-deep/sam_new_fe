@@ -1,19 +1,21 @@
 import { useState, useEffect } from "react";
 import {
   Table, Button, Tag, Modal, Descriptions, Space, Card, Typography,
-  Badge, message, Popconfirm, Input, Tabs, Empty, Alert, Spin,
+  Badge, message, Popconfirm, Input, Tabs, Empty, Alert, Spin, DatePicker, Select,
 } from "antd";
 import {
   CheckOutlined, CloseOutlined, EyeOutlined, BellOutlined,
-  SyncOutlined, ClockCircleOutlined,
+  SyncOutlined, ClockCircleOutlined, DownloadOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
+import * as XLSX from "xlsx";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
+const { RangePicker } = DatePicker;
 
 const STATUS_CONFIG = {
   PENDING: { color: "orange", icon: <ClockCircleOutlined /> },
@@ -28,6 +30,58 @@ const STATUS_ENDPOINT = {
   REJECTED: `${BASE}/rejected`,
 };
 
+// Export: `value` is sent as the `status` query param (comma-separated); "ALL" omits it.
+const EXPORT_STATUS_OPTIONS = [
+  { value: "APPROVED,REJECTED", label: "Approved & Rejected" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "PENDING", label: "Pending" },
+  { value: "ALL", label: "All statuses" },
+];
+
+// Built on each render so the ranges stay current in a tab left open past midnight
+const exportDatePresets = () => [
+  { label: "Last 7 days", value: [dayjs().subtract(6, "day"), dayjs()] },
+  { label: "Last 30 days", value: [dayjs().subtract(29, "day"), dayjs()] },
+  { label: "This month", value: [dayjs().startOf("month"), dayjs()] },
+  { label: "Last month", value: [dayjs().subtract(1, "month").startOf("month"), dayjs().subtract(1, "month").endOf("month")] },
+];
+
+const fmtDateTime = (v) => (v ? dayjs(v).format("DD-MM-YYYY HH:mm") : "");
+
+// One column per routine_monitoring_edit_notifications column (form-data JSON blobs excluded).
+const EXPORT_COLUMNS = [
+  { header: "ID", get: (n) => n.id },
+  { header: "Record ID", get: (n) => n.recordId },
+  { header: "Surveyor ID", get: (n) => n.surveyorId },
+  { header: "Surveyor Name", get: (n) => n.surveyorName },
+  { header: "Submitted By", get: (n) => n.submittedBy },
+  { header: "Submitted At", get: (n) => fmtDateTime(n.submittedAt) },
+  { header: "Status", get: (n) => n.status },
+  { header: "Approved By", get: (n) => n.approvedBy },
+  { header: "Approved At", get: (n) => fmtDateTime(n.approvedAt) },
+  { header: "Rejected By", get: (n) => n.rejectedBy },
+  { header: "Rejected At", get: (n) => fmtDateTime(n.rejectedAt) },
+  { header: "Rejection Reason", get: (n) => n.rejectionReason },
+  { header: "State", get: (n) => n.state },
+  { header: "District", get: (n) => n.district },
+  { header: "Block", get: (n) => n.block },
+  { header: "Village", get: (n) => n.village },
+];
+
+function downloadNotificationsExcel(rows, fileName) {
+  const data = rows.map((n) => {
+    const row = {};
+    EXPORT_COLUMNS.forEach((c) => { const v = c.get(n); row[c.header] = v == null ? "" : v; });
+    return row;
+  });
+  const ws = XLSX.utils.json_to_sheet(data, { header: EXPORT_COLUMNS.map((c) => c.header) });
+  ws["!cols"] = EXPORT_COLUMNS.map((c) => ({ wch: c.header === "Rejection Reason" ? 40 : 18 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Notifications");
+  XLSX.writeFile(wb, fileName);
+}
+
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -37,6 +91,10 @@ export default function Notifications() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [rejectComment, setRejectComment] = useState("");
   const [activeTab, setActiveTab] = useState("PENDING");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportRange, setExportRange] = useState(() => [dayjs().subtract(29, "day"), dayjs()]);
+  const [exportStatus, setExportStatus] = useState("APPROVED,REJECTED");
+  const [exporting, setExporting] = useState(false);
   const { isAdmin, isIEG } = useAuth();
   const navigate = useNavigate();
 
@@ -143,6 +201,38 @@ export default function Notifications() {
         message.error(res.data?.message || "Failed to reject");
       }
     } catch (e) { message.error(e.response?.data?.message || "Failed to reject"); }
+  };
+
+  // Export — fetches the filtered rows from the backend (submitted date + status), then
+  // builds the .xlsx in the browser. An empty date range exports all dates.
+  const handleExport = async () => {
+    const [from, to] = exportRange || [];
+    const params = {};
+    if (exportStatus !== "ALL") params.status = exportStatus;
+    if (from) params.fromDate = from.format("YYYY-MM-DD");
+    if (to) params.toDate = to.format("YYYY-MM-DD");
+    setExporting(true);
+    try {
+      const res = await api.get(`${BASE}/export`, { params, noCache: true });
+      if (!isOk(res)) {
+        message.error(res.data?.message || "Failed to export notifications");
+        return;
+      }
+      const rows = Array.isArray(res.data?.data) ? res.data.data : [];
+      if (rows.length === 0) {
+        message.warning("No notifications found for the selected filters.");
+        return;
+      }
+      const statusPart = exportStatus === "ALL" ? "all" : exportStatus.toLowerCase().replace(",", "_");
+      const datePart = from && to ? `${from.format("YYYYMMDD")}_${to.format("YYYYMMDD")}` : "all_dates";
+      downloadNotificationsExcel(rows, `notifications_${statusPart}_${datePart}.xlsx`);
+      message.success(`Exported ${rows.length} notification${rows.length > 1 ? "s" : ""}`);
+      setExportOpen(false);
+    } catch (e) {
+      message.error(e.response?.data?.message || "Failed to export notifications");
+    } finally {
+      setExporting(false);
+    }
   };
 
   // ---- Field-level diff (original vs updated form data) ----
@@ -261,6 +351,9 @@ export default function Notifications() {
               Report Issue
             </Button>
           )}
+          {isAdmin() && (
+            <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>Export</Button>
+          )}
           <Button icon={<SyncOutlined />} onClick={handleRefresh} loading={loading}>Refresh</Button>
         </Space>
       </div>
@@ -303,6 +396,40 @@ export default function Notifications() {
           />
         )}
       </Card>
+
+      {/* Export Modal */}
+      <Modal
+        open={exportOpen}
+        title="Export Notifications"
+        onCancel={() => setExportOpen(false)}
+        onOk={handleExport}
+        okText="Download Excel"
+        okButtonProps={{ icon: <DownloadOutlined />, loading: exporting }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text style={{ fontWeight: 500, fontSize: 13, display: "block", marginBottom: 6 }}>Submitted Date</Text>
+          <RangePicker
+            value={exportRange}
+            onChange={(val) => setExportRange(val)}
+            presets={exportDatePresets()}
+            format="DD MMM YYYY"
+            allowClear
+            disabledDate={(d) => d && d.isAfter(dayjs(), "day")}
+            placeholder={["From Date", "To Date"]}
+            style={{ width: "100%" }}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>Clear the dates to export all time.</Text>
+        </div>
+        <div>
+          <Text style={{ fontWeight: 500, fontSize: 13, display: "block", marginBottom: 6 }}>Status</Text>
+          <Select
+            value={exportStatus}
+            onChange={setExportStatus}
+            options={EXPORT_STATUS_OPTIONS}
+            style={{ width: "100%" }}
+          />
+        </div>
+      </Modal>
 
       {/* Detail Modal */}
       <Modal

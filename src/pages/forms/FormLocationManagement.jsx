@@ -2,8 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Card, Select, Button, Table, Typography, message, Space, Tag, Form, Row, Col,
   Popconfirm, Segmented, Empty, Radio, Checkbox, Switch, Tooltip, Input, Divider, Tabs,
+  Upload, Alert,
 } from "antd";
-import { PlusOutlined, EnvironmentOutlined, DeleteOutlined, AppstoreOutlined, EditOutlined } from "@ant-design/icons";
+import {
+  PlusOutlined, EnvironmentOutlined, DeleteOutlined, AppstoreOutlined, EditOutlined,
+  UploadOutlined, DownloadOutlined, CloudUploadOutlined,
+} from "@ant-design/icons";
+import * as XLSX from "xlsx";
 import api from "../../services/axiosInstance";
 import { clearFormLocationCache } from "../../services/formLocationService";
 import { clearFormLocationsCache } from "../../utils/formLocations";
@@ -27,6 +32,8 @@ const ENTRY_TYPES = [
 ];
 
 const TYPE_COLOR = { DISTRICT: "orange", BLOCK: "blue", VILLAGE: "green" };
+
+const STATUS_COLOR = { IMPORTED: "green", REACTIVATED: "cyan", SKIPPED: "default", FAILED: "red" };
 
 
 export default function FormLocationManagement() {
@@ -68,8 +75,15 @@ export default function FormLocationManagement() {
   const [customForms,          setCustomForms]          = useState(FORMS.map(f => f.key));
   const [customSubmitting,     setCustomSubmitting]     = useState(false);
 
-  // Which add-mode tab is visible: "existing" | "new"
+  // Which add-mode tab is visible: "existing" | "new" | "import"
   const [addMode, setAddMode] = useState("existing");
+
+  // ── Bulk import (Excel) ─────────────────────────────────────────────────
+  const [importForms,       setImportForms]       = useState(FORMS.map(f => f.key)); // allow-list
+  const [importFile,        setImportFile]        = useState(null);
+  const [downloadingTpl,    setDownloadingTpl]    = useState(false);
+  const [importing,         setImporting]         = useState(false);
+  const [importResult,      setImportResult]      = useState(null);
 
   // Districts and blocks fetched from form_location for the custom-card dropdowns
   const [locationData,         setLocationData]         = useState({ districts: [], blocks: [], villages: [] });
@@ -411,6 +425,91 @@ export default function FormLocationManagement() {
     } finally {
       setCustomSubmitting(false);
     }
+  };
+
+  // ─── Bulk import handlers ───────────────────────────────────────────────────
+
+  const handleDownloadTemplate = async () => {
+    setDownloadingTpl(true);
+    try {
+      const res = await api.get("/admin/form-location/import/template", { responseType: "blob", noCache: true });
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `form_location_import_template_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      message.error("Failed to download the template.");
+    } finally {
+      setDownloadingTpl(false);
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (importForms.length === 0) { message.warning("Select at least one target form."); return; }
+    if (!importFile) { message.warning("Choose an Excel file to import."); return; }
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", importFile);
+      importForms.forEach(fk => fd.append("formKeys", fk));
+
+      // Let axios set the multipart Content-Type (with boundary) from the FormData body.
+      const res  = await api.post("/admin/form-location/import", fd);
+      const body = res.data;
+      if (body?.success === false) {
+        message.error(body.message || "Import failed.");
+        return;
+      }
+      const result = body?.data ?? body;
+      setImportResult(result);
+      message.success(body?.message || "Import complete.");
+
+      // Refresh caches + lists so imported locations show up immediately.
+      importForms.forEach(invalidateFormCache);
+      api.get("/admin/form-location/location-data", { noCache: true })
+        .then(r => { const d = r.data?.data ?? r.data; if (d?.districts) setLocationData(d); })
+        .catch(() => {});
+      fetchAssigned(formKey);
+    } catch (err) {
+      message.error(err?.response?.data?.message || "Failed to import locations.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDownloadReport = () => {
+    const outcomes = importResult?.outcomes || [];
+    if (outcomes.length === 0) { message.info("Nothing to export."); return; }
+
+    const rows = outcomes.map(o => ({
+      Row: o.rowNumber,
+      Status: o.status,
+      Reason: o.reason || "",
+      "Form Key": o.formKey || "",
+      "Entry Type": o.entryType || "",
+      State: o.state || "",
+      "State Code": o.stateCode || "",
+      District: o.district || "",
+      "District Code": o.districtCode || "",
+      Block: o.block || "",
+      "Block Code": o.blockCode || "",
+      Village: o.village || "",
+      "Village Code": o.villageCode || "",
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Import Result");
+    XLSX.writeFile(wb, `form_location_import_result_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // ─── Table columns ────────────────────────────────────────────────────────
@@ -914,6 +1013,122 @@ export default function FormLocationManagement() {
                     </Button>
                   </Form.Item>
                 </Form>
+              ),
+            },
+            {
+              key: "import",
+              label: <Space><CloudUploadOutlined />Bulk Import</Space>,
+              children: (
+                <div style={{ paddingTop: 8 }}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 20 }}
+                    message="Import many locations from Excel"
+                    description={
+                      <span>
+                        1. Download the template &nbsp;•&nbsp; 2. Fill one row per village — pick the
+                        state, then the district and block dropdowns show only that parent's entries and
+                        the <code>*_code</code> columns fill in automatically (type a new name to add one
+                        that isn't in the list) &nbsp;•&nbsp; 3. Tick the forms you intend to import
+                        &nbsp;•&nbsp; 4. Upload. Every row is imported as a village-level entry. Only valid
+                        rows are saved; any row whose <code>form_key</code> is not ticked below is rejected,
+                        and every row's outcome (added / re-activated / skipped / failed with reason) is
+                        listed and downloadable as Excel.
+                      </span>
+                    }
+                  />
+
+                  <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                    <Button
+                      icon={<DownloadOutlined />}
+                      loading={downloadingTpl}
+                      onClick={handleDownloadTemplate}
+                    >
+                      Download Excel Template
+                    </Button>
+
+                    <Form.Item
+                      label="Import into Forms (allow-list)"
+                      style={{ marginBottom: 0 }}
+                      extra="A row is saved only if its form_key is one of these ticked forms."
+                    >
+                      <Checkbox.Group
+                        options={FORMS.map(f => ({ label: f.label, value: f.key }))}
+                        value={importForms}
+                        onChange={setImportForms}
+                      />
+                    </Form.Item>
+
+                    <Upload.Dragger
+                      accept=".xlsx"
+                      maxCount={1}
+                      beforeUpload={(f) => { setImportFile(f); setImportResult(null); return false; }}
+                      onRemove={() => { setImportFile(null); setImportResult(null); }}
+                      fileList={importFile ? [importFile] : []}
+                    >
+                      <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+                      <p className="ant-upload-text">Click or drag the filled .xlsx here</p>
+                      <p className="ant-upload-hint">Only .xlsx files exported from the template are supported.</p>
+                    </Upload.Dragger>
+
+                    <Button
+                      type="primary"
+                      icon={<CloudUploadOutlined />}
+                      loading={importing}
+                      disabled={!importFile || importForms.length === 0}
+                      onClick={handleBulkImport}
+                      style={{ background: "#002147", borderColor: "#002147" }}
+                    >
+                      Import Locations
+                    </Button>
+
+                    {importResult && (
+                      <Card size="small" style={{ borderRadius: 10, border: "1px solid #E5E7EB" }}>
+                        <Space wrap size="middle" style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+                          <Space wrap size="middle">
+                            <Tag color="blue">Total rows: {importResult.totalRows}</Tag>
+                            <Tag color="green">Added: {importResult.importedCount}</Tag>
+                            <Tag color="cyan">Re-activated: {importResult.reactivatedCount}</Tag>
+                            <Tag color="default">Skipped (already present): {importResult.skippedDuplicateCount}</Tag>
+                            <Tag color={importResult.failedCount ? "red" : "default"}>Failed: {importResult.failedCount}</Tag>
+                          </Space>
+                          {importResult.outcomes?.length > 0 && (
+                            <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadReport}>
+                              Download Result Report (Excel)
+                            </Button>
+                          )}
+                        </Space>
+                        {importResult.outcomes?.length > 0 && (
+                          <Table
+                            size="small"
+                            dataSource={importResult.outcomes}
+                            rowKey="rowNumber"
+                            pagination={{ pageSize: 8, showSizeChanger: false }}
+                            columns={[
+                              { title: "Row", dataIndex: "rowNumber", key: "rowNumber", width: 60 },
+                              {
+                                title: "Status", dataIndex: "status", key: "status", width: 120,
+                                filters: [
+                                  { text: "Imported", value: "IMPORTED" },
+                                  { text: "Re-activated", value: "REACTIVATED" },
+                                  { text: "Skipped", value: "SKIPPED" },
+                                  { text: "Failed", value: "FAILED" },
+                                ],
+                                onFilter: (v, r) => r.status === v,
+                                render: (s) => <Tag color={STATUS_COLOR[s] || "default"}>{s}</Tag>,
+                              },
+                              { title: "Form", dataIndex: "formKey", key: "formKey", width: 130 },
+                              { title: "District", dataIndex: "district", key: "district" },
+                              { title: "Block", dataIndex: "block", key: "block" },
+                              { title: "Reason", dataIndex: "reason", key: "reason" },
+                            ]}
+                          />
+                        )}
+                      </Card>
+                    )}
+                  </Space>
+                </div>
               ),
             },
           ]}

@@ -224,13 +224,13 @@ export default function Sidebar({ collapsed, notifCount = 0 }) {
         }}
       />
 
-      {/* Version at bottom */}
+      {/* Bottom — version */}
       {!collapsed && (
         <div style={{
           position: "absolute", bottom: 16, left: 0, right: 0,
-          textAlign: "center", color: "rgba(255,255,255,0.3)", fontSize: 11,
+          display: "flex", justifyContent: "center",
         }}>
-          v2.0.0
+          <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 11 }}>v2.0.0</div>
         </div>
       )}
     </Sider>

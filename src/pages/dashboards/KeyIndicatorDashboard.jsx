@@ -8,6 +8,7 @@ import {
 import dayjs from "dayjs";
 import api from "../../services/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
+import { KI_SECTIONS, sectionCountLabel, indicatorBadge } from "../../constants/keyIndicatorSections";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -126,49 +127,6 @@ function KIAutoChart({ data }) {
     : <div style={{ color: "#9CA3AF", textAlign: "center", padding: "28px 0", fontSize: 12 }}>No data available</div>;
 }
 
-const KI_SECTIONS = [
-  {
-    key: "awc", title: "AWC Level Monitoring", color: "#1CABE2", bg: "#E6F7FF", border: "#91D5FF",
-    indicators: [
-      { field: "functionalMeasuringInstrument", label: "AWC with availability of functional measuring instrument (child)" },
-      { field: "athrAndThrAvailableSAM", label: "AWCs that have A-THR and THR available for SAM children as per state protocol" },
-      { field: "awwTrainingCMAM", label: "AWWs received training on CMAM" },
-      { field: "awwCorrectlyMeasureChild", label: "AWWs able to correctly measure the child" },
-      { field: "awwKnowledgeScore100", label: "AWWs with knowledge score of 100% (6 out of 6)" },
-    ],
-  },
-  {
-    key: "anm", title: "ANM Level Monitoring", color: "#52C41A", bg: "#F6FFED", border: "#B7EB8F",
-    indicators: [
-      { field: "medicinesAvailableSAM", label: "ANMs that have medicines available for SAM children" },
-      { field: "anmTrainingCMAMAndCriteria", label: "ANMs received training on CMAM and aware of criteria to identify SAM child" },
-      { field: "anmKnowledgeScore100", label: "ANMs with knowledge score of 100% (4 out of 4)" },
-    ],
-  },
-  {
-    key: "samChild", title: "SAM Child Level Monitoring", color: "#F26A21", bg: "#FFF7E6", border: "#FFD591",
-    indicators: [
-      { field: "scheduledHomeVisits", label: "Enrolled SAM children receiving scheduled home visits (as per state protocol)" },
-      { field: "counsellingFeedingQuality", label: "Households received counselling on improving feeding / nutritional quality" },
-      { field: "adviceDuringHomeVisits", label: "Different advice received during home visits" },
-      { field: "antibioticConsumed", label: "Enrolled SAM children that consumed antibiotic (as per state protocol)" },
-      { field: "thr25DaysPastMonth", label: "Enrolled SAM children who received THR for at least 25 days in past one month" },
-      { field: "thrFedExclusivelyToSAM", label: "Households that reported feeding THR exclusively to enrolled SAM children" },
-      { field: "thrRecommendedQuantityDaily", label: "Enrolled SAM children who consumed recommended quantity of THR everyday" },
-      { field: "weightMeasuredByAWW", label: "Enrolled SAM children whose weight was measured by AWW during follow up" },
-    ],
-  },
-  {
-    key: "child0To23Months", title: "Child Level Monitoring (0–23 months)", color: "#9B59B6", bg: "#F9F0FF", border: "#D3ADF7",
-    indicators: [
-      { field: "exclusiveBreastfeeding0To6", label: "0–6-month children who received exclusive breastfeeding in the previous 24 hours" },
-      { field: "solidSemiSolidAndBreastmilk6To8", label: "6–8-month children received solid or semi-solid food and breastmilk" },
-      { field: "minAcceptableDietAndIFA6To23", label: "6–23-month children consumed minimum acceptable diet and received IFA syrup" },
-      { field: "vitaminALast6Months9To23", label: "9–23-month children received vitamin A in last 6 months" },
-    ],
-  },
-];
-
 const LEVEL_OPTIONS = [
   { label: "All Levels", value: "ALL" },
   { label: "AWC", value: "awc" },
@@ -230,9 +188,10 @@ export default function KeyIndicatorDashboard() {
 
   useEffect(() => { fetchKIData(); }, [fetchKIData]);
 
+  // The additional SAM charts (dataKey "samChild") show with the SAM Child level
   const visibleSections = selectedLevel === "ALL"
     ? KI_SECTIONS
-    : KI_SECTIONS.filter(s => s.key === selectedLevel);
+    : KI_SECTIONS.filter(s => (s.dataKey || s.key) === selectedLevel);
 
   return (
     <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
@@ -240,7 +199,7 @@ export default function KeyIndicatorDashboard() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <div>
           <Title level={3} style={{ margin: 0, color: "#002147" }}>Key Indicator Dashboard</Title>
-          <Text style={{ color: "#6B7280" }}>Routine Monitoring — indicator charts by monitoring level</Text>
+          <Text style={{ color: "#6B7280" }}>Routine Monitoring — the 29 key indicators (plus 2 extra), one chart each, by monitoring level</Text>
         </div>
         <Space wrap>
           <RangePicker value={dateRange} onChange={setDateRange} style={{ borderRadius: 8 }} />
@@ -285,7 +244,7 @@ export default function KeyIndicatorDashboard() {
       ) : (
         <Spin spinning={loading} tip="Loading key indicators...">
           {visibleSections.map((section) => {
-            const sd = kiData?.[section.key] || {};
+            const sd = kiData?.[section.dataKey || section.key] || {};
             return (
               <div key={section.key} style={{ marginBottom: 32 }}>
                 {/* Section header */}
@@ -301,7 +260,7 @@ export default function KeyIndicatorDashboard() {
                     {section.title}
                   </Text>
                   <Tag style={{ background: section.color, color: "#fff", border: "none", fontSize: 11, borderRadius: 10 }}>
-                    {section.indicators.length} indicators
+                    {sectionCountLabel(section)}
                   </Tag>
                 </div>
 
@@ -321,6 +280,11 @@ export default function KeyIndicatorDashboard() {
                           bodyStyle={{ padding: "14px 16px" }}
                         >
                           <Text style={{ fontSize: 11.5, fontWeight: 600, color: "#1F2937", display: "block", marginBottom: 12, lineHeight: 1.5 }}>
+                            {indicatorBadge(ind) && (
+                              <Tag color={ind.no === "Extra" ? "gold" : "blue"} style={{ fontSize: 10, marginRight: 6 }}>
+                                {indicatorBadge(ind)}
+                              </Tag>
+                            )}
                             {ind.label}
                           </Text>
                           <KIAutoChart data={sd[ind.field]} />
