@@ -52,6 +52,9 @@ const {
   getBlockOptionsByDistrictName,
 } = getFormLocationHelpers("FOLLOWUP");
 
+/** FD3 "other food" text is saved inside the FD3 string under this key; the follow-up Excel export reads it. */
+const FD3_OTHER_FOOD_KEY = "Specify any other food item given";
+
 /** Re-derive location codes from selected labels so payload always has codes. */
 function enrichFollowupLocationCodes(v) {
   if (!v) return v;
@@ -442,13 +445,15 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
-        if (!obj) return '';
-        if (Array.isArray(obj)) return '';
-        if (typeof obj !== 'object') return obj || '';
-        
-        const entries = Object.entries(obj);
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed) with other option
+      const processObjectField = (obj, otherValue) => {
+        if (obj && typeof obj !== 'object') return obj;
+
+        // The field starts as [] until a food count is picked, so the other-food text is kept either way
+        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
+        if (otherValue && otherValue.trim()) {
+          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
+        }
         if (entries.length === 0) return '';
         
         return entries.map(([key, value]) => `${key} - ${value}`).join(',');
@@ -472,7 +477,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
@@ -644,13 +649,15 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
-        if (!obj) return '';
-        if (Array.isArray(obj)) return '';
-        if (typeof obj !== 'object') return obj || '';
-        
-        const entries = Object.entries(obj);
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed) with other option
+      const processObjectField = (obj, otherValue) => {
+        if (obj && typeof obj !== 'object') return obj;
+
+        // The field starts as [] until a food count is picked, so the other-food text is kept either way
+        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
+        if (otherValue && otherValue.trim()) {
+          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
+        }
         if (entries.length === 0) return '';
         
         return entries.map(([key, value]) => `${key} - ${value}`).join(',');
@@ -674,7 +681,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),

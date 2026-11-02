@@ -274,7 +274,7 @@ const step1ValidationSchema = Yup.object({
     'This is a required field',
     function (value) {
       const { childAgeMonths } = this.parent;
-      return !(childAgeMonths > 9 && (!value || value.trim() === ''));
+      return !(childAgeMonths >= 9 && (!value || value.trim() === ''));
     }
   ),
   medicineWorm: Yup.string().test(
@@ -282,7 +282,7 @@ const step1ValidationSchema = Yup.object({
     'This is a required field',
     function (value) {
       const { childAgeMonths } = this.parent;
-      return !(childAgeMonths > 12 && (!value || value.trim() === ''));
+      return !(childAgeMonths >= 12 && (!value || value.trim() === ''));
     }
   ),
   iron6Months: Yup.string().test(
@@ -290,7 +290,7 @@ const step1ValidationSchema = Yup.object({
     'This is a required field',
     function (value) {
       const { childAgeMonths } = this.parent;
-      return !(childAgeMonths > 6 && (!value || value.trim() === ''));
+      return !(childAgeMonths >= 6 && (!value || value.trim() === ''));
     }
   ),
   ironDoses: Yup.string().test(
@@ -298,7 +298,7 @@ const step1ValidationSchema = Yup.object({
     'This is a required field',
     function (value) {
       const { childAgeMonths, iron6Months } = this.parent;
-      return !(childAgeMonths > 6 && iron6Months === 'Yes' && (!value || value.trim() === ''));
+      return !(childAgeMonths >= 6 && iron6Months === 'Yes' && (!value || value.trim() === ''));
     }
   ),
   homeVisitAww: Yup.string()
@@ -3864,7 +3864,7 @@ const BiAnnual = () => {
                           </Grid>
 
                           {/* MN1 */}
-                          {values.childAgeMonths > 9 && (
+                          {values.childAgeMonths >= 9 && (
                             <Grid item xs={12} className={{
                               [styles.invalid]: touched.vitA6Months && !!errors.vitA6Months,
                             }}>
@@ -3887,7 +3887,7 @@ const BiAnnual = () => {
                           )}
 
                           {/* MN2 */}
-                          {values.childAgeMonths > 12 && (
+                          {values.childAgeMonths >= 12 && (
                             <Grid item xs={12} className={{
                               [styles.invalid]: touched.medicineWorm && !!errors.medicineWorm,
                             }}>
@@ -3910,7 +3910,7 @@ const BiAnnual = () => {
                           )}
 
                           {/* MN3 */}
-                          {values.childAgeMonths > 6 && (
+                          {values.childAgeMonths >= 6 && (
                             <Grid item xs={12} className={{
                               [styles.invalid]: touched.iron6Months && !!errors.iron6Months,
                             }}>
@@ -3933,7 +3933,7 @@ const BiAnnual = () => {
                           )}
 
                           {/* MN4 - Only show if MN3 is Yes */}
-                          {values.childAgeMonths > 6 && values.iron6Months === 'Yes' && (
+                          {values.childAgeMonths >= 6 && values.iron6Months === 'Yes' && (
                             <Grid item xs={12} sm={7} className={{
                               [styles.invalid]: touched.ironDoses && !!errors.ironDoses,
                             }}>
