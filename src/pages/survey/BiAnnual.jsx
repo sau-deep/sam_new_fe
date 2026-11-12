@@ -104,8 +104,76 @@ const WHZAutoCalculator = () => {
   return null;
 };
 
+/** CQ6.1 options: English values are stored (", "-joined), labels are translated. */
+const CQ6_1_ILLNESS_OPTIONS = [
+  { value: 'ARI', label: 'illness_ari' },
+  { value: 'Diarrhoea', label: 'illness_diarrhoea' },
+  { value: 'Dysentery', label: 'illness_dysentery' },
+  { value: 'Fever', label: 'illness_fever' },
+];
+
+/** ANTH5 is asked only for a SAM child (ANTH4) whom the AWW also identified as SAM (ANTH4.1 = Yes). */
+const isAnth5Asked = (v) => v.nutritionalCategory === 'SAM' && v.samIdentifiedByAww === 'Yes';
+
+/** Answers that depend on another answer; blanked by withoutSkippedCaAnswers when their condition fails. */
+const CA_DEPENDENT_FIELDS = ['hhHeadReligionOther', 'childIllnessType', 'samIdentifiedByAww', 'mamIdentifiedByAww', 'childEnrollCmam'];
+
+/**
+ * Blank answers whose skip condition no longer holds, e.g. ANTH4.1 after the
+ * auto-calculated ANTH4 changes from SAM to Normal, or CQ6.1 after CQ6 turns No.
+ */
+function withoutSkippedCaAnswers(v) {
+  if (!v) return v;
+  const out = { ...v };
+  if (out.hhHeadReligion !== 'Others') out.hhHeadReligionOther = '';
+  if (out.childIllnessPast2Weeks !== 'Yes') out.childIllnessType = '';
+  if (out.nutritionalCategory !== 'SAM') out.samIdentifiedByAww = '';
+  if (out.nutritionalCategory !== 'MAM') out.mamIdentifiedByAww = '';
+  if (!isAnth5Asked(out)) out.childEnrollCmam = '';
+  return out;
+}
+
+/**
+ * Clears dependent answers as soon as their condition fails, so stale answers are
+ * neither shown nor validated. Must be rendered inside a <Formik> tree.
+ */
+const CaSkipLogicCleaner = () => {
+  const { values, setFieldValue } = useFormikContext();
+  useEffect(() => {
+    const cleaned = withoutSkippedCaAnswers(values);
+    CA_DEPENDENT_FIELDS.forEach((field) => {
+      if ((values[field] || '') !== cleaned[field]) setFieldValue(field, cleaned[field]);
+    });
+  }, [ // eslint-disable-line react-hooks/exhaustive-deps
+    values.hhHeadReligion, values.childIllnessPast2Weeks,
+    values.nutritionalCategory, values.samIdentifiedByAww,
+  ]);
+  return null;
+};
+
+/** Conditional "required" rule: required only while `isAsked(parent)` is true. */
+const requiredWhen = (isAsked) => Yup.string().test(
+  'conditional-required',
+  'This is a required field',
+  function (value) {
+    return !isAsked(this.parent) || (value != null && String(value).trim() !== '');
+  }
+);
+
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
+  // CQ3a–CQ6.1
+  childBirthOrder: Yup.string()
+    .required("This is required field")
+    .test('birth-order-range', 'Must be between 1 and 20',
+      value => !value || (/^\d{1,2}$/.test(value) && Number(value) >= 1 && Number(value) <= 20)),
+  childRegisteredPoshanTracker: Yup.string().required("This is required field"),
+  childAgeAppropriateImmunization: Yup.string().required("This is required field"),
+  childIllnessPast2Weeks: Yup.string().required("This is required field"),
+  childIllnessType: requiredWhen((p) => p.childIllnessPast2Weeks === 'Yes'),
+  // ANTH4.1 / ANTH4.2
+  samIdentifiedByAww: requiredWhen((p) => p.nutritionalCategory === 'SAM'),
+  mamIdentifiedByAww: requiredWhen((p) => p.nutritionalCategory === 'MAM'),
   caregiverName: Yup.string().required("This is required field"),
   caregiversex: Yup.string().required("This is required field"),
   caregiverAge: Yup.string()
@@ -356,14 +424,8 @@ const step1ValidationSchema = Yup.object({
     'WHZ is out of valid range (−6 to +6). Please enter correct weight and height values.',
     value => !value
   ),
-  childEnrollCmam: Yup.string().test(
-    'conditional-required',
-    'This is a required field',
-    function (value) {
-      const { nutritionalCategory } = this.parent;
-      return !((nutritionalCategory === 'SAM' || nutritionalCategory === 'MAM') && (!value || value.trim() === ''));
-    }
-  ),
+  // ANTH5: only when ANTH4 = SAM and ANTH4.1 = Yes
+  childEnrollCmam: requiredWhen(isAnth5Asked),
   caregiversex_other: Yup.string().test(
     'conditional-required',
     'This is a required field',
@@ -792,6 +854,10 @@ const step0ValidationSchema = Yup.object({
   visitDate: Yup.string().required("This is required field"),
   state: Yup.string().required("This is required field"),
   district: Yup.string().required("This is required field"),
+  placeOfResidence: Yup.string().required("This is required field"), // GI3a
+  hhHeadReligion: Yup.string().required("This is required field"), // GI8a
+  hhHeadReligionOther: requiredWhen((p) => p.hhHeadReligion === 'Others'),
+  hhHeadCaste: Yup.string().required("This is required field"), // GI8b
   block: Yup.string().required("This is required field"),
   village: Yup.string().required("This is required field"),
   villageCode: Yup.string()
@@ -1085,6 +1151,7 @@ const BiAnnual = () => {
     stateCode: '',
     district: '',
     districtCode: '',
+    placeOfResidence: '', // GI3a
     //subDistrict : '',
     block: '',
     blockCode: '',
@@ -1093,6 +1160,9 @@ const BiAnnual = () => {
     clusterCode: '',
     structureCode: '',
     householdNumber: '',
+    hhHeadReligion: '', // GI8a
+    hhHeadReligionOther: '',
+    hhHeadCaste: '', // GI8b
     childId: '',
     primaryCaregiver: '',
     careGiverInterview: '',
@@ -1104,6 +1174,11 @@ const BiAnnual = () => {
     childSex: '',
     childDob: '',
     childAgeMonths: 0,
+    childBirthOrder: '', // CQ3a
+    childRegisteredPoshanTracker: '', // CQ4
+    childAgeAppropriateImmunization: '', // CQ5
+    childIllnessPast2Weeks: '', // CQ6
+    childIllnessType: '', // CQ6.1 (", "-joined)
     givingFluids: '',
     ageGivingFluids: '',
     ageGivingSemisolid: '',
@@ -1136,6 +1211,8 @@ const BiAnnual = () => {
     reasonNotMeasuing: '',
     nutritionalCategory: '',
     whzOutOfRange: false,
+    samIdentifiedByAww: '', // ANTH4.1
+    mamIdentifiedByAww: '', // ANTH4.2
     childEnrollCmam: '',
     reasonNotEnrollCmam: '',
     daysChildTreated: '',
@@ -1249,7 +1326,7 @@ const BiAnnual = () => {
 
     // Process the form data to convert arrays to strings
     const processedValues = {
-      ...enrichBiannualLocationCodes(values),
+      ...enrichBiannualLocationCodes(withoutSkippedCaAnswers(values)),
       reasonStoppedFeedingw: processArrayWithOther(values.reasonStoppedFeedingw, values.reasonStoppedFeedingw_other),
       medicineConsumed: processArrayWithOther(values.medicineConsumed, values.medicineConsumed_other),
       reasonAdmitted: processArrayWithOther(values.reasonAdmitted, values.reasonAdmitted_other),
@@ -1426,7 +1503,7 @@ const BiAnnual = () => {
 
     // Process the form data to convert arrays to strings
     const processedValues = {
-      ...enrichBiannualLocationCodes(values),
+      ...enrichBiannualLocationCodes(withoutSkippedCaAnswers(values)),
       reasonStoppedFeedingw: processArrayWithOther(values.reasonStoppedFeedingw, values.reasonStoppedFeedingw_other),
       medicineConsumed: processArrayWithOther(values.medicineConsumed, values.medicineConsumed_other),
       reasonAdmitted: processArrayWithOther(values.reasonAdmitted, values.reasonAdmitted_other),
@@ -1726,6 +1803,7 @@ const BiAnnual = () => {
                 <Form>
                   {/* WHZ auto-calculator: watches ANTH1/ANTH2/sex/age → auto-sets ANTH4 */}
                   <WHZAutoCalculator />
+                  <CaSkipLogicCleaner />
                   {/* Auto-save indicator */}
                   <AutoSaveIndicator
                     lastSaved={autoSave.lastSaved}
@@ -1860,6 +1938,24 @@ const BiAnnual = () => {
                             {touched.district && errors.district ? (
                               <div className={styles.error}>{errors.district}</div>
                             ) : null}
+                          </Grid>
+
+                          {/* GI3a: Place of residence */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.placeOfResidence && !!errors.placeOfResidence,
+                          }}>
+                            <label className={styles.label} htmlFor="placeOfResidence">
+                              {t('gi3a_place_of_residence')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <RadioGroup aria-label="Place of residence" name="placeOfResidence" size="small"
+                              id="placeOfResidence" value={values.placeOfResidence}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="Rural" control={<Radio />} label={t('rural')} />
+                              <FormControlLabel value="Urban" control={<Radio />} label={t('urban')} />
+                            </RadioGroup>
+                            {touched.placeOfResidence && errors.placeOfResidence && (
+                              <div className={styles.error}>{errors.placeOfResidence}</div>
+                            )}
                           </Grid>
 
                           <Grid item xs={12} sm={7} className={{
@@ -2055,6 +2151,67 @@ const BiAnnual = () => {
                                 inputProps: { min: 0, max: 999 }, // Set min and max values here
                               }}
                             />
+                          </Grid>
+
+                          {/* GI8a: Religion of the head of the household */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.hhHeadReligion && !!errors.hhHeadReligion,
+                          }}>
+                            <label className={styles.label} htmlFor="hhHeadReligion">
+                              {t('gi8a_religion_of_hh_head')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <RadioGroup aria-label="Religion of head of household" name="hhHeadReligion" size="small"
+                              id="hhHeadReligion" value={values.hhHeadReligion}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="Hindu" control={<Radio />} label={t('hindu')} />
+                              <FormControlLabel value="Muslim" control={<Radio />} label={t('muslim')} />
+                              <FormControlLabel value="Christian" control={<Radio />} label={t('christian')} />
+                              <FormControlLabel value="Others" control={<Radio />} label={t('others')} />
+                            </RadioGroup>
+                            {touched.hhHeadReligion && errors.hhHeadReligion && (
+                              <div className={styles.error}>{errors.hhHeadReligion}</div>
+                            )}
+                          </Grid>
+                          {values.hhHeadReligion === 'Others' && (
+                            <Grid item xs={12} sm={7} className={{
+                              [styles.invalid]: touched.hhHeadReligionOther && !!errors.hhHeadReligionOther,
+                            }}>
+                              <label className={styles.label} htmlFor="hhHeadReligionOther">
+                                {t('please_specify')} <span className={styles.requiredStar}>*</span>
+                              </label>
+                              <TextField
+                                size="small"
+                                className={styles.formInput}
+                                name="hhHeadReligionOther"
+                                id="hhHeadReligionOther"
+                                value={values.hhHeadReligionOther}
+                                onChange={handleChange}
+                                onBlur={handleBlur}
+                                inputProps={{ maxLength: 100 }}
+                                error={touched.hhHeadReligionOther && !!errors.hhHeadReligionOther}
+                                helperText={touched.hhHeadReligionOther && errors.hhHeadReligionOther}
+                              />
+                            </Grid>
+                          )}
+
+                          {/* GI8b: Caste or tribe of the head of the household */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.hhHeadCaste && !!errors.hhHeadCaste,
+                          }}>
+                            <label className={styles.label} htmlFor="hhHeadCaste">
+                              {t('gi8b_caste_of_hh_head')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <RadioGroup aria-label="Caste or tribe of head of household" name="hhHeadCaste" size="small"
+                              id="hhHeadCaste" value={values.hhHeadCaste}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="SC" control={<Radio />} label={t('sc')} />
+                              <FormControlLabel value="ST" control={<Radio />} label={t('st')} />
+                              <FormControlLabel value="OBC" control={<Radio />} label={t('obc')} />
+                              <FormControlLabel value="Others" control={<Radio />} label={t('others')} />
+                            </RadioGroup>
+                            {touched.hhHeadCaste && errors.hhHeadCaste && (
+                              <div className={styles.error}>{errors.hhHeadCaste}</div>
+                            )}
                           </Grid>
 
                           <Grid item xs={12}>
@@ -2411,6 +2568,132 @@ const BiAnnual = () => {
                               inputProps={{ max: today }}
                             />
                           </Grid>
+                          {/* CQ3a: Birth order of the child */}
+                          <Grid item xs={12} sm={7} className={{
+                            [styles.invalid]: touched.childBirthOrder && !!errors.childBirthOrder,
+                          }}>
+                            <label className={styles.label} htmlFor="childBirthOrder">
+                              {t('cq3a_birth_order')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <TextField
+                              size="small"
+                              className={styles.formInput}
+                              type="text"
+                              name="childBirthOrder"
+                              id="childBirthOrder"
+                              value={values.childBirthOrder}
+                              onChange={(e) => {
+                                // Digits only, max 2; kept as text so Formik doesn't turn it into a number
+                                if (/^\d{0,2}$/.test(e.target.value)) handleChange(e);
+                              }}
+                              onBlur={handleBlur}
+                              onKeyDown={filterNumberKeyDown}
+                              inputProps={{ inputMode: 'numeric', maxLength: 2 }}
+                              error={touched.childBirthOrder && !!errors.childBirthOrder}
+                              helperText={touched.childBirthOrder && errors.childBirthOrder}
+                            />
+                          </Grid>
+
+                          {/* CQ4: Registered with AWC and verified on Poshan Tracker */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.childRegisteredPoshanTracker && !!errors.childRegisteredPoshanTracker,
+                          }}>
+                            <label className={styles.label} htmlFor="childRegisteredPoshanTracker">
+                              {t('cq4_registered_poshan_tracker')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <em>{t('cq4_registered_poshan_tracker_note')}</em>
+                            <RadioGroup aria-label="Registered on Poshan Tracker" name="childRegisteredPoshanTracker" size="small"
+                              id="childRegisteredPoshanTracker" value={values.childRegisteredPoshanTracker}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                              <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                            </RadioGroup>
+                            {touched.childRegisteredPoshanTracker && errors.childRegisteredPoshanTracker && (
+                              <div className={styles.error}>{errors.childRegisteredPoshanTracker}</div>
+                            )}
+                          </Grid>
+
+                          {/* CQ5: Age-appropriate immunization */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.childAgeAppropriateImmunization && !!errors.childAgeAppropriateImmunization,
+                          }}>
+                            <label className={styles.label} htmlFor="childAgeAppropriateImmunization">
+                              {t('cq5_age_appropriate_immunization')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <em>{t('cq5_age_appropriate_immunization_note')}</em>
+                            <RadioGroup aria-label="Age-appropriate immunization" name="childAgeAppropriateImmunization" size="small"
+                              id="childAgeAppropriateImmunization" value={values.childAgeAppropriateImmunization}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                              <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                              <FormControlLabel value="Record not available" control={<Radio />} label={t('record_not_available')} />
+                            </RadioGroup>
+                            {touched.childAgeAppropriateImmunization && errors.childAgeAppropriateImmunization && (
+                              <div className={styles.error}>{errors.childAgeAppropriateImmunization}</div>
+                            )}
+                          </Grid>
+
+                          {/* CQ6: Illness in the past two weeks */}
+                          <Grid item xs={12} className={{
+                            [styles.invalid]: touched.childIllnessPast2Weeks && !!errors.childIllnessPast2Weeks,
+                          }}>
+                            <label className={styles.label} htmlFor="childIllnessPast2Weeks">
+                              {t('cq6_illness_past_two_weeks')} <span className={styles.requiredStar}>*</span>
+                            </label>
+                            <RadioGroup aria-label="Illness in past two weeks" name="childIllnessPast2Weeks" size="small"
+                              id="childIllnessPast2Weeks" value={values.childIllnessPast2Weeks}
+                              onChange={handleChange} onBlur={handleBlur}>
+                              <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                              <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                            </RadioGroup>
+                            {touched.childIllnessPast2Weeks && errors.childIllnessPast2Weeks && (
+                              <div className={styles.error}>{errors.childIllnessPast2Weeks}</div>
+                            )}
+                          </Grid>
+
+                          {/* CQ6.1: Which illness (only if CQ6 = Yes); multiple selections, stored as "ARI, Fever" */}
+                          {values.childIllnessPast2Weeks === 'Yes' && (
+                            <Grid item xs={12} className={{
+                              [styles.invalid]: touched.childIllnessType && !!errors.childIllnessType,
+                            }}>
+                              <label className={styles.label} htmlFor="childIllnessType">
+                                {t('cq6_1_illness_type')} <span className={styles.requiredStar}>*</span>
+                              </label>
+                              <em>{t('multiple_responses_instruction')}</em>
+                              <FormGroup id="childIllnessType">
+                                {CQ6_1_ILLNESS_OPTIONS.map((option) => {
+                                  const selectedValues = (values.childIllnessType || '').split(', ').filter(Boolean);
+                                  return (
+                                    <FormControlLabel
+                                      key={option.value}
+                                      control={
+                                        <Checkbox
+                                          name="childIllnessType"
+                                          value={option.value}
+                                          checked={selectedValues.includes(option.value)}
+                                          onChange={() => {
+                                            const next = selectedValues.includes(option.value)
+                                              ? selectedValues.filter((item) => item !== option.value)
+                                              : [...selectedValues, option.value];
+                                            // Keep form order whatever order they were ticked in
+                                            const ordered = CQ6_1_ILLNESS_OPTIONS
+                                              .map((o) => o.value)
+                                              .filter((v) => next.includes(v));
+                                            setFieldValue('childIllnessType', ordered.join(', '));
+                                          }}
+                                        />
+                                      }
+                                      label={t(option.label)}
+                                    />
+                                  );
+                                })}
+                              </FormGroup>
+                              {touched.childIllnessType && errors.childIllnessType && (
+                                <div className={styles.error}>{errors.childIllnessType}</div>
+                              )}
+                            </Grid>
+                          )}
+
                           {/* BF section: Only show for children under 24 months */}
                           {values.childAgeMonths < 24 && (
                             <>
@@ -4745,13 +5028,53 @@ const BiAnnual = () => {
                             })()}
                           </Grid>
 
-                          {/* ANTH5: Is the child enrolled in the CMAM programme? */}
-                          {(values.nutritionalCategory === 'SAM' || values.nutritionalCategory === 'MAM') && (
+                          {/* ANTH4.1: Identified as SAM by AWW (only if ANTH4 = SAM) */}
+                          {values.nutritionalCategory === 'SAM' && (
+                            <Grid item xs={12} className={{
+                              [styles.invalid]: touched.samIdentifiedByAww && !!errors.samIdentifiedByAww,
+                            }}>
+                              <label className={styles.label} htmlFor="samIdentifiedByAww">
+                                {t('anth4_1_sam_identified_by_aww')} <span className={styles.requiredStar}>*</span>
+                              </label>
+                              <RadioGroup aria-label="Identified as SAM by AWW" name="samIdentifiedByAww" size="small"
+                                id="samIdentifiedByAww" value={values.samIdentifiedByAww}
+                                onChange={handleChange} onBlur={handleBlur}>
+                                <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                                <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                              </RadioGroup>
+                              {touched.samIdentifiedByAww && errors.samIdentifiedByAww && (
+                                <div className={styles.error}>{errors.samIdentifiedByAww}</div>
+                              )}
+                            </Grid>
+                          )}
+
+                          {/* ANTH4.2: Identified as MAM by AWW (only if ANTH4 = MAM) */}
+                          {values.nutritionalCategory === 'MAM' && (
+                            <Grid item xs={12} className={{
+                              [styles.invalid]: touched.mamIdentifiedByAww && !!errors.mamIdentifiedByAww,
+                            }}>
+                              <label className={styles.label} htmlFor="mamIdentifiedByAww">
+                                {t('anth4_2_mam_identified_by_aww')} <span className={styles.requiredStar}>*</span>
+                              </label>
+                              <RadioGroup aria-label="Identified as MAM by AWW" name="mamIdentifiedByAww" size="small"
+                                id="mamIdentifiedByAww" value={values.mamIdentifiedByAww}
+                                onChange={handleChange} onBlur={handleBlur}>
+                                <FormControlLabel value="Yes" control={<Radio />} label={t('yes')} />
+                                <FormControlLabel value="No" control={<Radio />} label={t('no')} />
+                              </RadioGroup>
+                              {touched.mamIdentifiedByAww && errors.mamIdentifiedByAww && (
+                                <div className={styles.error}>{errors.mamIdentifiedByAww}</div>
+                              )}
+                            </Grid>
+                          )}
+
+                          {/* ANTH5: SAM child enrolled in CMAM (only if ANTH4 = SAM and ANTH4.1 = Yes) */}
+                          {isAnth5Asked(values) && (
                             <Grid item xs={12} sm={7} className={{
                               [styles.invalid]: touched.childEnrollCmam && !!errors.childEnrollCmam,
                             }}>
                               <label className={styles.label} htmlFor="childEnrollCmam">
-                                {t('anth5')} <span className={styles.requiredStar}>*</span>
+                                {t('anth5_sam_cmam')} <span className={styles.requiredStar}>*</span>
                               </label>
                               <em>{t('anth5_note')}</em>
                               <RadioGroup aria-label="Child enrolled CMAM" name="childEnrollCmam" size="small"
@@ -4767,7 +5090,7 @@ const BiAnnual = () => {
                             </Grid>
                           )}
                           {/* Show message if ANTH5 is No */}
-                          {values.childEnrollCmam === 'No' && (values.nutritionalCategory === 'SAM' || values.nutritionalCategory === 'MAM') && (
+                          {values.childEnrollCmam === 'No' && isAnth5Asked(values) && (
                             <Grid item xs={12}>
                               <Typography color="error" variant="body1">
                                 {t('cmam_enrollment_message')}
