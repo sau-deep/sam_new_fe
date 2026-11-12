@@ -805,6 +805,85 @@
   }
 }
 
+/* Compact page shell
+   The survey page nests wrapper > container > paper > section > details > grid.
+   Each level used to declare its own side padding, so inputs ended up well over
+   100px from the edge of the screen. Horizontal padding is declared once per
+   level here; keep it that way when adding new wrappers. */
+.compactPage {
+  width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.compactPage .paper {
+  margin: 24px 0;
+  padding: 24px 20px;
+}
+
+.compactPage .formSection {
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.compactPage details {
+  padding: 8px;
+}
+
+.compactPage details > div {
+  padding: 16px;
+}
+
+@media (max-width: 768px) {
+  .compactPage {
+    padding: 0 8px;
+  }
+
+  .compactPage .paper {
+    margin: 12px 0;
+    padding: 16px 12px;
+    border-radius: 14px;
+  }
+
+  .compactPage .formSection {
+    padding: 14px 12px;
+    margin-bottom: 14px;
+  }
+
+  .compactPage details {
+    padding: 6px;
+  }
+
+  .compactPage details > div {
+    padding: 12px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .compactPage {
+    padding: 0;
+  }
+
+  .compactPage .paper {
+    margin: 8px 0;
+    padding: 12px 10px;
+    border-radius: 12px;
+  }
+
+  .compactPage .formSection {
+    padding: 12px 10px;
+    margin-bottom: 12px;
+  }
+
+  .compactPage details {
+    padding: 4px;
+  }
+
+  .compactPage details > div {
+    padding: 10px 8px;
+  }
+}
+
 /* Legacy styles for compatibility */
 .footer {
   background-color: #005a9e;

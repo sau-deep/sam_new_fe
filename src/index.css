@@ -132,13 +132,19 @@ body {
 
 /* Surveyor mobile-centered view */
 .surveyor-mobile-view {
-  max-width: 430px;
+  /* Was 430px, which left large empty gutters (and forced awkward text
+     wrapping) on wider phones/phablets. Let the form use the device width up to
+     a comfortable reading measure. */
+  max-width: 820px;
   margin: 0 auto;
   width: 100%;
   background: #F5F7FA;
 }
 
-@media (min-width: 500px) {
+/* Only present the content as a centered "framed" card on genuine tablet /
+   desktop widths. Below this, the form fills the full device width so phones
+   don't waste horizontal space. */
+@media (min-width: 860px) {
   .surveyor-mobile-view {
     box-shadow: 0 0 40px rgba(0,0,0,0.10);
     min-height: calc(100vh - 64px);

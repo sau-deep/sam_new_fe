@@ -330,7 +330,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
         <div id="cmamChildServicesForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section8CMAMChildServices')}</summary>
-                <Grid container rowSpacing={2} sx={{ margin: '0', width: '100%' }}>
+                <Grid container rowSpacing={2}>
                     <Grid item xs={12}>
                         <label className={styles.label} htmlFor="nameOfChild">
                             {t('section81NameOfChild')} 

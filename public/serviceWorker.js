@@ -1,7 +1,13 @@
 /* eslint-disable */
 /* SAM v2 Service Worker — cache-first offline support with /v2 base-path awareness */
 
-const CACHE_VERSION = 'sam-v2-cache-v2';
+// Stamped with the build time by scripts/stamp-sw.js as a postbuild step.
+// A browser only re-installs a service worker when the WORKER FILE'S BYTES
+// change. While this was a hardcoded constant, every build shipped a
+// byte-identical worker, so the install event never re-ran and the cached
+// index.html — and the old JS hashes it points at — were served forever. New
+// builds simply never reached users.
+const CACHE_VERSION = 'sam-v2-cache-unstamped';
 
 // Detect base path from where the SW file is served
 const SW_PATH = self.location.pathname; // e.g. /v2/serviceWorker.js or /serviceWorker.js
@@ -87,6 +93,12 @@ self.addEventListener('activate', event => {
         keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
       );
       await self.clients.claim();
+
+      // Installs stuck on a pre-stamped worker are still showing an old build
+      // from a cached shell. Tell them to reload now that this worker is in
+      // charge, so the fix lands on first launch rather than the next one.
+      const clients = await self.clients.matchAll({ type: 'window' });
+      clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
     })()
   );
 });
@@ -121,13 +133,14 @@ self.addEventListener('fetch', event => {
 async function handleFetch(request) {
   const url = new URL(request.url);
 
-  // Navigation requests → serve app shell (SPA routing)
+  // Navigation requests → app shell (SPA routing).
+  //
+  // NETWORK-FIRST, deliberately. The shell names the hashed JS/CSS bundles, so
+  // serving it from cache pins the whole app to whichever build was installed
+  // first — no later release can ever load. Hashed assets below stay cache-first,
+  // which is safe precisely because a fresh shell asks for filenames that miss
+  // the cache and fall through to the network.
   if (request.mode === 'navigate') {
-    const cached =
-      (await caches.match(`${BASE}/index.html`)) ||
-      (await caches.match(`${BASE}/`));
-    if (cached) return cached;
-
     try {
       const net = await fetch(request);
       if (net.ok) {
@@ -135,7 +148,12 @@ async function handleFetch(request) {
         cache.put(`${BASE}/index.html`, net.clone());
         return net;
       }
-    } catch { /* offline */ }
+    } catch { /* offline — fall back to the last shell we saw */ }
+
+    const cached =
+      (await caches.match(`${BASE}/index.html`)) ||
+      (await caches.match(`${BASE}/`));
+    if (cached) return cached;
 
     return offlineHtml();
   }

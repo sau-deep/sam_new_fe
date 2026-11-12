@@ -494,7 +494,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
         <div id="child9To23MonthsForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('Section 11 - Child (9-23 months)')}</summary>
-                <Grid container rowSpacing={2} sx={{ margin: '0', width: '100%' }}>
+                <Grid container rowSpacing={2}>
                     
                     <Grid item xs={12}>
                         <label className={styles.label} htmlFor="childFullName">

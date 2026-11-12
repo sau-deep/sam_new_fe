@@ -50,6 +50,7 @@ class ExcelMappingService {
       'stateCode',
       'district',
       'districtCode',
+      'gi3a',
       'block',
       'blockCode',
       'village',
@@ -57,6 +58,9 @@ class ExcelMappingService {
       'clusterCode',
       'structureCode',
       'householdNumber',
+      'gi8a',
+      'gi8a_other_text',
+      'gi8b',
       'childId',
       'primaryCaregiver',
       'careGiverInterview',
@@ -69,6 +73,14 @@ class ExcelMappingService {
       'childDob',
       'childAgeDays',
       'childAgeMonths',
+      'cq3a',
+      'cq4',
+      'cq5',
+      'cq6',
+      'cq6_1_ari',
+      'cq6_1_diarrhoea',
+      'cq6_1_dysentery',
+      'cq6_1_fever',
       'bf1',
       'bf2',
       'bf2_days',
@@ -254,6 +266,8 @@ class ExcelMappingService {
       'anthr3',
       'anth3_1',
       'anth4',
+      'anth4_1',
+      'anth4_2',
       'anth5',
       'haz06',
       'waz06',
@@ -315,6 +329,7 @@ class ExcelMappingService {
       excelRow.stateCode = safe(record.stateCode);
       excelRow.district = safe(record.district);
       excelRow.districtCode = safe(record.districtCode);
+      excelRow.gi3a = safe(record.placeOfResidence);
       excelRow.block = safe(record.block);
       excelRow.blockCode = safe(record.blockCode);
       excelRow.village = safe(record.village);
@@ -322,6 +337,9 @@ class ExcelMappingService {
       excelRow.clusterCode = safe(record.clusterCode);
       excelRow.structureCode = safe(record.structureCode);
       excelRow.householdNumber = safe(record.householdNumber);
+      excelRow.gi8a = safe(record.hhHeadReligion);
+      excelRow.gi8a_other_text = safe(record.hhHeadReligionOther);
+      excelRow.gi8b = safe(record.hhHeadCaste);
       const computeChildId = (r) => {
         if (!r.districtCode && !r.blockCode) return '';
         const dc = String(r.districtCode    || '').padStart(3, '0').slice(-3);
@@ -359,6 +377,20 @@ class ExcelMappingService {
         ? safe(record.childAgeDays)
         : computeAgeDays(record.childDob, record.visitDate);
       excelRow.childAgeMonths = safe(record.childAgeMonths);
+
+      // CQ3a–CQ6.1
+      excelRow.cq3a = safe(record.childBirthOrder);
+      excelRow.cq4 = safe(record.childRegisteredPoshanTracker);
+      excelRow.cq5 = safe(record.childAgeAppropriateImmunization);
+      excelRow.cq6 = safe(record.childIllnessPast2Weeks);
+      // CQ6.1 is multi-select: one Yes/No column per illness, blank when CQ6.1 was not asked
+      const cq61List = csvToList(record.childIllnessType);
+      const cq61Asked = record.childIllnessPast2Weeks === 'Yes';
+      const cq61 = (illness) => (cq61Asked ? indicatorYesNo(cq61List.includes(illness)) : '');
+      excelRow.cq6_1_ari = cq61('ARI');
+      excelRow.cq6_1_diarrhoea = cq61('Diarrhoea');
+      excelRow.cq6_1_dysentery = cq61('Dysentery');
+      excelRow.cq6_1_fever = cq61('Fever');
 
       // BF (breastfeeding)
       excelRow.bf1 = safe(record.childBreastfeed);
@@ -576,6 +608,8 @@ class ExcelMappingService {
       excelRow.anthr3 = safe(record.presentBilateralOedema);
       excelRow.anth3_1 = safe(record.reasonNotAssessing);
       excelRow.anth4 = safe(record.nutritionalCategory);
+      excelRow.anth4_1 = safe(record.samIdentifiedByAww);
+      excelRow.anth4_2 = safe(record.mamIdentifiedByAww);
       excelRow.anth5 = safe(record.childEnrollCmam);
       excelRow.haz06 = safe(record.haz06);
       excelRow.waz06 = safe(record.waz06);

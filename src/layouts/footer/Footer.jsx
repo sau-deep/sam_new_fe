@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Modal, Button } from "antd";
 import { Link } from "react-router-dom";
-import iegLogo from "../../assets/img/IELogo.png";
-import divaLogo from "../../assets/img/DivaLogo.png";
+// Monogram-only crops: the full lockups carry their own wordmarks, which read as
+// duplicated text next to the footer's own labels (and are illegible at 30px).
+import iegLogo from "../../assets/img/IEGMark.png";
+import divaLogo from "../../assets/img/DivaLogoSmall.png";
 import { HEALTH_URL, useServerHealth } from "../../utils/networkState";
 
 /**
@@ -57,92 +59,151 @@ const TEAM_MEMBERS = [
   { name: "Diva Enterprises", role: "IT Support" },
 ];
 
-export default function Footer() {
+function IegLink({ height }) {
+  return (
+    <a
+      href="https://iegindia.org/"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ display: "flex", alignItems: "center", flexShrink: 0 }}
+    >
+      <img
+        src={iegLogo}
+        alt="Institute of Economic Growth"
+        style={{ height, objectFit: "contain", filter: "brightness(0) invert(1)" }}
+      />
+    </a>
+  );
+}
+
+function DivaCredit({ label, logoHeight, labelSize = 13, style }) {
+  return (
+    <a
+      href="https://diva-it.in/"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        color: "rgba(255,255,255,0.85)",
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+        ...style,
+      }}
+    >
+      <span style={{ fontWeight: 600, fontSize: labelSize }}>{label}</span>
+      <img
+        src={divaLogo}
+        alt="Diva Enterprises"
+        style={{ height: logoHeight, objectFit: "contain" }}
+      />
+    </a>
+  );
+}
+
+const LINK_STYLE = {
+  color: "rgba(255,255,255,0.85)",
+  fontWeight: 600,
+  fontSize: 13,
+  textDecoration: "none",
+};
+
+/**
+ * `compact` is set for the surveyor layout (the Android app). Same three-part
+ * row as the desktop footer, but the DIVA credit is centred with `flex: 1`
+ * rather than absolute positioning — at phone width an absolutely-centred
+ * element overlaps the items on either side.
+ */
+export default function Footer({ compact = false }) {
   const [teamOpen, setTeamOpen] = useState(false);
+
+  const teamButton = (
+    <Button
+      type="text"
+      onClick={() => setTeamOpen(true)}
+      style={{
+        color: "white",
+        fontWeight: 600,
+        fontSize: compact ? 12 : 13,
+        border: "1px solid rgba(255,255,255,0.35)",
+        borderRadius: 6,
+        padding: compact ? "2px 12px" : "4px 16px",
+        height: "auto",
+      }}
+    >
+      Team
+    </Button>
+  );
 
   return (
     <>
-      <footer style={{
-        position: "relative",
-        background: "#002147",
-        display: "flex",
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "12px 24px",
-        color: "white",
-        flexShrink: 0,
-      }}>
-        {/* Left — IEG logo */}
-        <a
-          href="https://iegindia.org/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: "flex", alignItems: "center" }}
-        >
-          <img
-            src={iegLogo}
-            alt="Institute of Economic Growth"
-            style={{ height: 36, objectFit: "contain", filter: "brightness(0) invert(1)" }}
-          />
-        </a>
+      {compact ? (
+        <footer style={{
+          background: "#002147",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 14px",
+          color: "white",
+          flexShrink: 0,
+        }}>
+          <IegLink height={26} />
 
-        {/* Center — "Powered by" DIVA credit */}
-        <a
-          href="https://diva-it.in/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: "rgba(255,255,255,0.85)",
-            textDecoration: "none",
-          }}
-        >
-          <span style={{ fontWeight: 600, fontSize: 13 }}>Powered by</span>
-          <img
-            src={divaLogo}
-            alt="DIVA"
-            style={{ height: 32, objectFit: "contain" }}
+          {/* flex:1 makes this fill the space between the IEG mark and the links,
+              so the credit sits centred between them rather than on its own row. */}
+          <DivaCredit
+            label="Built by"
+            logoHeight={26}
+            labelSize={12}
+            style={{ flex: 1, justifyContent: "center", gap: 6, minWidth: 0 }}
           />
-        </a>
 
-        {/* Right — Privacy + Team button + server health light (light at far right) */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <Link
-            to="/privacy-policy"
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            <Link to="/privacy-policy" style={{ ...LINK_STYLE, fontSize: 12 }}>
+              Privacy
+            </Link>
+            {teamButton}
+            <ServerHealthIndicator />
+          </div>
+        </footer>
+      ) : (
+        <footer style={{
+          position: "relative",
+          background: "#002147",
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 24px",
+          color: "white",
+          flexShrink: 0,
+        }}>
+          {/* Left — IEG logo */}
+          <IegLink height={36} />
+
+          {/* Center — "Powered by" DIVA credit */}
+          <DivaCredit
+            label="Powered by"
+            logoHeight={32}
             style={{
-              color: "rgba(255,255,255,0.85)",
-              fontWeight: 600,
-              fontSize: 13,
-              textDecoration: "none",
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
             }}
-          >
-            Privacy Policy
-          </Link>
-          <Button
-            type="text"
-            onClick={() => setTeamOpen(true)}
-            style={{
-              color: "white",
-              fontWeight: 600,
-              fontSize: 13,
-              border: "1px solid rgba(255,255,255,0.35)",
-              borderRadius: 6,
-              padding: "4px 16px",
-              height: "auto",
-            }}
-          >
-            Team
-          </Button>
-          <ServerHealthIndicator />
-        </div>
-      </footer>
+          />
+
+          {/* Right — Privacy + Team button + server health light (light at far right) */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Link to="/privacy-policy" style={LINK_STYLE}>
+              Privacy Policy
+            </Link>
+            {teamButton}
+            <ServerHealthIndicator />
+          </div>
+        </footer>
+      )}
 
       <Modal
         open={teamOpen}

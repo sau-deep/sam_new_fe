@@ -215,10 +215,7 @@ const ANMCHOKnowledgeAssessmentSection = React.forwardRef((props, ref) => {
         <div id="anmChoKnowledgeForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section7ANMCHOKnowledgeAssessment')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* 7.1 CMAM Training */}
                     <Grid item xs={12}>
                         <label className={styles.label} htmlFor="cmamTraining">

@@ -1508,11 +1508,26 @@ const RoutineMonitoring = () => {
     };
 
     const handleSaveOffline = async (payload, resetForm) => {
-        await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'offline' } });
+        // Uppercase to match this form's own ONLINE/OFFLINE convention (line 376,
+        // toggled by FormObserver) — a mismatched lowercase value here used to
+        // split "offline" submissions into two distinct strings in exports/reports.
+        const saved = await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'OFFLINE' } });
+
+        if (!saved) {
+            // Both IndexedDB and the localStorage fallback failed (e.g. device
+            // storage full) — do NOT claim success or reset the form, or the
+            // surveyor's answers are lost with no trace.
+            setShowSnackBar(true);
+            setSnackBarMessage({
+                text: "Could not save form on this device (storage full?). Please free up space and try again.",
+                type: "error"
+            });
+            return;
+        }
 
         setHasUnsavedChanges(false);
         resetForm();
-        
+
         setShowSnackBar(true);
         setSnackBarMessage({
             text: "Form saved offline. It will sync when you're back online.",
@@ -1721,18 +1736,9 @@ const RoutineMonitoring = () => {
                 title="Routine Monitoring - Standard Operating Procedures"
             />
             {loadingStatus && <Loader />}
-            <div>
-                <Container maxWidth="lg">
-                    <Box my={4} p={4} className={styles.paper} sx={{
-                        '@media (max-width: 768px)': {
-                          p: 3,
-                          my: 2
-                        },
-                        '@media (max-width: 480px)': {
-                          p: 2,
-                          my: 1
-                        }
-                      }}>
+            <div className={styles.compactPage}>
+                <Container maxWidth="lg" disableGutters>
+                    <Box className={styles.paper}>
                         <Box display="flex" alignItems="center" mb={4} flexWrap="wrap" gap={2}>
                             <IconButton 
                                 onClick={handleGoBack}
@@ -1862,10 +1868,7 @@ const RoutineMonitoring = () => {
                                                 </Typography>
                                             </Box>
                                         </Box>
-                                        <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                                            margin: '0',
-                                            width: '100%'
-                                        }}>
+                                        <Grid container rowSpacing={3} columnSpacing={2}>
                                             <Grid item xs={12} sm={7} className={
                                                 touched.state && !!errors.state ? styles.invalid : ''
                                             }>
@@ -2348,7 +2351,11 @@ const RoutineMonitoring = () => {
                                                     variant="outlined"
                                                     color="warning"
                                                     onClick={async () => {
-                                                        await handleSaveOffline(values, { resetForm });
+                                                        // errorPayload holds the fully-enriched submit payload
+                                                        // (aganwadiData/vhsndData/cbeData/householdData/coords) —
+                                                        // it's set alongside showSaveOfflineOption in both failure
+                                                        // branches above. Raw `values` lacks all of that.
+                                                        await handleSaveOffline(errorPayload || values, { resetForm });
                                                     }}
                                                     disabled={loadingStatus}
                                                     size="large"

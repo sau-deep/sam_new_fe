@@ -282,10 +282,7 @@ const AwaRegistration = React.forwardRef((props, ref) => {
         <div id="awaRegistrationForm" name="awaRegistrationForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section2BasicInformation')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* Section 2.1 - SAM Children Newly Identified */}
                     <Grid item xs={12}>
                         <Typography variant="h6" sx={{fontWeight: 'bold', mb: 2, color: '#1976d2'}}>

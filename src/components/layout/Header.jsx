@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip, message } from "antd";
+import { Button, Avatar, Dropdown, Badge, Tag, Select, Space, Tooltip } from "antd";
 import {
   MenuFoldOutlined, MenuUnfoldOutlined, BellOutlined, UserOutlined,
-  LogoutOutlined, GlobalOutlined, WifiOutlined, DisconnectOutlined,
+  LogoutOutlined, GlobalOutlined, WifiOutlined, DisconnectOutlined, ReloadOutlined,
   SafetyCertificateOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useEffectiveNetworkStatus, setForcedOffline } from "../../utils/networkState";
+import { isSurveyorApp } from "../../utils/appPlatform";
+import { toast } from "../../utils/toast";
 
 import { ROLES } from "../../config";
 import api from "../../services/axiosInstance";
@@ -48,27 +50,30 @@ function SurveyorMobileHeader({ user, userMenuItems }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
+  // Toasts go through the shared queue: coming back online also makes
+  // OfflineDrawer report on the upload it starts, and two antd messages at once
+  // stack into an unreadable pile over the header on a phone.
   const handleNetworkToggle = () => {
     if (forcedOffline) {
       setForcedOffline(false);
       if (!realOnline) {
-        message.info("Online mode selected — will activate when network is available.");
+        toast.info("Online mode selected — will activate when network is available.");
       } else if (serverDown) {
-        message.info("Online mode selected — will activate when the server is reachable.");
+        toast.info("Online mode selected — will activate when the server is reachable.");
       } else {
-        message.success("Back online — forms will be uploaded automatically.");
+        toast.success("Back online — forms will be uploaded automatically.");
       }
     } else {
       if (!realOnline) {
-        message.warning("No network connection available.");
+        toast.warning("No network connection available.");
         return;
       }
       if (serverDown) {
-        message.warning("Server is unreachable — already in offline mode.");
+        toast.warning("Server is unreachable — already in offline mode.");
         return;
       }
       setForcedOffline(true);
-      message.info("Offline mode activated. Forms will be saved locally.");
+      toast.info("Offline mode activated. Forms will be saved locally.");
     }
   };
 
@@ -91,6 +96,10 @@ function SurveyorMobileHeader({ user, userMenuItems }) {
       padding: "0 16px", gap: 12,
       position: "sticky", top: 0, zIndex: 90,
       boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+      // In the Android shell the WebView starts just below the status bar, so
+      // this rule lands exactly on that seam and keeps the header visually
+      // separate from the notification area (MainActivity.java draws the band).
+      borderTop: "1px solid rgba(255,255,255,0.22)",
     }}>
       {/* Branding */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
@@ -132,6 +141,18 @@ function SurveyorMobileHeader({ user, userMenuItems }) {
           </span>
         </div>
       </Tooltip>
+
+      {/* Refresh — reloads the app (surveyor app only, no browser chrome here) */}
+      {isSurveyorApp() && (
+        <Tooltip title="Refresh">
+          <Button
+            type="text"
+            icon={<ReloadOutlined style={{ color: "white", fontSize: 18 }} />}
+            onClick={() => window.location.reload()}
+            style={{ width: 36, height: 36, borderRadius: 8 }}
+          />
+        </Tooltip>
+      )}
 
       {/* My reported issues */}
       <Tooltip title="My Reported Issues">

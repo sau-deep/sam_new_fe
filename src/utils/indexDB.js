@@ -44,15 +44,26 @@ export async function saveOfflineForm(payload) {
   const record = { url, data, timestamp: Date.now(), synced: false };
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    const wrote = await new Promise((resolve) => {
       const tx = db.transaction(STORE_FORMS, 'readwrite');
       tx.objectStore(STORE_FORMS).add(record);
       tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
+      // A write-time failure — most importantly QuotaExceededError when the
+      // device storage is full — surfaces as a transaction error/abort, NOT as
+      // an openDB() rejection. Resolve false here (rather than reject) so we
+      // fall through to the localStorage fallback below instead of throwing
+      // past the caller's `if (!saved)` guard and silently losing the form.
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
     });
+    if (wrote) return true;
   } catch {
-    return lsFallback.set(`samv2_form_${Date.now()}`, record);
+    // openDB() itself failed (IndexedDB unavailable/blocked) — fall through to
+    // the localStorage fallback below.
   }
+  // Last resort: localStorage. Returns false if that ALSO fails (e.g. storage
+  // truly full), so the caller warns the surveyor instead of losing data.
+  return lsFallback.set(`samv2_form_${Date.now()}`, record);
 }
 
 // Older builds stored records via a two-arg saveOfflineForm(formType, data),

@@ -19,9 +19,15 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
     const [position, setPosition] = useState(null);
     const mapRef = useRef(null);
     const [isMapReady, setIsMapReady] = useState(false);
-    const [locationAttempts, setLocationAttempts] = useState(0);
     const [isAddressFetching, setIsAddressFetching] = useState(false);
     const maxAttempts = 5;
+    // Refs, not state: getLocation() is re-invoked from timers created on the
+    // first render, so a state value read there is frozen at 0 and the retry cap
+    // never trips — it retried every ~2s forever. In the Android app each request
+    // re-opens the system permission screen, which dismisses the keyboard while
+    // the surveyor is typing.
+    const locationAttemptsRef = useRef(0);
+    const permissionDeniedRef = useRef(false);
     const locationTimeoutRef = useRef(null);
     const lastSuccessfulPosition = useRef(null);
 
@@ -192,7 +198,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
         };
 
         // For retry attempts, try high accuracy
-        if (isRetry && locationAttempts === 1) {
+        if (isRetry && locationAttemptsRef.current === 1) {
             options.enableHighAccuracy = true;
             options.timeout = 15000;
             options.maximumAge = 300000; // 5 minutes for high accuracy retry
@@ -238,7 +244,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
                     }
 
                     // Reset attempts on success
-                    setLocationAttempts(0);
+                    locationAttemptsRef.current = 0;
                 }
             },
             (error) => {
@@ -262,10 +268,16 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
 
                 console.log(`📍 Location error (${error.code}): ${errorMessage}`);
 
+                // A denied permission cannot succeed on retry; stop asking (manual
+                // Retry reloads the page, which clears this).
+                if (error.code === error.PERMISSION_DENIED) {
+                    permissionDeniedRef.current = true;
+                }
+
                 // Progressive retry strategy with different approaches
-                if (locationAttempts < maxAttempts) {
-                    console.log(`🔄 StreetMap: Retry attempt ${locationAttempts + 1} of ${maxAttempts}...`);
-                    setLocationAttempts(prev => prev + 1);
+                if (!permissionDeniedRef.current && locationAttemptsRef.current < maxAttempts) {
+                    locationAttemptsRef.current += 1;
+                    console.log(`🔄 StreetMap: Retry attempt ${locationAttemptsRef.current} of ${maxAttempts}...`);
 
                     // Different retry delays based on error type
                     let retryDelay = 2000; // Default 2 seconds
@@ -310,7 +322,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
             // Set up periodic updates with a more reasonable interval
             const locationInterval = setInterval(() => {
                 // Only update if we haven't exceeded max attempts
-                if (locationAttempts < maxAttempts) {
+                if (!permissionDeniedRef.current && locationAttemptsRef.current < maxAttempts) {
                     getLocation();
                 }
             }, LOCATION_UPDATE_INTERVAL);
@@ -338,7 +350,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
             setCoordinates(latlng);
             
             // Reset location attempts on manual selection
-            setLocationAttempts(0);
+            locationAttemptsRef.current = 0;
 
             const timeSinceLastRequest = Date.now() - lastRequestTimeRef.current;
             if (!isAddressFetching && timeSinceLastRequest >= MIN_REQUEST_INTERVAL) {

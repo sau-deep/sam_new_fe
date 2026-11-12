@@ -12,7 +12,6 @@ import {
   Typography,
   Space,
   Spin,
-  message,
 } from "antd";
 import {
   CloudUploadOutlined,
@@ -25,6 +24,7 @@ import { getOfflineForms, deleteForm } from "../../utils/indexDB";
 import { useEffectiveNetworkStatus } from "../../utils/networkState";
 import { isSurveyorUser, syncAfterSubmission } from "../../utils/dailySurveyCount";
 import apiService from "../../services/api";
+import { toast } from "../../utils/toast";
 
 const { Text } = Typography;
 
@@ -129,16 +129,25 @@ export default function OfflineDrawer() {
     return false;
   }, []);
 
-  // Upload everything; optionally surface notifications to the user.
+  // Upload everything.
+  //   "user"   — the surveyor pressed Upload; report everything, including
+  //              "nothing to upload" so the button never feels dead.
+  //   "auto"   — triggered by reconnecting; only report real results. Announcing
+  //              "no offline forms to upload" here landed on top of the header's
+  //              "Back online" toast for a transition the user did not ask about.
+  //   "silent" — background timer; say nothing.
   const uploadAll = useCallback(
-    async (notify = true) => {
+    async (mode = "user") => {
+      const notify = mode !== "silent";
+      const notifyNoop = mode === "user";
+
       if (!isOnline) {
-        if (notify) message.error("No internet connection. Please try again when online.");
+        if (notifyNoop) toast.error("No internet connection. Please try again when online.");
         return;
       }
       const stored = await getOfflineForms();
       if (!stored || stored.length === 0) {
-        if (notify) message.info("No offline forms to upload.");
+        if (notifyNoop) toast.info("No offline forms to upload.");
         return;
       }
 
@@ -154,7 +163,7 @@ export default function OfflineDrawer() {
           failed++;
           const status = err?.response?.status || err?.status;
           if (status === 401 || status === 403) {
-            if (notify) message.error("Session expired. Please log in again to upload forms.");
+            if (notify) toast.error("Session expired. Please log in again to upload forms.");
             break;
           }
           console.error("Offline upload failed:", err);
@@ -164,9 +173,9 @@ export default function OfflineDrawer() {
       await refresh();
       if (notify) {
         setUploading(false);
-        if (success > 0 && failed === 0) message.success(`Uploaded ${success} form(s) successfully!`);
-        else if (success > 0 && failed > 0) message.warning(`Uploaded ${success}, ${failed} failed.`);
-        else if (failed > 0) message.error("Failed to upload forms. Please try again.");
+        if (success > 0 && failed === 0) toast.success(`Uploaded ${success} form(s) successfully!`);
+        else if (success > 0 && failed > 0) toast.warning(`Uploaded ${success}, ${failed} failed.`);
+        else if (failed > 0) toast.error("Failed to upload forms. Please try again.");
       }
     },
     [isOnline, refresh, uploadForm],
@@ -179,7 +188,7 @@ export default function OfflineDrawer() {
         const now = Date.now();
         if (now - lastAutoUpload.current < AUTO_UPLOAD_THROTTLE) return;
         lastAutoUpload.current = now;
-        uploadAll(false);
+        uploadAll("silent");
       }, AUTO_UPLOAD_INTERVAL);
     }
     return () => {
@@ -190,7 +199,7 @@ export default function OfflineDrawer() {
   // Trigger an upload right after connectivity is restored
   useEffect(() => {
     if (isOnline && !previousOnline.current) {
-      const t = setTimeout(() => uploadAll(true), 2000);
+      const t = setTimeout(() => uploadAll("auto"), 2000);
       previousOnline.current = isOnline;
       return () => clearTimeout(t);
     }
@@ -212,23 +221,23 @@ export default function OfflineDrawer() {
   const submitNow = async () => {
     if (!viewForm) return;
     if (!isOnline) {
-      message.error("No internet connection. Form will be uploaded automatically when online.");
+      toast.error("No internet connection. Form will be uploaded automatically when online.");
       return;
     }
     setSubmitting(true);
     try {
       const ok = await uploadForm(viewForm);
       if (ok) {
-        message.success("Form uploaded successfully!");
+        toast.success("Form uploaded successfully!");
         closeView();
         await refresh();
       } else {
-        message.error("Unable to upload form. Please try again later.");
+        toast.error("Unable to upload form. Please try again later.");
       }
     } catch (err) {
       const status = err?.response?.status || err?.status;
-      if (status === 401 || status === 403) message.error("Session expired. Please log in again.");
-      else message.error("Unable to upload form. Please try again later.");
+      if (status === 401 || status === 403) toast.error("Session expired. Please log in again.");
+      else toast.error("Unable to upload form. Please try again later.");
     } finally {
       setSubmitting(false);
     }
@@ -273,7 +282,7 @@ export default function OfflineDrawer() {
           size="large"
           loading={uploading}
           disabled={count === 0 || !isOnline}
-          onClick={() => uploadAll(true)}
+          onClick={() => uploadAll("user")}
           style={{ marginBottom: 16 }}
         >
           Upload All Forms

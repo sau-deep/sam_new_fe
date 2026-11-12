@@ -95,7 +95,7 @@ export default function AppLayout() {
             <div className="surveyor-mobile-view" style={{ flex: 1 }}>
               <Outlet />
             </div>
-            <Footer />
+            <Footer compact />
           </Content>
         </Layout>
         <OfflineDrawer />

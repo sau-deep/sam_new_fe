@@ -127,10 +127,7 @@ const CommunityBasedEventsObservationSection = () => {
         <div id="cbeForm" name="cbeForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section5CommunityBasedEventsObservation')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* Question 5.1 */}
                     <Grid item xs={12}>
                         <label className={styles.label} htmlFor="themeOfCbe">

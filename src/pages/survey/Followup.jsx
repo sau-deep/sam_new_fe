@@ -52,6 +52,9 @@ const {
   getBlockOptionsByDistrictName,
 } = getFormLocationHelpers("FOLLOWUP");
 
+/** FD3 "other food" text is saved inside the FD3 string under this key; the follow-up Excel export reads it. */
+const FD3_OTHER_FOOD_KEY = "Specify any other food item given";
+
 /** Re-derive location codes from selected labels so payload always has codes. */
 function enrichFollowupLocationCodes(v) {
   if (!v) return v;
@@ -76,6 +79,41 @@ function enrichFollowupLocationCodes(v) {
   }
   return out;
 }
+
+/** FD1 (and FD2–FD4, which depend on it) is asked only when CQ5 age in months is more than 6. */
+const isFeedingSectionAsked = (childAgeMonths) => Number(childAgeMonths) > 6;
+
+/** Blank values for FD1–FD4, used when the child is 6 months or younger. */
+const FEEDING_SECTION_RESET = {
+  fedSolidOrSemisolidFood: '',
+  timesFedSolidOrSemisolidFood: '',
+  yesterdayFoodItemsConsumed: [],
+  yesterdayFoodItemsConsumed_other: '',
+  howToEnrichHomemadeFood: '',
+  howToEnrichHomemadeFood_other: '',
+};
+
+/** Drop FD1–FD4 answers that do not apply because the child is 6 months or younger. */
+function withoutSkippedFeedingAnswers(v) {
+  if (!v || isFeedingSectionAsked(v.childAgeMonths)) return v;
+  return { ...v, ...FEEDING_SECTION_RESET };
+}
+
+/**
+ * Replace a selected "Other" option with "Other - <text>". Matches the option
+ * case-insensitively: FD4 stores "Other" while MN14/MN19 store "other".
+ */
+const processStringWithOther = (value, otherValue) => {
+  if (value && otherValue && otherValue.trim()) {
+    const selectedValues = value.split(', ').filter(Boolean);
+    if (selectedValues.some(item => item.toLowerCase() === 'other')) {
+      return selectedValues
+        .map(item => (item.toLowerCase() === 'other' ? `Other - ${otherValue.trim()}` : item))
+        .join(', ');
+    }
+  }
+  return value || '';
+};
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -135,7 +173,12 @@ const step2ValidationSchema = Yup.object({
         }
     ),
 
-    fedSolidOrSemisolidFood:Yup.string().required("This is required field"),
+    // FD1 is asked only when CQ5 (age in months) is more than 6
+    fedSolidOrSemisolidFood: Yup.string().when('childAgeMonths', {
+        is: (childAgeMonths) => isFeedingSectionAsked(childAgeMonths),
+        then: (schema) => schema.required("This is required field"),
+        otherwise: (schema) => schema.notRequired(),
+    }),
 
     recordedWeightAtAdmission: Yup.string().required("This is required field"),
 
@@ -421,6 +464,7 @@ const Followup = () => {
 
     // Handle form submission without auto-save
     const handleSubmit = async (values, { resetForm, setSubmitting }) => {
+      values = withoutSkippedFeedingAnswers(values);
       // If offline, save directly to IndexedDB
       if (!isOnline) {
         handleSaveOffline(values, { resetForm, setSubmitting });
@@ -442,29 +486,24 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
-        if (!obj) return '';
-        if (Array.isArray(obj)) return '';
-        if (typeof obj !== 'object') return obj || '';
-        
-        const entries = Object.entries(obj);
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed).
+      // `otherValue` is the free-text companion field ("Specify any other food
+      // item given"); it is saved as its own entry so the food counts stay clean
+      // and the follow-up Excel export can put it in its own column.
+      const processObjectField = (obj, otherValue) => {
+        if (obj && typeof obj !== 'object') return obj;
+
+        // The field starts as [] until a food count is picked, so the other-food text is kept either way
+        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
+        if (otherValue && otherValue.trim()) {
+          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
+        }
         if (entries.length === 0) return '';
-        
+
         return entries.map(([key, value]) => `${key} - ${value}`).join(',');
       };
 
-      // Helper function to process string fields with other option
-      const processStringWithOther = (value, otherValue) => {
-        if (value && value.includes('other') && otherValue && otherValue.trim()) {
-          const selectedValues = value.split(', ').filter(Boolean);
-          const updatedValues = selectedValues.map(item => 
-            item === 'other' ? `Other - ${otherValue.trim()}` : item
-          );
-          return updatedValues.join(', ');
-        }
-        return value || '';
-      };
+      // String fields with an "Other" option use the module-level processStringWithOther
 
       // Process the form data to convert arrays to strings and handle other options
       const processedValues = {
@@ -472,7 +511,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
@@ -633,6 +672,7 @@ const Followup = () => {
     };
 
     const handleSaveOffline = async (values, { resetForm, setSubmitting }) => {
+      values = withoutSkippedFeedingAnswers(values);
       // Helper function to process array fields with other option
       const processArrayWithOther = (array, otherValue) => {
         if (!Array.isArray(array)) return array || '';
@@ -644,29 +684,24 @@ const Followup = () => {
         return values.join(', ');
       };
 
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed)
-      const processObjectField = (obj) => {
-        if (!obj) return '';
-        if (Array.isArray(obj)) return '';
-        if (typeof obj !== 'object') return obj || '';
-        
-        const entries = Object.entries(obj);
+      // Helper function to process object fields (like yesterdayFoodItemsConsumed).
+      // `otherValue` is the free-text companion field ("Specify any other food
+      // item given"); it is saved as its own entry so the food counts stay clean
+      // and the follow-up Excel export can put it in its own column.
+      const processObjectField = (obj, otherValue) => {
+        if (obj && typeof obj !== 'object') return obj;
+
+        // The field starts as [] until a food count is picked, so the other-food text is kept either way
+        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
+        if (otherValue && otherValue.trim()) {
+          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
+        }
         if (entries.length === 0) return '';
-        
+
         return entries.map(([key, value]) => `${key} - ${value}`).join(',');
       };
 
-      // Helper function to process string fields with other option
-      const processStringWithOther = (value, otherValue) => {
-        if (value && value.includes('other') && otherValue && otherValue.trim()) {
-          const selectedValues = value.split(', ').filter(Boolean);
-          const updatedValues = selectedValues.map(item => 
-            item === 'other' ? `Other - ${otherValue.trim()}` : item
-          );
-          return updatedValues.join(', ');
-        }
-        return value || '';
-      };
+      // String fields with an "Other" option use the module-level processStringWithOther
 
       // Process the form data to convert arrays to strings and handle other options
       const processedValues = {
@@ -674,7 +709,7 @@ const Followup = () => {
         // Convert array fields to strings with other option handling
         awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
         ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed),
+        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
         
         // Convert string fields with other option handling
         awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
@@ -710,10 +745,23 @@ const Followup = () => {
       const lat = coordinates?.lat || 0;
       const lng = coordinates?.lng || 0;
 
-      await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, responseMode: 'offline' } });
+      const saved = await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, responseMode: 'offline' } });
+
+      if (!saved) {
+        // Both IndexedDB and the localStorage fallback failed (e.g. device
+        // storage full) — do NOT claim success or reset the form, or the
+        // surveyor's answers are lost with no trace.
+        if (setSubmitting) setSubmitting(false);
+        setShowSnackBar(true);
+        setSnackBarMessage({
+            text: "Could not save form on this device (storage full?). Please free up space and try again.",
+            type: "error",
+        });
+        return;
+      }
 
       setHasUnsavedChanges(false);
-      
+
       resetForm();
       setShowSnackBar(true);
       setRetryCount(0);
@@ -1438,7 +1486,12 @@ const Followup = () => {
                                                                 const selectedDate = event.target.value;
                                                                 setFieldValue('childDob', selectedDate);
                                                                 //         setFieldValue('childAgeDays', getDobDays(selectedDate));
-                                                                setFieldValue('childAgeMonths', getDobMonths(selectedDate));
+                                                                const ageMonths = getDobMonths(selectedDate);
+                                                                setFieldValue('childAgeMonths', ageMonths);
+                                                                // FD1–FD4 are not asked for children 6 months or younger: drop stale answers
+                                                                if (!isFeedingSectionAsked(ageMonths)) {
+                                                                    Object.entries(FEEDING_SECTION_RESET).forEach(([field, value]) => setFieldValue(field, value));
+                                                                }
                                                             }}
                                                             onBlur={handleBlur}
                                                             fullWidth={false}
@@ -2436,7 +2489,9 @@ const Followup = () => {
                                                     )}
 
 
-                                                    {/* FD  */}
+                                                    {/* FD: asked only when CQ5 age is more than 6 months */}
+                                                    {isFeedingSectionAsked(values.childAgeMonths) && (
+                                                    <>
                                                     <Grid item xs={12} className={{
                                                         [styles.invalid]: touched.fedSolidOrSemisolidFood && !!errors.fedSolidOrSemisolidFood,
                                                     }}>
@@ -2780,6 +2835,8 @@ const Followup = () => {
                                                             </Grid>
 
                                                         </>
+                                                    )}
+                                                    </>
                                                     )}
 
 
@@ -3677,19 +3734,39 @@ const Followup = () => {
                                                                         {t('mn17_which_family_members_were_present_during_the_home_visit?')}
                                                                         <span className={styles.requiredStar}>*</span>
                                                                     </label>
-                                                                    <RadioGroup
-                                                                        aria-label="familyMembersPresentDuringAshaVisit"
-                                                                        name="familyMembersPresentDuringAshaVisit"
-                                                                        value={values.familyMembersPresentDuringAshaVisit}
-                                                                        onChange={handleChange} onBlur={handleBlur}
-                                                                        error={touched.familyMembersPresentDuringAshaVisit && !!errors.familyMembersPresentDuringAshaVisit}>
-                                                                        <FormControlLabel value="1" control={<Radio/>}
-                                                                                          label={t('mother_in_law')}/>
-                                                                        <FormControlLabel value="2" control={<Radio/>}
-                                                                                          label={t('husband')}/>
-                                                                        <FormControlLabel value="3" control={<Radio/>}
-                                                                                          label={t('other_family_member')}/>
-                                                                    </RadioGroup>
+                                                                    {/* MN17: multiple selections; codes kept as 1/2/3 and stored as "1, 3" */}
+                                                                    <FormGroup id="familyMembersPresentDuringAshaVisit">
+                                                                        {[
+                                                                            { value: '1', label: 'mother_in_law' },
+                                                                            { value: '2', label: 'husband' },
+                                                                            { value: '3', label: 'other_family_member' }
+                                                                        ].map((option) => {
+                                                                            const selectedValues = typeof values.familyMembersPresentDuringAshaVisit === 'string'
+                                                                                ? values.familyMembersPresentDuringAshaVisit.split(', ').filter(Boolean)
+                                                                                : [];
+
+                                                                            return (
+                                                                                <FormControlLabel
+                                                                                    key={option.value}
+                                                                                    control={
+                                                                                        <Checkbox
+                                                                                            value={option.value}
+                                                                                            checked={selectedValues.includes(option.value)}
+                                                                                            onChange={(e) => {
+                                                                                                const { value } = e.target;
+                                                                                                const newArray = selectedValues.includes(value)
+                                                                                                    ? selectedValues.filter(item => item !== value)
+                                                                                                    : [...selectedValues, value];
+                                                                                                // Keep form order (1, 2, 3) whatever order they were ticked in
+                                                                                                setFieldValue('familyMembersPresentDuringAshaVisit', newArray.sort().join(', '));
+                                                                                            }}
+                                                                                        />
+                                                                                    }
+                                                                                    label={t(option.label)}
+                                                                                />
+                                                                            );
+                                                                        })}
+                                                                    </FormGroup>
                                                                     {touched.familyMembersPresentDuringAshaVisit && errors.familyMembersPresentDuringAshaVisit &&
                                                                         <div
                                                                             className={styles.error}>{errors.familyMembersPresentDuringAshaVisit}</div>}

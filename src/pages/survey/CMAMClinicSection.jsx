@@ -455,10 +455,7 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
         <div id="cmamClinicForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section6VHSNDCMAMClinic')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* 6.1 Is it the day of VHSND? */}
                     <Grid item xs={12}>
                         <label className={styles.label} htmlFor="vhsndVisitDay">

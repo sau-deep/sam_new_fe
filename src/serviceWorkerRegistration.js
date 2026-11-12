@@ -45,6 +45,31 @@ function registerValidSW(swUrl, config) {
     });
 }
 
+/**
+ * Tear down every worker and cache for this origin.
+ *
+ * Used by the Capacitor surveyor app: its web assets ship inside the APK and are
+ * served locally, so a service worker buys no offline benefit there and only
+ * risks pinning the app to a stale cached shell.
+ *
+ * Note this uses getRegistrations() rather than `.ready`, which never settles
+ * when no worker is installed.
+ */
+export async function unregisterAll() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map(r => r.unregister()));
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if (regs.length) console.log('[SW] Unregistered', regs.length, 'worker(s), cleared caches');
+  } catch (err) {
+    console.error('[SW] Unregister failed:', err);
+  }
+}
+
 export function unregister() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready

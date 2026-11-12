@@ -393,10 +393,7 @@ const SkillAssessment = forwardRef((props, ref) => {
         <div id="skillAssessmentForm" name="skillAssessmentForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section4SkillAssessment')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* Training Section */}
                     <Grid item xs={12}>
                         <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2, color: '#1976d2' }}>

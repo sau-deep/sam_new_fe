@@ -613,10 +613,23 @@ const HouseHold = () => {
     }
 
     const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng };
-    await saveOfflineForm({ url: '/form/household', data: { ...payload, responseMode: 'offline' } });
+    const saved = await saveOfflineForm({ url: '/form/household', data: { ...payload, responseMode: 'offline' } });
+
+    if (!saved) {
+      // Both IndexedDB and the localStorage fallback failed (e.g. device
+      // storage full) — do NOT claim success or reset the form, or the
+      // surveyor's answers are lost with no trace.
+      setSubmitting(false);
+      setShowSnackBar(true);
+      setSnackBarMessage({
+        text: "Could not save form on this device (storage full?). Please free up space and try again.",
+        type: "error",
+      });
+      return;
+    }
 
     setHasUnsavedChanges(false);
-    
+
     resetForm();
     setSubmitting(false);
     setShowSnackBar(true);

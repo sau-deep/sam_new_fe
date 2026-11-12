@@ -197,10 +197,7 @@ const EquipmentAvailabilityAWC = React.forwardRef((props, ref) => {
         <div id="equipmentAvailabilityForm">
             <StyledDetails open>
                 <summary>&nbsp;{t('section3EquipmentAvailability')}</summary>
-                <Grid container rowSpacing={3} columnSpacing={2} sx={{
-                    margin: '0',
-                    width: '100%'
-                }}>
+                <Grid container rowSpacing={3} columnSpacing={2}>
                     {/* Equipment Availability */}
                     <Grid item xs={12} sm={6}>
                         <label className={styles.label} htmlFor="weighingScale">
