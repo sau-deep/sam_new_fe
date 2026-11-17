@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Card, Form, Input, Button, Typography, Avatar, Tag,
   Descriptions, message, Divider, Row, Col, Space,
@@ -9,6 +9,12 @@ import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
 
 const { Title, Text } = Typography;
+
+// user.state is stored UPPERCASE in the DB ("JHARKHAND"); show it as "Jharkhand".
+const formatStateName = (state) =>
+  state
+    ? state.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+    : null;
 
 const ROLE_LABELS = {
   [ROLES.ADMIN]: { label: "Admin", color: "#374EA2", bg: "#E8F0FE" },
@@ -26,14 +32,39 @@ export default function Profile() {
   const role = getPrimaryRole();
   const roleStyle = ROLE_LABELS[role] || { label: "User", color: "#6B7280", bg: "#F3F4F6" };
 
+  // Assigned state comes from the server: the login response only carries
+  // `state` for state admins, so surveyors etc. would otherwise show nothing.
+  const [account, setAccount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/account/me")
+      .then((res) => {
+        if (!cancelled && res?.data?.success) setAccount(res.data.data);
+      })
+      .catch(() => {}); // offline: fall back to the cached login data
+    return () => { cancelled = true; };
+  }, []);
+
+  const loginId = account?.username || null;
+  const assignedState = formatStateName(account?.state || user?.state);
+  const isGlobalRole = role === ROLES.ADMIN || role === ROLES.UNICEF || role === ROLES.IEG;
+  const stateLabel = assignedState || (isGlobalRole ? "All States" : "—");
+
   const handleChangePassword = async (values) => {
     setLoading(true);
     try {
-      await api.post("/auth/setpassword", {
-        email: user?.username,
-        password: values.newPassword,
+      // The user is identified from the JWT on the server; never send an
+      // email/username (user.username here is the display name, not the login id).
+      const res = await api.post("/account/change-password", {
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
       });
-      message.success("Password changed successfully.");
+      // SAMResponse errors come back as HTTP 200 with success:false.
+      if (!res?.data?.success) {
+        message.error(res?.data?.message || "Failed to change password. Please try again.");
+        return;
+      }
+      message.success(res.data.message || "Password changed successfully.");
       form.resetFields();
     } catch (err) {
       const errMsg =
@@ -71,9 +102,11 @@ export default function Profile() {
                 }}
               />
               <Title level={5} style={{ margin: 0, color: "#111827" }}>
-                {user?.name || user?.username || "User"}
+                {account?.name || user?.name || user?.username || "User"}
               </Title>
-              <Text type="secondary" style={{ fontSize: 13 }}>{user?.username}</Text>
+              {loginId && (
+                <Text type="secondary" style={{ fontSize: 13 }}>{loginId}</Text>
+              )}
               <div style={{ marginTop: 10 }}>
                 <Tag
                   style={{
@@ -95,13 +128,13 @@ export default function Profile() {
 
             <Descriptions column={1} size="small" labelStyle={{ color: "#6B7280", fontWeight: 500 }}>
               <Descriptions.Item label="Username">
-                {user?.username || "—"}
+                {loginId || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="Full Name">
-                {user?.name || "—"}
+                {account?.name || user?.name || user?.username || "—"}
               </Descriptions.Item>
               <Descriptions.Item label="State">
-                {user?.state || "All States"}
+                {stateLabel}
               </Descriptions.Item>
               <Descriptions.Item label="Role">
                 {roleStyle.label}
