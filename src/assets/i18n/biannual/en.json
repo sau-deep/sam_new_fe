@@ -302,15 +302,15 @@
   "section5igcv_demonstration": "Feeding demonstration",
   "section5igcv_nothing": "Nothing",
   "section5igcv_other": "Other",
-  "gi3a_place_of_residence": "GI3a: Place of residence",
+  "gi3a_place_of_residence": "Place of residence",
   "rural": "Rural",
   "urban": "Urban",
-  "gi8a_religion_of_hh_head": "GI8a: What is the religion of the head of the household?",
+  "gi8a_religion_of_hh_head": "What is the religion of the head of the household?",
   "hindu": "Hindu",
   "muslim": "Muslim",
   "christian": "Christian",
   "others": "Others",
-  "gi8b_caste_of_hh_head": "GI8b: What is the caste or tribe of the head of the household?",
+  "gi8b_caste_of_hh_head": "What is the caste or tribe of the head of the household?",
   "cq3a_birth_order": "CQ3a: What is the birth order of the child?",
   "cq4_registered_poshan_tracker": "CQ4: Is the child registered with AWC and verified on Poshan Tracker?",
   "cq4_registered_poshan_tracker_note": "(Check with AWW and then answer)",
@@ -325,5 +325,6 @@
   "illness_fever": "Fever",
   "anth4_1_sam_identified_by_aww": "ANTH4.1: Has the child been identified as SAM by AWW during the latest growth monitoring (within the past two months)?",
   "anth4_2_mam_identified_by_aww": "ANTH4.2: Has the child been identified as MAM by AWW during the latest growth monitoring (within the past two months)?",
-  "anth5_sam_cmam": "ANTH5: Is the SAM child enrolled in the CMAM programme or receiving management as per the state CMAM programme guideline?"
+  "anth5_sam_cmam": "ANTH5: Is the SAM child enrolled in the CMAM programme or receiving management as per the state CMAM programme guideline?",
+  "saveOffline": "Save Offline"
 }
