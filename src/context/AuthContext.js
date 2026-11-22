@@ -65,6 +65,18 @@ export function AuthProvider({ children }) {
     setUser(userObj);
   }, []);
 
+  // After a self-service profile edit: refresh the cached display name so the
+  // header/welcome text update without a re-login.
+  const updateUserName = useCallback((name) => {
+    if (!name) return;
+    localStorage.setItem("iegUserName", name);
+    try {
+      const cached = JSON.parse(localStorage.getItem(OFFLINE_USER_KEY) || "null");
+      if (cached) localStorage.setItem(OFFLINE_USER_KEY, JSON.stringify({ ...cached, name }));
+    } catch {}
+    setUser((prev) => (prev ? { ...prev, name } : prev));
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.removeItem(JWT_KEY);
     localStorage.removeItem(USER_KEY);
@@ -99,7 +111,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, login, logout,
+      user, loading, login, logout, updateUserName,
       hasRole, isAdmin, isUnicef, isStateAdmin, isSurveyor, isIEG,
       canViewAll, canManage, getPrimaryRole, isOfflineMode,
     }}>
