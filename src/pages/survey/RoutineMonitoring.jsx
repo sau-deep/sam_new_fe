@@ -1562,7 +1562,18 @@ const RoutineMonitoring = () => {
         // Check if theme is selected
         const themeRadios = cbeForm.querySelectorAll('input[name="themeOfCbe"]:checked');
         if (themeRadios.length === 0) return false;
-        
+
+        // When "Others" is chosen, its "please specify" text is mandatory
+        const isOtherTextMissing = (optionName, otherValue, otherInputName) => {
+            const otherChecked = cbeForm.querySelector(`input[name="${optionName}"][value="${otherValue}"]:checked`);
+            if (!otherChecked) return false;
+            const otherInput = cbeForm.querySelector(`input[name="${otherInputName}"]`);
+            return !otherInput || otherInput.value.trim() === '';
+        };
+        if (isOtherTextMissing('themeOfCbe', 'Others', 'themeOfCbeOther')) return false;
+        if (isOtherTextMissing('typeOfBeneficiaryAttendedCbe', 'others', 'typeOfBeneficiaryAttendedCbeOther')) return false;
+        if (isOtherTextMissing('serviceProvidersPresentCbe', 'others', 'serviceProvidersPresentCbeOther')) return false;
+
         // Check if beneficiary types are selected
         const beneficiaryCheckboxes = cbeForm.querySelectorAll('input[name="typeOfBeneficiaryAttendedCbe"]:checked');
         if (beneficiaryCheckboxes.length === 0) return false;
@@ -1585,6 +1596,9 @@ const RoutineMonitoring = () => {
             // Check if counselling aids are selected
             const aidsCheckboxes = cbeForm.querySelectorAll('input[name="counsellingAidsUsed"]:checked');
             if (aidsCheckboxes.length === 0) return false;
+
+            if (isOtherTextMissing('counsellingTopicsCbe', 'others', 'counsellingTopicsCbeOther')) return false;
+            if (isOtherTextMissing('counsellingAidsUsed', 'others', 'counsellingAidsUsedOther')) return false;
         }
         
         return true;
