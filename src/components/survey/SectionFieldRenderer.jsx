@@ -380,6 +380,24 @@ const SectionFieldRenderer = ({
           { value: 'Keeping the same packet opened as it is', label: t('openedPack') || 'Keeping the same packet opened as it is' },
           { value: 'Any other', label: t('other') || 'Any other' }
         ];
+      } else if (fieldName === 'childHeightInstrument') {
+        // 4.13 - values must match SkillAssessment.jsx exactly (English, stored in DB)
+        options = [
+          { value: 'Infantometer', label: t('infantometer') || 'Infantometer' },
+          { value: 'Stadiometer', label: t('stadiometer') || 'Stadiometer' },
+          { value: 'Not functional / Not available', label: t('notFunctionalNotAvailable') || 'Not functional / Not available' },
+          { value: 'Others', label: t('others') || 'Others' }
+        ];
+      } else if (fieldName === 'childFollowupCmam') {
+        // 4.23 - values must match SkillAssessment.jsx exactly (English, stored in DB)
+        options = [
+          { value: 'Weekly', label: t('weekly') || 'Weekly' },
+          { value: 'Fortnightly', label: t('fortnightly') || 'Fortnightly' },
+          { value: 'Monthly', label: t('monthly') || 'Monthly' },
+          { value: 'Quarterly', label: t('quarterly') || 'Quarterly' },
+          { value: "Don't know", label: t('dontKnow') || "Don't know" },
+          { value: 'Others', label: t('others') || 'Others' }
+        ];
       } else {
         // Default Yes/No with Others
         options = [
