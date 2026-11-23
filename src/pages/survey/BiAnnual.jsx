@@ -1564,7 +1564,7 @@ const BiAnnual = () => {
     try {
       const formattedDistrictCode = address?.district_code ? address.district_code.toString().padStart(3, '0') : '000';
       const formattedBlockCode = address?.block_code ? address.block_code.toString().padStart(4, '0') : '0000';
-      const formattedVillageCode = formValue?.villageCode ? formValue.villageCode.toString().padStart(2, '0') : '00';
+      const formattedVillageCode = formValue?.villageCode ? formValue.villageCode.toString().padStart(2, '0').slice(-2) : '00';
       const formattedClusterCode = formValue?.clusterCode ? formValue.clusterCode.toString().padStart(2, '0') : '00';
       const formattedStructureCode = formValue?.structureCode ? formValue.structureCode.toString().padStart(2, '0') : '00';
       const formattedHouseholdNumber = formValue?.householdNumber ? formValue.householdNumber.toString().padStart(3, '0') : '000';
@@ -1574,7 +1574,7 @@ const BiAnnual = () => {
       return childId;
     } catch (error) {
       console.error('Error in resolveChildId:', error);
-      return 'ERROR_GENERATING_ID';
+      return '';  // child_id is varchar(16); a longer sentinel is rejected by the DB
     }
   }
 
