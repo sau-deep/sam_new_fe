@@ -795,10 +795,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Block Code" name="customBlockCode"
                           rules={[
                             { required: true, message: "Enter block code" },
-                            { max: 4, message: "Max 4 characters" },
+                            { max: 6, message: "Max 6 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. B001" maxLength={4} disabled={!customStateName} />
+                          <Input placeholder="e.g. B001" maxLength={6} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -872,10 +872,10 @@ export default function FormLocationManagement() {
                         <Form.Item label="Block Code" name="customBlockCode"
                           rules={[
                             { required: true, message: "Enter block code" },
-                            { max: 4, message: "Max 4 characters" },
+                            { max: 6, message: "Max 6 characters" },
                             { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
                           ]}>
-                          <Input placeholder="e.g. B001" maxLength={4} disabled={!customSelDistrict} />
+                          <Input placeholder="e.g. B001" maxLength={6} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>

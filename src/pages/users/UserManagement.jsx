@@ -276,7 +276,8 @@ export default function UserManagement() {
       name: record.name,
       email: record.email,
       phoneNumber: record.phoneNumber,
-      state: record.state,
+      // user.state is stored UPPERCASE ("JHARKHAND"); match it to the proper-case option.
+      state: STATES.find((s) => s.toUpperCase() === record.state?.trim().toUpperCase()) || record.state,
       designation: record.designation,
       organisation: record.organisation,
       gender: record.gender,
@@ -289,7 +290,17 @@ export default function UserManagement() {
       const endpoint = (editModal.type === "state-admin" || isAdmin())
         ? `/admin/user-management/user/${userId}`
         : `/user-management/surveyor/${userId}`;
-      await api.put(endpoint, values);
+      // Only global admins may reassign a user's state; state admins never send it.
+      const payload = { ...values };
+      if (!isAdmin()) delete payload.state;
+      // Surveyor edits are limited to name, phone, state, gender, designation, organisation.
+      if (editModal.type === "surveyor") delete payload.email;
+      const res = await api.put(endpoint, payload);
+      // SAMResponse failures come back as HTTP 200 with success:false.
+      if (res?.data && res.data.success === false) {
+        message.error(res.data.message || "Failed to update user");
+        return;
+      }
       message.success(`${editModal.type === "state-admin" ? "State Admin" : "Surveyor"} updated successfully`);
       setEditModal({ open: false, record: null, type: "surveyor" });
       editForm.resetFields();
@@ -583,11 +594,20 @@ export default function UserManagement() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="email" label="Email" rules={[{ type: "email" }]}>
-            <Input placeholder="Email address" />
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[{ type: "email" }]}
+            extra={editModal.type === "surveyor" ? "Email cannot be changed for surveyors." : undefined}
+          >
+            <Input placeholder="Email address" disabled={editModal.type === "surveyor"} />
           </Form.Item>
-          <Form.Item name="state" label="State">
-            <Select placeholder="Select state" allowClear>
+          <Form.Item
+            name="state"
+            label="State"
+            extra={!isAdmin() ? "State can only be changed by an Admin." : undefined}
+          >
+            <Select placeholder="Select state" allowClear={isAdmin()} disabled={!isAdmin()}>
               {STATES.map((s) => <Option key={s} value={s}>{s}</Option>)}
             </Select>
           </Form.Item>

@@ -46,6 +46,8 @@ class ExcelMappingService {
     const BI_ANNUAL_COLUMNS = [
       'id',
       'visitDate',
+      'submittedBy',
+      'submissionTime',
       'state',
       'stateCode',
       'district',
@@ -290,6 +292,19 @@ class ExcelMappingService {
       return String(val);
     };
 
+    // createdOn arrives as an instant (ISO string or epoch millis); show it in IST
+    // as "yyyy-MM-dd HH:mm:ss", independent of the browser's own timezone.
+    const IST_OFFSET_MS = 330 * 60 * 1000;
+    const formatIstDateTime = (val) => {
+      if (val === null || val === undefined || val === '') return '';
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return String(val);
+      const ist = new Date(d.getTime() + IST_OFFSET_MS);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())} `
+        + `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())}`;
+    };
+
     const csvToList = (value) => {
       if (!value) return [];
       if (Array.isArray(value)) return value.map(String).map((s) => s.trim()).filter(Boolean);
@@ -325,6 +340,9 @@ class ExcelMappingService {
       // General / identification
       excelRow.id = safe(record.id);
       excelRow.visitDate = formatMaybeDate(record.visitDate);
+      // Surveyor login (email) and server-side submission time (stored UTC → IST)
+      excelRow.submittedBy = safe(record.createdBy);
+      excelRow.submissionTime = formatIstDateTime(record.createdOn);
       excelRow.state = safe(record.state);
       excelRow.stateCode = safe(record.stateCode);
       excelRow.district = safe(record.district);
@@ -343,7 +361,8 @@ class ExcelMappingService {
       const computeChildId = (r) => {
         if (!r.districtCode && !r.blockCode) return '';
         const dc = String(r.districtCode    || '').padStart(3, '0').slice(-3);
-        const bc = String(r.blockCode       || '').padStart(4, '0').slice(-4);
+        // Block codes are 4 digits (rural) or 6 digits (urban local bodies); pad, never truncate.
+        const bc = String(r.blockCode       || '').padStart(4, '0');
         const vc = String(r.villageCode     || '').padStart(2, '0').slice(-2);
         const cc = String(r.clusterCode     || '').padStart(2, '0').slice(-2);
         const sc = String(r.structureCode   || '').padStart(2, '0').slice(-2);
