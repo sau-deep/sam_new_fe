@@ -35,7 +35,7 @@ import { useFormTranslation } from "hooks/useFormTranslation";
 import {filterNumberKeyDown} from 'utils'
 import {saveOfflineForm} from 'utils/indexDB'
 import usePreventPageReload from 'hooks/usePreventPageReload';
-import { getLocationWithFallback } from 'utils/locationUtils';
+import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 
 import { useFormikContext } from "formik";
 import ErrorReportingDialog from '../../components/ui/ErrorReportingDialog';
@@ -264,37 +264,15 @@ const Followup = () => {
     // Add coordinates state
     const [coordinates, setCoordinates] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [hasValidCoordinates, setHasValidCoordinates] = useState(false);
 
-    // Add location capture effect
     useEffect(() => {
-        const getLocation = async () => {
-            try {
-                const locationData = await getLocationWithFallback();
-                setCoordinates({ lat: locationData.lat, lng: locationData.lng });
-                setHasValidCoordinates(true);
-
-                // Show warning if using fallback coordinates
-                if (locationData.fallback) {
-                    // setShowSnackBar(true);
-                    // setSnackBarMessage({
-                    //     text: `Location error: ${locationData.error}. Using default coordinates.`,
-                    //     type: "warning",
-                    // });
-                }
-            } catch (error) {
-                // This should not happen with getLocationWithFallback, but just in case
-                setCoordinates({ lat: 0, lng: 0 });
-                setHasValidCoordinates(true);
-                // setShowSnackBar(true);
-                // setSnackBarMessage({
-                //     text: `Location error: ${error.message}. Using default coordinates.`,
-                //     type: "warning",
-                // });
+        let active = true;
+        captureSurveyLocation().then((location) => {
+            if (active) {
+                setCoordinates(location);
             }
-        };
-
-        getLocation();
+        });
+        return () => { active = false; };
     }, []); // Empty dependency array - run only once on mount
 
     // Prevent accidental page reload
@@ -543,6 +521,7 @@ const Followup = () => {
       // Add coordinates to payload
       payload.latitude = lat;
       payload.longitude = lng;
+      Object.assign(payload, surveyLocationMetadata(coordinates));
       
       setLoadingStatus(true);
       setIsRetrying(false);
@@ -739,7 +718,14 @@ const Followup = () => {
       const lat = coordinates?.lat || 0;
       const lng = coordinates?.lng || 0;
 
-      await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, responseMode: 'offline' } });
+      try {
+        await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, ...surveyLocationMetadata(coordinates), responseMode: 'offline' } });
+      } catch {
+        setSubmitting?.(false);
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
+        return;
+      }
 
       setHasUnsavedChanges(false);
       

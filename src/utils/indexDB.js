@@ -44,14 +44,17 @@ export async function saveOfflineForm(payload) {
   const record = { url, data, timestamp: Date.now(), synced: false };
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_FORMS, 'readwrite');
       tx.objectStore(STORE_FORMS).add(record);
+      tx.onabort = () => reject(tx.error);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    return lsFallback.set(`samv2_form_${Date.now()}`, record);
+    const key = `samv2_form_${record.timestamp}-${Math.random().toString(36).slice(2)}`;
+    if (!lsFallback.set(key, record)) throw new Error('Could not store offline survey');
+    return true;
   }
 }
 
@@ -70,6 +73,12 @@ function normalizeForm(rec) {
 }
 
 export async function getOfflineForms() {
+  const fallback = lsFallback.keys()
+    .filter(key => key.startsWith('samv2_form_'))
+    .flatMap(key => {
+      const record = lsFallback.get(key);
+      return record ? [normalizeForm({ ...record, id: key })] : [];
+    });
   try {
     const db = await openDB();
     const result = await new Promise((resolve, reject) => {
@@ -78,17 +87,14 @@ export async function getOfflineForms() {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    return (result || []).map(normalizeForm);
+    return [...(result || []).map(normalizeForm), ...fallback];
   } catch {
-    return lsFallback.keys()
-      .filter(k => k.startsWith('samv2_form_'))
-      .map(k => lsFallback.get(k))
-      .filter(Boolean)
-      .map(normalizeForm);
+    return fallback;
   }
 }
 
 export async function deleteOfflineForm(id) {
+  if (typeof id === 'string' && id.startsWith('samv2_form_')) return lsFallback.del(id);
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {

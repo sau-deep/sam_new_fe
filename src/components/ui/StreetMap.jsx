@@ -15,7 +15,7 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, onLocationError, disableManualSelection = false }) => {
+const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, onLocationError, disableManualSelection = false, surveyPosition }) => {
     const [position, setPosition] = useState(null);
     const mapRef = useRef(null);
     const [isMapReady, setIsMapReady] = useState(false);
@@ -303,8 +303,23 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
         );
     };
 
+    const usesSurveyPosition = surveyPosition !== undefined;
+
     useEffect(() => {
-        if (isMapReady) {
+        if (!isMapReady || !usesSurveyPosition) return;
+        if (!surveyPosition?.timestamp) {
+            setPosition(null);
+            return;
+        }
+        setPosition(surveyPosition);
+        map.setView(surveyPosition, 15);
+        fetchAddress(surveyPosition);
+        // The current survey reading drives the map and its address lookup.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isMapReady, map, surveyPosition, usesSurveyPosition]);
+
+    useEffect(() => {
+        if (isMapReady && !usesSurveyPosition) {
             getLocation();
 
             // Set up periodic updates with a more reasonable interval
@@ -322,7 +337,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
                 }
             };
         }
-    }, [isMapReady]);
+    }, [isMapReady, usesSurveyPosition]);
 
     // Add map click event handler only if manual selection is enabled
     useMapEvents({
@@ -364,7 +379,7 @@ const LocationMarker = ({ setCoordinates, setAddressDetails, onLocationCapture, 
     );
 };
 
-const MapComponent = ({ setCoordinates, setAddressDetails, showLocationStatus = false, disableManualSelection = false }) => {
+const MapComponent = ({ setCoordinates, setAddressDetails, showLocationStatus = false, disableManualSelection = false, surveyPosition }) => {
     const [mapError, setMapError] = useState(null);
     const [locationStatus, setLocationStatus] = useState('loading');
     const [locationError, setLocationError] = useState(null);
@@ -572,6 +587,7 @@ const MapComponent = ({ setCoordinates, setAddressDetails, showLocationStatus = 
                 />
                 <LocationMarker
                     setCoordinates={setCoordinates}
+                    surveyPosition={surveyPosition}
                     setAddressDetails={setAddressDetails}
                     onLocationCapture={handleLocationCapture}
                     onLocationError={handleLocationError}

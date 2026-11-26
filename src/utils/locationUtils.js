@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
 /**
  * Location Utilities
  * Handles location capture and localStorage management for forms and app updates
@@ -64,7 +67,7 @@ export const captureAndStoreLocation = async (options = {}) => {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(position.timestamp).toISOString(),
           purpose,
           online: navigator.onLine
         };
@@ -187,6 +190,74 @@ export const getLocationWithFallback = async (maxAge = 300000) => {
     };
   }
 };
+
+// Survey readings are scoped to the current visit and can be acquired offline.
+export function captureSurveyLocation() {
+  return new Promise((resolve) => {
+    const native = Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('Geolocation');
+    const geolocation = navigator.geolocation;
+    const unavailable = { lat: 0, lng: 0, fallback: true };
+    if (!native && !geolocation) {
+      resolve(unavailable);
+      return;
+    }
+
+    const startedAt = Date.now();
+    const captureWindowMs = 20000;
+    const targetAccuracyMeters = 30;
+    let best;
+    let watchId;
+    let finished = false;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(deadline);
+      if (watchId !== undefined) {
+        if (native) Geolocation.clearWatch({ id: watchId }).catch(console.error);
+        else geolocation.clearWatch(watchId);
+      }
+      resolve(best || unavailable);
+    };
+
+    const deadline = setTimeout(finish, captureWindowMs);
+    const receive = ({ coords, timestamp }) => {
+      if (finished || !Number.isFinite(timestamp) || timestamp < startedAt ||
+          !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude) ||
+          !Number.isFinite(coords.accuracy) || coords.accuracy < 0) return;
+      if (!best || coords.accuracy <= best.accuracy) {
+        best = {
+          lat: coords.latitude,
+          lng: coords.longitude,
+          accuracy: coords.accuracy,
+          timestamp: new Date(timestamp).toISOString()
+        };
+      }
+      if (best.accuracy <= targetAccuracyMeters) finish();
+    };
+    if (native) {
+      Geolocation.watchPosition({ enableHighAccuracy: true, timeout: 10000 }, (position, error) => {
+        if (position) receive(position);
+        else if (error) finish();
+      }).then(id => {
+        watchId = id;
+        if (finished) Geolocation.clearWatch({ id }).catch(console.error);
+      }).catch(finish);
+      return;
+    }
+    watchId = geolocation.watchPosition(receive, (error) => {
+      // Unavailable readings can recover during the capture window.
+      if (error.code === 1) finish();
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: captureWindowMs });
+  });
+}
+
+export function surveyLocationMetadata(coordinates) {
+  return {
+    locationAccuracyMeters: coordinates?.timestamp ? coordinates.accuracy ?? null : null,
+    locationCapturedAt: coordinates?.timestamp ?? null
+  };
+}
 
 // Legacy support - these functions maintain compatibility with existing code
 export const getUpdateLocation = getLastLocation;

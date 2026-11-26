@@ -41,7 +41,7 @@ import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import useFormAutoSave from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
-import { getLocationWithFallback } from 'utils/locationUtils';
+import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import AwaRegistration from './AwaRegistration';
 import EquipmentAvailabilityAWC from './EquipmentAvailabilityAWC';
 import SkillAssessment from './SkillAssessment';
@@ -314,12 +314,8 @@ const RoutineMonitoring = () => {
     useEffect(() => {
         const getLocation = async () => {
             try {
-                const locationData = await getLocationWithFallback();
-                setCoordinates({
-                    lat: locationData.lat,
-                    lng: locationData.lng,
-                    accuracy: locationData.accuracy || 0
-                });
+                const locationData = await captureSurveyLocation();
+                setCoordinates(locationData);
                 setHasValidCoordinates(!locationData.fallback);
                 setLocationAttempts(0);
 
@@ -872,7 +868,7 @@ const RoutineMonitoring = () => {
         return result;
     };
 
-    const handleFormSubmit = async (values, { resetForm }) => {
+    const handleFormSubmit = async (values, { resetForm }, saveOffline = false) => {
         // Ensure coordinates are always available (fallback to 0,0 if needed)
         let finalCoordinates = coordinates;
         if (!finalCoordinates) {
@@ -893,7 +889,8 @@ const RoutineMonitoring = () => {
             ...cleanValues,
             activityToObserve: values.activityToObserve,
             latitude: finalCoordinates.lat,
-            longitude: finalCoordinates.lng
+            longitude: finalCoordinates.lng,
+            ...surveyLocationMetadata(finalCoordinates)
         };
 
         if (values.activityToObserve.includes('Aanganwadi Center')) {
@@ -1321,7 +1318,7 @@ const RoutineMonitoring = () => {
         console.log('Form payload:', payload);
 
         // If offline, save directly to IndexedDB
-        if (!isOnline) {
+        if (!isOnline || saveOffline) {
           await handleSaveOffline(payload, resetForm);
           return;
         }
@@ -1508,7 +1505,15 @@ const RoutineMonitoring = () => {
     };
 
     const handleSaveOffline = async (payload, resetForm) => {
-        await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'offline' } });
+        try {
+          await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'offline' } });
+        } catch {
+          setSubmitButtonDisabled(false);
+          setLoadingStatus(false);
+          setShowSnackBar(true);
+          setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
+          return;
+        }
 
         setHasUnsavedChanges(false);
         resetForm();
@@ -2134,7 +2139,7 @@ const RoutineMonitoring = () => {
                                                         {t('selectLocation') || 'Auto Location Capture'} <span style={{color: '#666', fontSize: '0.9em'}}>(Optional - fallback coordinates will be used if unavailable)</span>
                                                     </label>
                                                     <MapComponent
-                                                        setCoordinates={setCoordinates}
+                                                        surveyPosition={coordinates}
                                                         setAddressDetails={(details) => {
                                                             setFieldValue('location', details.display_name);
                                                         }}
@@ -2362,7 +2367,7 @@ const RoutineMonitoring = () => {
                                                     variant="outlined"
                                                     color="warning"
                                                     onClick={async () => {
-                                                        await handleSaveOffline(values, { resetForm });
+                                                        await handleFormSubmit(values, { resetForm }, true);
                                                     }}
                                                     disabled={loadingStatus}
                                                     size="large"
