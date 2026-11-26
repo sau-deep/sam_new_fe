@@ -1,0 +1,42 @@
+name: Deploy SAM frontend to QA
+
+on:
+  push:
+    branches: [qa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sam-frontend-qa
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/qa'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build frontend with QA API
+        env:
+          REACT_APP_API_BASE_URL: https://qa-api.coecmamsupport.com
+          GENERATE_SOURCEMAP: 'false'
+          CI: 'false'
+        run: npm run build
+      - name: Assume the QA frontend deployment role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::017820702885:role/sam-hotspot-qa-frontend-github-deploy
+          aws-region: ap-south-1
+          allowed-account-ids: '017820702885'
+      - name: Deploy and verify QA frontend
+        run: bash ops/qa/deploy.sh build "$GITHUB_SHA"

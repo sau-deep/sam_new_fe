@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "2.2",
+  "description": "Install a checksummed SAM Hotspot QA frontend release",
+  "parameters": {
+    "Commit": { "type": "String", "allowedPattern": "^[0-9a-f]{40}$", "interpolationType": "ENV_VAR" },
+    "Checksum": { "type": "String", "allowedPattern": "^[0-9a-f]{64}$", "interpolationType": "ENV_VAR" }
+  },
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "installQaFrontend",
+      "inputs": {
+        "timeoutSeconds": "300",
+        "runCommand": ["/opt/sam-qa/install-frontend-release.sh \"$SSM_Commit\" \"$SSM_Checksum\""]
+      }
+    }
+  ]
+}
