@@ -1,3 +1,9 @@
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+jest.mock('@capacitor/geolocation', () => ({
+  Geolocation: { watchPosition: jest.fn(), clearWatch: jest.fn() }
+}));
+
 import { captureSurveyLocation, surveyLocationMetadata } from './locationUtils';
 
 describe('survey location capture', () => {
@@ -29,6 +35,26 @@ describe('survey location capture', () => {
   const reading = (accuracy, timestamp) => ({
     coords: { latitude: 21.1458, longitude: 79.0882, accuracy },
     timestamp
+  });
+
+  it('uses the Android native provider and releases the native watch', async () => {
+    jest.spyOn(Capacitor, 'getPlatform').mockReturnValue('android');
+    jest.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+    Geolocation.watchPosition.mockResolvedValue('native-watch');
+    Geolocation.clearWatch.mockResolvedValue();
+    try {
+      const capture = captureSurveyLocation();
+      const timestamp = Date.now();
+      Geolocation.watchPosition.mock.calls[0][1](reading(8, timestamp));
+      expect(surveyLocationMetadata(await capture)).toEqual({
+        locationAccuracyMeters: 8,
+        locationCapturedAt: new Date(timestamp).toISOString()
+      });
+      expect(Geolocation.clearWatch).toHaveBeenCalledWith({ id: 'native-watch' });
+      expect(geolocation.watchPosition).not.toHaveBeenCalled();
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('ignores a previous fix and preserves the timestamp of the fresh fix', async () => {
