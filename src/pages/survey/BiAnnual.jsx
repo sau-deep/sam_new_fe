@@ -40,7 +40,7 @@ import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import useFormAutoSave from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
-import { getLocationWithFallback } from 'utils/locationUtils';
+import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
 import { getConsentStatus } from '../../utils/consentManager';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
@@ -1004,13 +1004,9 @@ const BiAnnual = () => {
         setLocationStatus('checking');
         setLocationError('');
         
-        const locationData = await getLocationWithFallback();
+        const locationData = await captureSurveyLocation();
         
-        setCoordinates({
-          lat: locationData.lat,
-          lng: locationData.lng,
-          accuracy: locationData.accuracy
-        });
+        setCoordinates(locationData);
         
         setLocationStatus('granted');
         setHasValidCoordinates(!locationData.fallback);
@@ -1048,13 +1044,9 @@ const BiAnnual = () => {
       setLocationStatus('checking');
       setLocationError('');
       
-      const locationData = await getLocationWithFallback();
+      const locationData = await captureSurveyLocation();
       
-      setCoordinates({
-        lat: locationData.lat,
-        lng: locationData.lng,
-        accuracy: locationData.accuracy
-      });
+      setCoordinates(locationData);
       
       setLocationStatus('granted');
       setHasValidCoordinates(!locationData.fallback);
@@ -1347,7 +1339,8 @@ const BiAnnual = () => {
     const payload = { 
       ...processedValues, 
       latitude: finalCoordinates.lat?.toString() || '0', 
-      longitude: finalCoordinates.lng?.toString() || '0'
+      longitude: finalCoordinates.lng?.toString() || '0',
+      ...surveyLocationMetadata(finalCoordinates)
     };
 
     try {
@@ -1519,7 +1512,8 @@ const BiAnnual = () => {
     const payload = {
       ...processedValues,
       latitude: finalCoordinates?.lat ? finalCoordinates.lat.toString() : (values.latitude || '0'),
-      longitude: finalCoordinates?.lng ? finalCoordinates.lng.toString() : (values.longitude || '0')
+      longitude: finalCoordinates?.lng ? finalCoordinates.lng.toString() : (values.longitude || '0'),
+      ...surveyLocationMetadata(finalCoordinates)
     };
     
     try {

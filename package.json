@@ -5,6 +5,8 @@
   "homepage": "/",
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
+    "@capacitor/core": "^6.2.4",
+    "@capacitor/geolocation": "^6.1.1",
     "@emotion/react": "11.11.3",
     "@emotion/styled": "11.11.0",
     "@mui/icons-material": "^5.18.0",

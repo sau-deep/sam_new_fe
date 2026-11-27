@@ -55,6 +55,7 @@ const FORM_TYPE_NAMES = {
 const HIDDEN_FIELDS = ["id", "createdAt", "updatedAt"];
 
 const AUTO_UPLOAD_INTERVAL = 5 * 60 * 1000; // 5 minutes, matches the old UI
+const uploadsInProgress = new Map();
 const AUTO_UPLOAD_THROTTLE = 30 * 1000; // don't re-run within 30s
 
 const getFormName = (url) => FORM_TYPE_NAMES[url] || url || "Unknown Form";
@@ -85,7 +86,6 @@ export default function OfflineDrawer() {
   const [viewOpen, setViewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const previousOnline = useRef(isOnline);
   const intervalRef = useRef(null);
   const lastAutoUpload = useRef(0);
 
@@ -113,20 +113,34 @@ export default function OfflineDrawer() {
 
   // Upload a single form. Returns true on success.
   const uploadForm = useCallback(async (form) => {
-    const res = await apiService.post(form.url, form.data);
-    if (res?.statusCode === 200) {
-      await deleteForm(form.id);
-      // Keep the local daily counter in step with the backend for surveyors,
-      // mirroring the online submit path.
-      const formType = URL_TO_FORM_TYPE[form.url];
-      if (formType && isSurveyorUser()) {
-        syncAfterSubmission(apiService, formType).catch((err) => {
-          console.error("Error syncing daily count after offline upload:", err);
-        });
+    if (uploadsInProgress.has(form.id)) return uploadsInProgress.get(form.id);
+
+    const upload = async () => {
+      const pending = await getOfflineForms();
+      if (!pending.some(record => record.id === form.id)) return true;
+      const res = await apiService.post(form.url, form.data);
+      if (res?.statusCode === 200) {
+        if (!(await deleteForm(form.id))) throw new Error("Could not remove uploaded survey from the local queue");
+        // Keep the local daily counter in step with the backend for surveyors,
+        // mirroring the online submit path.
+        const formType = URL_TO_FORM_TYPE[form.url];
+        if (formType && isSurveyorUser()) {
+          syncAfterSubmission(apiService, formType).catch((err) => {
+            console.error("Error syncing daily count after offline upload:", err);
+          });
+        }
+        return true;
       }
-      return true;
+      return false;
+    };
+
+    const promise = upload();
+    uploadsInProgress.set(form.id, promise);
+    try {
+      return await promise;
+    } finally {
+      uploadsInProgress.delete(form.id);
     }
-    return false;
   }, []);
 
   // Upload everything; optionally surface notifications to the user.
@@ -187,14 +201,11 @@ export default function OfflineDrawer() {
     };
   }, [isOnline, uploadAll]);
 
-  // Trigger an upload right after connectivity is restored
+  // Resume the queue on app launch and after connectivity is restored.
   useEffect(() => {
-    if (isOnline && !previousOnline.current) {
-      const t = setTimeout(() => uploadAll(true), 2000);
-      previousOnline.current = isOnline;
-      return () => clearTimeout(t);
-    }
-    previousOnline.current = isOnline;
+    if (!isOnline) return;
+    const timer = setTimeout(() => uploadAll(false), 2000);
+    return () => clearTimeout(timer);
   }, [isOnline, uploadAll]);
 
   // ── Read-only view handlers ──────────────────────────────────────────

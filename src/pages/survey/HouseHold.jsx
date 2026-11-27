@@ -42,7 +42,7 @@ import { usePreventPageReload } from '../../hooks/usePreventPageReload';
 import { speak, stopSpeak } from "utils/TextToSpeech";
 import { filterNumberKeyDown } from 'utils';
 import { saveOfflineForm } from 'utils/indexDB';
-import { getLocationWithFallback } from 'utils/locationUtils';
+import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
 import { getConsentStatus } from '../../utils/consentManager';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
@@ -89,7 +89,7 @@ const HouseHold = () => {
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [showSnackBar, setShowSnackBar] = useState(false);
   const [snackBarMessage, setSnackBarMessage] = useState({ text: "", type: "" });
-  const [coordinates, setCoordinates] = useState({ lat: '', lng: '', alt: '', acc: '' });
+  const [coordinates, setCoordinates] = useState({ lat: '', lng: '' });
   const [step, setStep] = useState(1);
   const [speakSound, setSpeakSound] = useState(false);
   const [address, setAddress] = useState({});
@@ -331,20 +331,15 @@ const HouseHold = () => {
     const getLocation = async () => {
       try {
         setLocationStatus('checking');
-        const locationData = await getLocationWithFallback();
+        const locationData = await captureSurveyLocation();
         
-        setCoordinates({
-          lat: locationData.lat,
-          lng: locationData.lng,
-          alt: 0,
-          acc: locationData.accuracy
-        });
+        setCoordinates(locationData);
         
-        setLocationStatus('granted');
+        setLocationStatus(locationData.fallback ? 'error' : 'granted');
         setHasValidCoordinates(!locationData.fallback);
         
         if (locationData.fallback) {
-          setLocationError('Location unavailable, using default coordinates (0, 0)');
+          setLocationError('Location unavailable. Enable device location and retry.');
         } else if (locationData.cached) {
           setLocationError('Using cached location data');
         } else {
@@ -353,7 +348,7 @@ const HouseHold = () => {
       } catch (error) {
         setLocationStatus('error');
         setLocationError('Error getting location');
-        setCoordinates({ lat: 0, lng: 0, alt: 0, acc: 0 });
+        setCoordinates({ lat: 0, lng: 0 });
         setHasValidCoordinates(false);
       }
     };
@@ -379,20 +374,15 @@ const HouseHold = () => {
     try {
       setLocationStatus('checking');
       setLocationError('');
-      const locationData = await getLocationWithFallback();
+      const locationData = await captureSurveyLocation();
       
-      setCoordinates({
-        lat: locationData.lat,
-        lng: locationData.lng,
-        alt: 0,
-        acc: locationData.accuracy
-      });
+      setCoordinates(locationData);
       
-      setLocationStatus('granted');
+      setLocationStatus(locationData.fallback ? 'error' : 'granted');
       setHasValidCoordinates(!locationData.fallback);
       
       if (locationData.fallback) {
-        setLocationError('Location unavailable, using default coordinates (0, 0)');
+        setLocationError('Location unavailable. Enable device location and retry.');
       } else if (locationData.cached) {
         setLocationError('Using cached location data');
       } else {
@@ -401,7 +391,7 @@ const HouseHold = () => {
     } catch (error) {
       setLocationStatus('error');
       setLocationError('Error getting location');
-      setCoordinates({ lat: 0, lng: 0, alt: 0, acc: 0 });
+      setCoordinates({ lat: 0, lng: 0 });
       setHasValidCoordinates(false);
     }
   };
@@ -412,20 +402,15 @@ const HouseHold = () => {
     try {
       setLocationStatus('checking');
       setLocationError('');
-      const locationData = await getLocationWithFallback();
+      const locationData = await captureSurveyLocation();
       
-      setCoordinates({
-        lat: locationData.lat,
-        lng: locationData.lng,
-        alt: 0,
-        acc: locationData.accuracy
-      });
+      setCoordinates(locationData);
       
-      setLocationStatus('granted');
+      setLocationStatus(locationData.fallback ? 'error' : 'granted');
       setHasValidCoordinates(!locationData.fallback);
       
       if (locationData.fallback) {
-        setLocationError('Location unavailable, using default coordinates (0, 0)');
+        setLocationError('Location unavailable. Enable device location and retry.');
       } else if (locationData.cached) {
         setLocationError('Using cached location data');
       } else {
@@ -434,7 +419,7 @@ const HouseHold = () => {
     } catch (error) {
       setLocationStatus('error');
       setLocationError('Error getting location');
-      setCoordinates({ lat: 0, lng: 0, alt: 0, acc: 0 });
+      setCoordinates({ lat: 0, lng: 0 });
       setHasValidCoordinates(false);
     } finally {
       setLoadingStatus(false);
@@ -517,7 +502,7 @@ const HouseHold = () => {
       return;
     }
 
-    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng };
+    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng, ...surveyLocationMetadata(coordinates) };
     
     setLoadingStatus(true);
 
@@ -612,8 +597,15 @@ const HouseHold = () => {
       return;
     }
 
-    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng };
-    await saveOfflineForm({ url: '/form/household', data: { ...payload, responseMode: 'offline' } });
+    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng, ...surveyLocationMetadata(coordinates) };
+    try {
+      await saveOfflineForm({ url: '/form/household', data: { ...payload, responseMode: 'offline' } });
+    } catch {
+      setSubmitting(false);
+      setShowSnackBar(true);
+      setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
+      return;
+    }
 
     setHasUnsavedChanges(false);
     
@@ -1096,7 +1088,7 @@ const HouseHold = () => {
                           }}>
                             <LocationOffIcon sx={{ mr: 1 }} />
                             <Typography variant="body2">
-                              Location capture failed. Using default coordinates.
+                              Location capture failed. Enable device location and retry.
                             </Typography>
                           </Box>
                         )}
@@ -1560,22 +1552,17 @@ const HouseHold = () => {
                                 {t('autoLocationCapture') || 'Auto Location Capture'}<span className={styles.requiredStar}>*</span>
                               </label>
                               <MapComponent
-                                setCoordinates={(coords) => {
-                                  setCoordinates(coords);
-                                  setFieldValue('latitude', coords.lat);
-                                  setFieldValue('longitude', coords.lng);
-                                }}
+                                surveyPosition={coordinates}
                                 setAddressDetails={(details) => {
                                   setFieldValue('locationHousehold', details.display_name);
                                 }}
-                                showLocationStatus={true}
                                 disableManualSelection={true}
                               />
                             </Grid>
                           )}
 
                           {/* Coordinates Display */}
-                          {isOnline && coordinates && coordinates.lat && coordinates.lng && (
+                          {hasValidCoordinates && (
                             <Grid item xs={12}>
                               <Box sx={{ 
                                 p: 2, 
@@ -1596,9 +1583,9 @@ const HouseHold = () => {
                                 <Typography variant="body2" sx={{ color: '#2e7d32' }}>
                                   <strong>Longitude:</strong> {coordinates.lng}
                                 </Typography>
-                                {coordinates.acc && (
+                                {coordinates.accuracy != null && (
                                   <Typography variant="body2" sx={{ color: '#2e7d32' }}>
-                                    <strong>Accuracy:</strong> ±{Math.round(coordinates.acc)} meters
+                                    <strong>Accuracy:</strong> ±{Math.round(coordinates.accuracy)} meters
                                   </Typography>
                                 )}
                               </Box>
