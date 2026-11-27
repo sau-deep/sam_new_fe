@@ -37,9 +37,9 @@ import { ArrowBack, ArrowForward, Check, Description } from "@mui/icons-material
 import { getFormLocationHelpers } from "utils/formLocations";
 import useFormLocations from "hooks/useFormLocations";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm } from 'utils/indexDB'
+import { saveOfflineForm, stableDraftKey } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
-import useFormAutoSave from 'hooks/useFormAutoSave';
+import useFormAutoSave, { hasUserChanges } from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
 import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import AwaRegistration from './AwaRegistration';
@@ -162,10 +162,11 @@ const RoutineMonitoring = () => {
     const [hasValidCoordinates, setHasValidCoordinates] = useState(false);
     const [locationAttempts, setLocationAttempts] = useState(0);
     const [currentFormValues, setCurrentFormValues] = useState({});
+    const [formHasUserChanges, setFormHasUserChanges] = useState(false);
     const [draftToRestore, setDraftToRestore] = useState(null);
     const [preferencesLoaded, setPreferencesLoaded] = useState(false);
     const [savedPreferences, setSavedPreferences] = useState({});
-    const formKey = useRef(`routinemonitoring_${Date.now()}_${location.pathname}`).current; // Stable form key
+    const formKey = useRef(stableDraftKey('routinemonitoring')).current; // Stable per form type + account, so the draft is found again after reopening
     
     const awaRegistrationRef = useRef(null);
     const equipmentAvailabilityRef = useRef(null);
@@ -183,7 +184,7 @@ const RoutineMonitoring = () => {
         formKey,
         currentFormValues,
         coordinates,
-        true,
+        formHasUserChanges, // only save once the surveyor has entered something
         3000 // Save every 3 seconds
     );
     
@@ -195,13 +196,9 @@ const RoutineMonitoring = () => {
 
     // Track if form has been modified
     useEffect(() => {
-        const hasData = Object.values(currentFormValues).some(value => {
-            if (typeof value === 'string') return value.trim() !== '';
-            if (Array.isArray(value)) return value.length > 0;
-            return value !== null && value !== undefined && value !== '';
-        });
-        setHasUnsavedChanges(hasData && !autoSave.isDraftRestored);
-    }, [currentFormValues, autoSave.isDraftRestored]);
+        // Prefilled values don't count; a restored draft still needs reload protection.
+        setHasUnsavedChanges(formHasUserChanges);
+    }, [formHasUserChanges]);
     
     // Load saved preferences when component mounts
     useEffect(() => {
@@ -1365,6 +1362,7 @@ const RoutineMonitoring = () => {
                     type: "success",
                 });
 
+                await autoSave.clearDraft(); // submitted — don't offer it for restore next time
                 resetForm();
                 setTimeout(() => {
                     navigate("/survey/list", { replace: true });
@@ -1515,6 +1513,7 @@ const RoutineMonitoring = () => {
           return;
         }
 
+        await autoSave.clearDraft(); // now queued for upload — don't offer it for restore too
         setHasUnsavedChanges(false);
         resetForm();
         
@@ -1650,12 +1649,13 @@ const RoutineMonitoring = () => {
 
     // ----- Local component to safely use hooks with Formik values -----
     const FormObserver = () => {
-        const { values, setFieldValue, setErrors, errors } = useFormikContext();
+        const { values, initialValues, setFieldValue, setErrors, errors } = useFormikContext();
 
         // Keep latest values for auto-save
         useEffect(() => {
             setCurrentFormValues(values);
-        }, [values]);
+            setFormHasUserChanges(hasUserChanges(values, initialValues));
+        }, [values, initialValues]);
 
         // Handle online/offline field logic
         useEffect(() => {

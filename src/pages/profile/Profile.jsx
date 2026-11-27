@@ -9,6 +9,9 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
+import { APP_VERSION } from "../../constants/appInfo";
+import { useUpdateStatus } from "../../context/UpdateContext";
+import { getCurrentOwnerId } from "../../utils/currentOwner";
 
 const { Title, Text } = Typography;
 
@@ -46,6 +49,10 @@ export default function Profile() {
   const [savingPassword, setSavingPassword] = useState(false);
 
   const role = getPrimaryRole();
+  const { client: appClient, verdict: updateVerdict } = useUpdateStatus();
+  const nativeVersion = appClient?.androidVersionName
+    ? `Android ${appClient.androidVersionName} (${appClient.androidVersionCode ?? "?"})`
+    : null;
   const roleStyle = ROLE_LABELS[role] || { label: "User", color: "#6B7280", bg: "#F3F4F6" };
 
   // Assigned state comes from the server: the login response only carries
@@ -168,6 +175,13 @@ export default function Profile() {
           <Descriptions.Item label="Phone Number">{phoneNumber || "—"}</Descriptions.Item>
           <Descriptions.Item label="State">{stateLabel}</Descriptions.Item>
           <Descriptions.Item label="Role">{roleStyle.label}</Descriptions.Item>
+          <Descriptions.Item label="Login ID">{getCurrentOwnerId() || "—"}</Descriptions.Item>
+          <Descriptions.Item label="App version">
+            <span data-testid="profile-app-version">
+              {[nativeVersion, APP_VERSION].filter(Boolean).join(" · ")}
+              {updateVerdict?.level === "recommended" || updateVerdict?.level === "required" ? " — update available" : ""}
+            </span>
+          </Descriptions.Item>
         </Descriptions>
 
         <Divider style={{ margin: "20px 0" }} />

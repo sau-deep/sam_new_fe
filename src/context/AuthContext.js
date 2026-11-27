@@ -1,18 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { JWT_KEY, USER_KEY, ROLES_KEY, STATE_KEY, OFFLINE_USER_KEY, ROLES } from "../config";
+import { JWT_KEY, USER_KEY, OWNER_KEY, ROLES_KEY, STATE_KEY, OFFLINE_USER_KEY, ROLES } from "../config";
+import { clearApiCache } from "../services/axiosInstance";
+import { parseJwt } from "../utils/jwt";
+import { loginIdFromSignIn } from "../utils/currentOwner";
 
 const AuthContext = createContext(null);
-
-function parseJwt(token) {
-  try {
-    // Handle URL-safe base64 (replace - with + and _ with /, add padding)
-    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64 + "==".slice(0, (4 - base64.length % 4) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
 
 function isTokenValid(token) {
   if (!token) return false;
@@ -55,7 +47,12 @@ export function AuthProvider({ children }) {
 
   const login = useCallback((data) => {
     const { accessToken, username, authorities, state, name } = data;
+    clearApiCache();
     localStorage.setItem(JWT_KEY, accessToken);
+    // Owner of local data = login id (not the display name in `username`).
+    const loginId = loginIdFromSignIn(data);
+    if (loginId) localStorage.setItem(OWNER_KEY, loginId);
+    else localStorage.removeItem(OWNER_KEY);
     localStorage.setItem(USER_KEY, username);
     localStorage.setItem(ROLES_KEY, JSON.stringify(authorities));
     localStorage.setItem(STATE_KEY, state || "");
@@ -78,8 +75,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    clearApiCache(); // cached GETs belong to the account that is signing out
     localStorage.removeItem(JWT_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(OWNER_KEY);
     localStorage.removeItem(ROLES_KEY);
     localStorage.removeItem(STATE_KEY);
     setUser(null);

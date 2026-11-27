@@ -1,6 +1,43 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { saveFormDraft, getFormDraft, deleteFormDraft, cleanupOldDrafts } from 'utils/indexDB';
 
+// Fields the app fills in by itself (GPS, response mode). Changes to these alone
+// are not "the surveyor entered something".
+const AUTO_FILLED_FIELD = /^(latitude|longitude|location|location[A-Z]\w*|responseMode)$/;
+
+const sameValue = (a, b) => {
+  if (a === b) return true;
+  if ((a === '' || a == null) && (b === '' || b == null)) return true;
+  if (typeof a === 'object' || typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b);
+  return false;
+};
+
+/**
+ * True when the surveyor changed anything compared with the form's initial
+ * values (prefilled state/date/defaults don't count). Used to decide whether a
+ * draft is worth saving or a reload warning is needed.
+ */
+export function hasUserChanges(values, initialValues) {
+  if (!values) return false;
+  const init = initialValues || {};
+  const keys = new Set([...Object.keys(values), ...Object.keys(init)]);
+  for (const key of keys) {
+    if (AUTO_FILLED_FIELD.test(key)) continue;
+    if (!sameValue(values[key], init[key])) return true;
+  }
+  return false;
+}
+
+// Every mounted auto-saving form registers a flush function here so an update
+// or explicit "Save and update" can await durable saves of all open forms.
+const activeFlushers = new Set();
+
+/** Await a durable save of every mounted auto-saving form. Resolves to true only if all succeeded. */
+export async function flushAllFormDrafts() {
+  const results = await Promise.all([...activeFlushers].map(fn => fn().then(ok => ok !== false, () => false)));
+  return results.every(Boolean);
+}
+
 // Simple debounce function with cancel method
 const debounce = (func, wait) => {
   let timeout;
@@ -133,6 +170,9 @@ export const useFormAutoSave = (
   const clearDraft = useCallback(async () => {
     if (!formKey) return;
     
+    // Stop any pending save so a cleared draft isn't immediately re-written.
+    debouncedSave.cancel();
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     try {
       await deleteFormDraft(formKey);
       setLastSaved(null);
@@ -142,14 +182,24 @@ export const useFormAutoSave = (
     } catch (error) {
       console.error('Error clearing form draft:', error);
     }
-  }, [formKey, formType]);
+  }, [formKey, formType, debouncedSave]);
 
   // Force save immediately
   const forceSave = useCallback(async () => {
-    if (!isEnabled || !formKey || !formType) return;
+    if (!isEnabled || !formKey || !formType) return true;
     
     // Cancel any pending debounced save
     debouncedSave.cancel();
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+    // Nothing new to persist
+    if (!formValues || JSON.stringify(formValues) === JSON.stringify(lastSavedValues.current)) return true;
+    const hasData = Object.values(formValues).some(value => {
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'string') return value.trim() !== '';
+      return value !== null && value !== undefined && value !== '';
+    });
+    if (!hasData) return true;
     
     setIsSaving(true);
     try {
@@ -168,17 +218,27 @@ export const useFormAutoSave = (
     }
   }, [formKey, formType, formValues, coordinates, isEnabled, debouncedSave]);
 
-  // Cleanup old drafts on mount
+  // Only drafts left by older builds under random keys (unreachable from any
+  // screen) are removed after 7 days, as before. Current drafts are never aged out.
   useEffect(() => {
     cleanupOldDrafts();
+  }, []);
+
+  // Register for flushAllFormDrafts().
+  const forceSaveRef = useRef(forceSave);
+  forceSaveRef.current = forceSave;
+  useEffect(() => {
+    const flusher = () => forceSaveRef.current();
+    activeFlushers.add(flusher);
+    return () => { activeFlushers.delete(flusher); };
   }, []);
 
   // Handle page unload - try to save before leaving
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (isEnabled && formKey && formType) {
-        // Try to save synchronously before page unload
-        navigator.sendBeacon && navigator.sendBeacon('/api/keepalive'); // Optional: keep connection alive
+        // Best effort only: the browser does not wait for this async save.
+        // Durable paths (Save and update, explicit save) must await forceSave/flushAllFormDrafts.
         forceSave();
       }
     };

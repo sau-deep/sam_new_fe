@@ -8,6 +8,7 @@ import api from "../../services/axiosInstance";
 import { ROLES } from "../../config";
 import { LANGUAGES } from "../../constants";
 import IEGLogo from "../../assets/img/Institute-of-Economic-Growth.png";
+import { APP_VERSION } from "../../constants/appInfo";
 
 const { Option } = Select;
 
@@ -299,8 +300,11 @@ export default function Login() {
         {/* Footer */}
         <div style={{ textAlign: "center", marginTop: 20, paddingTop: 16, borderTop: "1px solid #E5EDF8" }}>
           <span style={{ fontSize: 11, color: "#C3D4E8" }}>
-            CMAM Programme v2.0 · IEG · All rights reserved
+            CMAM Programme · IEG · All rights reserved
           </span>
+          <div style={{ fontSize: 11, color: "#C3D4E8", marginTop: 4 }} data-testid="app-version">
+            Version {APP_VERSION}
+          </div>
           <div style={{ marginTop: 6 }}>
             <a
               href={`${process.env.PUBLIC_URL || ""}/privacy-policy`}

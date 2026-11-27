@@ -5,6 +5,7 @@ import Sidebar from "./Sidebar";
 import AppHeader from "./Header";
 import Footer from "../../layouts/footer/Footer";
 import OfflineDrawer from "../offline/OfflineDrawer";
+import UpdateBanner from "../update/UpdateBanner";
 import { useAuth } from "../../context/AuthContext";
 import { useEffectiveNetworkStatus } from "../../utils/networkState";
 import api from "../../services/axiosInstance";
@@ -85,6 +86,7 @@ export default function AppLayout() {
             hideSidebarToggle
           />
           {!isOnline && <OfflineBanner isSurveyor />}
+          <UpdateBanner />
           <Content style={{
             minHeight: "calc(100vh - 56px)",
             background: "#F5F7FA",
@@ -113,6 +115,7 @@ export default function AppLayout() {
           notifCount={notifCount}
         />
         {!isOnline && <OfflineBanner isSurveyor={false} />}
+        <UpdateBanner />
         <Content style={{
           minHeight: "calc(100vh - 64px)",
           background: "#F5F7FA",

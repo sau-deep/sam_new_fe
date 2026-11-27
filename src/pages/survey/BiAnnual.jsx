@@ -36,9 +36,9 @@ import useFormLocations from "hooks/useFormLocations";
 import { useTranslation } from "react-i18next";
 import { useFormTranslation } from "hooks/useFormTranslation";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm } from 'utils/indexDB'
+import { saveOfflineForm, stableDraftKey } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
-import useFormAutoSave from 'hooks/useFormAutoSave';
+import useFormAutoSave, { hasUserChanges } from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
 import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
@@ -963,8 +963,9 @@ const BiAnnual = () => {
   // Auto-save state management
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [currentFormValues, setCurrentFormValues] = useState({});
+  const [formHasUserChanges, setFormHasUserChanges] = useState(false);
   const [draftToRestore, setDraftToRestore] = useState(null);
-  const formKey = useRef(`biannual_${Date.now()}_${location.pathname}`).current; // Stable form key
+  const formKey = useRef(stableDraftKey('biannual')).current; // Stable per form type + account, so the draft is found again after reopening
   
   // Location capture refs
   const locationTimeoutRef = useRef(null);
@@ -977,10 +978,26 @@ const BiAnnual = () => {
     formKey,
     currentFormValues,
     coordinates,
-    true,
+    formHasUserChanges, // only save once the surveyor has entered something
     3000 // Save every 3 seconds
   );
   
+  // Offer to restore a saved draft once on open (drafts use a stable per-account key).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const draft = await autoSave.loadDraft();
+      if (cancelled || !draft || !draft.formData) return;
+      const restore = window.confirm(
+        `Found a saved draft from ${new Date(draft.lastModified).toLocaleString()}. Do you want to restore it?`
+      );
+      if (restore) setDraftToRestore(draft);
+      else await autoSave.clearDraft();
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Prevent accidental page reload
   const { confirmNavigation } = usePreventPageReload(
     hasUnsavedChanges,
@@ -1371,6 +1388,7 @@ const BiAnnual = () => {
           type: "success",
         });
 
+        await autoSave.clearDraft(); // submitted — don't offer it for restore next time
         resetForm();
         setTimeout(() => {
           navigate("/survey/list", { replace: true });
@@ -1587,12 +1605,13 @@ const BiAnnual = () => {
 
   // ----- Local component to safely use hooks with Formik values -----
   const FormObserver = () => {
-    const { values, setFieldValue } = useFormikContext();
+    const { values, initialValues, setFieldValue } = useFormikContext();
 
     // Keep latest values for auto-save
     useEffect(() => {
       setCurrentFormValues(values);
-    }, [values]);
+      setFormHasUserChanges(hasUserChanges(values, initialValues));
+    }, [values, initialValues]);
 
     // Inject coordinates once they are available
     useEffect(() => {

@@ -31,6 +31,8 @@ jobs:
           REACT_APP_API_BASE_URL: https://qa-api.coecmamsupport.com
           GENERATE_SOURCEMAP: 'false'
           CI: 'false'
+          # Fail the build unless release-manifest.json + a clean commit identify it.
+          SAM_REQUIRE_RELEASE_IDENTITY: '1'
         run: npm run build
       - name: Assume the QA frontend deployment role
         uses: aws-actions/configure-aws-credentials@v4

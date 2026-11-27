@@ -13,6 +13,7 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { FormConfigProvider } from "./context/FormConfigContext";
+import { UpdateProvider } from "./context/UpdateContext";
 import api from "./services/axiosInstance";
 import { antdTheme } from "./theme/unicef";
 import AppLayout from "./components/layout/AppLayout";
@@ -324,9 +325,11 @@ export default function App() {
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <ConfigProvider theme={antdTheme}>
           <AuthProvider>
+            <UpdateProvider>
             <FormConfigProvider>
               <AppRoutes />
             </FormConfigProvider>
+            </UpdateProvider>
           </AuthProvider>
         </ConfigProvider>
       </LocalizationProvider>

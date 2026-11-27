@@ -45,6 +45,8 @@ jobs:
       - name: Build & Deploy to S3 root + invalidate CloudFront
         env:
           CI: "false"
+          # Fail the build unless release-manifest.json + a clean commit identify it.
+          SAM_REQUIRE_RELEASE_IDENTITY: "1"
           AWS_PROFILE: ""
           BUCKET_NAME: ${{ env.BUCKET_NAME }}
           CLOUDFRONT_DISTRIBUTION_ID: ${{ env.CLOUDFRONT_DISTRIBUTION_ID }}

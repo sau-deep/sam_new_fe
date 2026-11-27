@@ -17,13 +17,17 @@ export const ROLES = {
   SURVEYOR: "ROLE_SURVEYOR",
 };
 
-export const APP_VERSION = "2.0.0";
+// Real build identity — see src/constants/releaseInfo.js
+export { APP_VERSION } from "../constants/appInfo";
 
 // BEL Admin Configuration
 export const BEL_ADMIN_PASSWORD = 'Bel@2025';
 export const CACHE_PREFIX = "sam_v2_";
 export const JWT_KEY = "iegAccessToken";
 export const USER_KEY = "iegUsername";
+// The signed-in account's LOGIN ID (JWT subject). USER_KEY above holds the display
+// name for historical reasons and must never be used to tell accounts apart.
+export const OWNER_KEY = "samOwnerId";
 export const ROLES_KEY = "iegUserRoles";
 export const STATE_KEY = "iegUserState";
 export const OFFLINE_USER_KEY = "authUser";

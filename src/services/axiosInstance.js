@@ -1,5 +1,9 @@
 import axios from "axios";
 import { API_BASE_URL, JWT_KEY } from "../config";
+import { RELEASE_INFO } from "../constants/releaseInfo";
+import { addFormSchemaParam } from "./formSchemaParam";
+import { getCurrentOwnerId } from "../utils/currentOwner";
+import { getNativeAppInfo, isNativeApp } from "../utils/nativeAppInfo";
 import { pingServerNow } from "../utils/networkState";
 
 const api = axios.create({
@@ -7,7 +11,37 @@ const api = axios.create({
   timeout: 3600000,
 });
 
-// In-memory GET cache: key → { data, expiresAt }
+// Compatibility hints for the backend (plan §5 "API contract"). They are not
+// authorization; the server only observes them until enforcement is switched on.
+// OFF by default: custom headers trigger a CORS preflight, and backends older than
+// the one that lists X-SAM-* in RequestFilter's Access-Control-Allow-Headers would
+// block every request. Turn on (REACT_APP_SEND_RELEASE_HEADERS=true) only after
+// every backend this build talks to allows them.
+const SEND_RELEASE_HEADERS = process.env.REACT_APP_SEND_RELEASE_HEADERS === "true";
+
+export function releaseHeaders() {
+  const headers = {
+    "X-SAM-Platform": isNativeApp() ? "android" : "web",
+    "X-SAM-Web-Build": RELEASE_INFO.webBuildId,
+    "X-SAM-Release-Sequence": String(RELEASE_INFO.releaseSequence),
+    "X-SAM-API-Contract": String(RELEASE_INFO.apiContractVersion),
+  };
+  const native = getNativeAppInfo();
+  if (native?.versionCode) headers["X-SAM-Android-Code"] = String(native.versionCode);
+  return headers;
+}
+
+// Only add the hints to requests that already need a CORS preflight (signed-in
+// calls carry Authorization) or to the release endpoints themselves. Adding custom
+// headers to otherwise "simple" requests — health pings, public config — would
+// turn each of them into two round trips on slow field networks.
+const wantsReleaseHeaders = (config) =>
+  SEND_RELEASE_HEADERS && (!!config.headers?.Authorization || String(config.url || "").startsWith("/app/releases"));
+
+const cacheOwner = () => getCurrentOwnerId() || "anon";
+
+// In-memory GET cache: key → { data, expiresAt }. Keys include the signed-in
+// account's login id so one user's cached responses are never served to the next login.
 const GET_CACHE = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -26,15 +60,21 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  if (wantsReleaseHeaders(config)) {
+    Object.entries(releaseHeaders()).forEach(([k, v]) => {
+      if (config.headers[k] == null) config.headers[k] = v;
+    });
+  }
+  addFormSchemaParam(config);
 
   // Serve cached GET responses
   if (config.method === "get" && !config.noCache) {
     const params = config.params ? JSON.stringify(config.params) : "";
-    const cacheKey = `${config.url}|${params}`;
+    const cacheKey = `${cacheOwner()}|${config.url}|${params}`;
     const cached = GET_CACHE.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       config.adapter = () =>
-        Promise.resolve({ data: cached.data, status: 200, statusText: "OK (cached)", headers: {}, config });
+        Promise.resolve({ data: cached.data, status: 200, statusText: "OK (cached)", headers: {}, config, fromCache: true });
     }
   }
 
@@ -44,9 +84,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => {
     // Cache successful GET responses
-    if (res.config.method === "get" && !res.config.noCache && res.status === 200) {
+    // (a cache hit must not extend its own expiry)
+    if (res.config.method === "get" && !res.config.noCache && res.status === 200 && !res.fromCache) {
       const params = res.config.params ? JSON.stringify(res.config.params) : "";
-      const cacheKey = `${res.config.url}|${params}`;
+      const cacheKey = `${cacheOwner()}|${res.config.url}|${params}`;
       GET_CACHE.set(cacheKey, { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
     }
     return res;

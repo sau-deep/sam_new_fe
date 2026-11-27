@@ -1,2 +1,4 @@
 // App information constants
-export const APP_VERSION = "8.3";
+import { RELEASE_INFO } from "./releaseInfo";
+
+export const APP_VERSION = RELEASE_INFO.displayVersion;
