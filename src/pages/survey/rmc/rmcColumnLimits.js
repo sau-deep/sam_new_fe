@@ -27,7 +27,7 @@ export const RMC_COLUMN_LIMITS = Object.freeze({
     district: TEXT,
     districtCode: 3,
     block: TEXT,
-    blockCode: 6,
+    blockCode: 10,
     village: TEXT,
     villageCode: 10,
     icdsProject: TEXT,
