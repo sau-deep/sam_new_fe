@@ -10,6 +10,15 @@ const SECTIONS_BY_REQUEST_KEY = Object.freeze({
   householdData: ['section8', 'section9', 'section10', 'section11'],
 });
 
+// A whole-section error (missing section, no or two household sections) belongs to the
+// question that chose the section.
+const SECTION_CHOICE_FIELD = Object.freeze({
+  aganwadiData: 'activityToObserve',
+  cbeData: 'activityToObserve',
+  vhsndData: 'activityToObserve',
+  householdData: 'householdSection',
+});
+
 // Request keys whose control has a different name in the form.
 const CONTROL_ALIASES = Object.freeze({
   thrNotReceivedReason_child: ['thrNotReceivedReasonChild', 'otherThrNotReceivedReasonChild'],
@@ -30,7 +39,8 @@ export function describeFieldErrors(fieldErrors) {
   return Object.entries(fieldErrors).map(([path, message]) => {
     const [head, ...rest] = String(path).split('.');
     if (rest.length === 0 || !SECTIONS_BY_REQUEST_KEY[head]) {
-      return { path, message: String(message), topLevelField: head, sectionKey: null, formIds: [], controlNames: [] };
+      const topLevelField = rest.length === 0 ? (SECTION_CHOICE_FIELD[head] || head) : head;
+      return { path, message: String(message), topLevelField, sectionKey: null, formIds: [], controlNames: [] };
     }
     const field = rest[rest.length - 1];
     // The Other text box first (that is what is too long or missing), then the question.

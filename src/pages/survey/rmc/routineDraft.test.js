@@ -121,4 +121,15 @@ describe('server field errors', () => {
     expect(locateErrorControl(described[2]).getAttribute('name')).toBe('lastMeasurementDate');
     document.body.innerHTML = '';
   });
+
+  it('puts a whole-section error on the question that chose the section (A09)', () => {
+    document.body.innerHTML = `
+      <input type="radio" name="activityToObserve" value="CBE Session" />
+      <input type="radio" name="householdSection" value="section8" />`;
+    const described = describeFieldErrors({ householdData: 'Only one household section', cbeData: 'Missing' });
+    expect(described.map((d) => d.topLevelField)).toEqual(['householdSection', 'activityToObserve']);
+    expect(locateErrorControl(described[0]).getAttribute('name')).toBe('householdSection');
+    expect(locateErrorControl(described[1]).getAttribute('name')).toBe('activityToObserve');
+    document.body.innerHTML = '';
+  });
 });

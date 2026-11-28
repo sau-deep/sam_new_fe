@@ -23,6 +23,7 @@ import {
   Info as InfoIcon
 } from '@mui/icons-material';
 import { isNativeApp } from '../../utils/nativeAppInfo';
+import { canOpenBundledFiles, openBundledFile } from '../../utils/nativeFiles';
 
 const PPTX_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
@@ -57,10 +58,24 @@ const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Pro
     document.body.removeChild(link);
   };
 
-  // Android: hand the bundled asset to the device (share sheet → PowerPoint,
-  // Drive, Files…). A WebView-local URL is never sent to a remote viewer.
+  // Android: hand the bundled asset to the device. A WebView-local URL is never sent
+  // to a remote viewer.
   const openBundledOnDevice = async () => {
     setNotice('');
+    // App builds with the SamFiles plugin open it in PowerPoint/Slides, or the share sheet.
+    if (canOpenBundledFiles()) {
+      try {
+        await openBundledFile(filePath, { title });
+        return;
+      } catch (err) {
+        if (err && err.code === 'NO_APP') {
+          setNotice('No app on this phone can open PowerPoint files. Install Microsoft PowerPoint or Google Slides and try again.');
+          return;
+        }
+        // otherwise fall back to the routes below
+      }
+    }
+    // Older app builds: Web Share where the WebView has it, else the public website.
     try {
       const response = await fetch(filePath);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

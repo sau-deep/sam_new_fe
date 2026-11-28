@@ -5,6 +5,7 @@ import {
   DownloadOutlined, SyncOutlined,
 } from "@ant-design/icons";
 import api from "../../services/axiosInstance";
+import { bundledPath, canOpenBundledFiles, openBundledFile } from "../../utils/nativeFiles";
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -51,7 +52,19 @@ const CATEGORY_COLORS = {
   "Technical": "orange",
 };
 
-function downloadFile(url, fileName) {
+async function downloadFile(url, fileName) {
+  // Android app: a download link does nothing in the WebView, so hand the bundled file to
+  // an installed app (audit P04). Older app builds and the web keep the download link.
+  if (canOpenBundledFiles() && bundledPath(url)) {
+    try {
+      await openBundledFile(url, { title: fileName });
+    } catch (err) {
+      message.error(err?.code === "NO_APP"
+        ? "No app on this phone can open this file. Install a PDF or PowerPoint viewer and try again."
+        : "The file could not be opened on this phone. Please try again.");
+    }
+    return;
+  }
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName || url.split("/").pop();

@@ -72,6 +72,7 @@ import { routineRequestLimitErrors } from './rmc/rmcLimits';
 import { buildRoutineDraftValues, splitRoutineDraft, draftFingerprint } from './rmc/routineDraft';
 import { describeFieldErrors, locateErrorControl } from './rmc/fieldErrorTargets';
 import { createSubmissionGate, runGated } from './rmc/submissionGate';
+import { householdSectionErrors } from './rmc/householdSections';
 
 // The SOP deck shipped in public/ (web) and in the Android app's bundled assets.
 const RMC_SOP_PATH = '/Mobile_SoP_Routine_Monitoring.pptx';
@@ -584,6 +585,11 @@ const RoutineMonitoring = () => {
         const missing = missingActivitySections(request);
         if (missing.length > 0) {
             return { ok: false, message: t('pleaseCompleteRequiredFields') || "Please complete the questions for the selected activity" };
+        }
+        // A09: household answers must be one complete Section 8–11 (the backend checks the same).
+        const householdErrors = request.householdData ? householdSectionErrors(request.householdData) : {};
+        if (Object.keys(householdErrors).length > 0) {
+            return { ok: false, message: Object.values(householdErrors)[0], fieldErrors: householdErrors };
         }
         return { ok: true, request };
     };
