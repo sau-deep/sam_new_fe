@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from "react-router-dom";
 import styles from "./survey.module.css";
 import * as Yup from "yup";
@@ -27,6 +27,7 @@ import {
     MenuItem,
     Divider,
     IconButton,
+    Alert,
 } from "@mui/material";
 import { Formik, Form, useFormikContext } from "formik";
 import apiService from '../../services/api';
@@ -37,7 +38,7 @@ import { ArrowBack, ArrowForward, Check, Description } from "@mui/icons-material
 import { getFormLocationHelpers } from "utils/formLocations";
 import useFormLocations from "hooks/useFormLocations";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm, stableDraftKey } from 'utils/indexDB'
+import { saveOfflineForm, stableDraftKey, newClientId } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import useFormAutoSave, { hasUserChanges } from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
@@ -56,14 +57,24 @@ import MapComponent from 'components/ui/StreetMap';
 import ErrorReportingDialog from '../../components/ui/ErrorReportingDialog';
 import ConsentDialog from '../../components/ui/ConsentDialog';
 import SOPViewer from '../../components/ui/SOPViewer';
-import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
-import { getConsentStatus } from '../../utils/consentManager';
+import { sendSilentWhatsAppReport } from '../../utils/whatsappUtils';
 import { 
     saveRoutineMonitoringPreferences, 
     loadRoutineMonitoringPreferences, 
     getTodaysDate 
 } from '../../utils/routineMonitoringPreferences';
 import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../utils/dailySurveyCount';
+import { isApiSuccess, apiErrorMessage, apiFieldErrors, isValidationFailure } from '../../utils/apiResult';
+import { makeToEnglish } from './rmc/rmcSerializer';
+import { collectSection, RMC_SECTION_FORM_IDS } from './rmc/collectSectionData';
+import { activeSectionIds, buildRoutineRequest, missingActivitySections } from './rmc/buildRoutineRequest';
+import { routineRequestLimitErrors } from './rmc/rmcLimits';
+import { buildRoutineDraftValues, splitRoutineDraft, draftFingerprint } from './rmc/routineDraft';
+import { describeFieldErrors, locateErrorControl } from './rmc/fieldErrorTargets';
+import { createSubmissionGate, runGated } from './rmc/submissionGate';
+
+// The SOP deck shipped in public/ (web) and in the Android app's bundled assets.
+const RMC_SOP_PATH = '/Mobile_SoP_Routine_Monitoring.pptx';
 
 const {
   getStateOptions,
@@ -138,7 +149,6 @@ const RoutineMonitoring = () => {
   // Add missing state variables for error reporting and consent dialog
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [currentError, setCurrentError] = useState(null);
-  const [currentPayload, setCurrentPayload] = useState(null);
     const [showConsentDialog, setShowConsentDialog] = useState(false);
     const [pendingErrorReport, setPendingErrorReport] = useState(null);
     const [isTestSubmission, setIsTestSubmission] = useState(false);
@@ -167,6 +177,45 @@ const RoutineMonitoring = () => {
     const [preferencesLoaded, setPreferencesLoaded] = useState(false);
     const [savedPreferences, setSavedPreferences] = useState({});
     const formKey = useRef(stableDraftKey('routinemonitoring')).current; // Stable per form type + account, so the draft is found again after reopening
+    const formikRef = useRef(null);
+    // The request built by the last Submit; Retry and Save Offline reuse it:
+    // { request, values, fingerprint, clientSubmissionId, sent }.
+    const preparedRef = useRef(null);
+    const [submitProblems, setSubmitProblems] = useState([]);
+    const [submitted, setSubmitted] = useState(false);
+    // Synchronous guard: one attempt at a time and nothing after a confirmed save.
+    const submitGateRef = useRef(null);
+    if (!submitGateRef.current) submitGateRef.current = createSubmissionGate();
+
+    // Section answers live in each section's own state; they report them here so
+    // autosave stores them and a restored draft can rehydrate them (audit A06).
+    const sectionDraftsRef = useRef({});
+    const sectionDirtyRef = useRef({});
+    const snapshotTimerRef = useRef(null);
+    const [sectionSnapshots, setSectionSnapshots] = useState({});
+    const [sectionsDirty, setSectionsDirty] = useState(false);
+    const [restoredSections, setRestoredSections] = useState({});
+    const [sectionEpoch, setSectionEpoch] = useState(0);
+    const cbeRef = useRef(null);
+
+    const handleSectionDraftChange = useCallback((sectionId, sectionValues, dirty) => {
+        if (sectionValues === undefined) {
+            delete sectionDraftsRef.current[sectionId];
+            delete sectionDirtyRef.current[sectionId];
+        } else {
+            sectionDraftsRef.current[sectionId] = sectionValues;
+            sectionDirtyRef.current[sectionId] = !!dirty;
+        }
+        if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+        snapshotTimerRef.current = setTimeout(() => {
+            setSectionSnapshots({ ...sectionDraftsRef.current });
+            setSectionsDirty(Object.values(sectionDirtyRef.current).some(Boolean));
+        }, 500);
+    }, []);
+
+    useEffect(() => () => {
+        if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+    }, []);
     
     const awaRegistrationRef = useRef(null);
     const equipmentAvailabilityRef = useRef(null);
@@ -178,13 +227,20 @@ const RoutineMonitoring = () => {
     const child6To8MonthsRef = useRef(null);
     const child9To23MonthsRef = useRef(null);
     
+    // Full questionnaire for autosave: top-level values, selected activity and
+    // household section, every mounted section's answers and the form step.
+    const autoSaveValues = useMemo(
+        () => buildRoutineDraftValues(currentFormValues, { sections: sectionSnapshots, step }),
+        [currentFormValues, sectionSnapshots, step]
+    );
+
     // Auto-save hook at component level
     const autoSave = useFormAutoSave(
         'routinemonitoring',
         formKey,
-        currentFormValues,
+        autoSaveValues,
         coordinates,
-        formHasUserChanges, // only save once the surveyor has entered something
+        (formHasUserChanges || sectionsDirty) && !submitted, // only once the surveyor has entered something
         3000 // Save every 3 seconds
     );
     
@@ -197,8 +253,8 @@ const RoutineMonitoring = () => {
     // Track if form has been modified
     useEffect(() => {
         // Prefilled values don't count; a restored draft still needs reload protection.
-        setHasUnsavedChanges(formHasUserChanges);
-    }, [formHasUserChanges]);
+        setHasUnsavedChanges((formHasUserChanges || sectionsDirty) && !submitted);
+    }, [formHasUserChanges, sectionsDirty, submitted]);
     
     // Load saved preferences when component mounts
     useEffect(() => {
@@ -241,8 +297,12 @@ const RoutineMonitoring = () => {
         loadPreferences();
     }, []);
 
-    // Check for existing drafts when component loads (only once)
+    // Check for an existing draft once saved preferences are in place, so a
+    // Formik re-initialisation from preferences cannot overwrite the restored answers.
+    const draftCheckedRef = useRef(false);
     useEffect(() => {
+        if (!preferencesLoaded || draftCheckedRef.current) return;
+        draftCheckedRef.current = true;
         const checkForDrafts = async () => {
             const draft = await autoSave.loadDraft();
             if (draft && draft.formData) {
@@ -265,7 +325,8 @@ const RoutineMonitoring = () => {
         };
         
         checkForDrafts();
-    }, []); // Empty dependency array - only run once
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [preferencesLoaded]);
 
     // Monitor network status changes and notify user without affecting form data
     const previousOnlineStatus = useRef(isOnline);
@@ -423,1000 +484,346 @@ const RoutineMonitoring = () => {
     
 
 
-    // Helper function to convert translated values back to English keys for payload
-    const mapFormValuesToEnglish = (formData) => {
-        const mappedData = {};
-        const processedOtherFields = new Set();
-        
-        // Create reverse mapping from translated values to English keys
-        const getEnglishValue = (value) => {
-            // Handle empty or null values
-            if (!value || value === '') return value;
-            
-            // If value is already in English (no translation occurred), return as is
-            const translatedValue = t(value);
-            if (translatedValue === value) {
-                return value; // Already in English or no translation available
-            }
-            
-            // Common English mappings for form values
-            const englishMappings = {
-                // Frequency options
-                [t('always')]: 'Always (Every day)',
-                [t('very_often')]: 'Very Often (4-5 days a week)',
-                [t('often')]: 'Often (2-3 days a week)',
-                [t('sometimes')]: 'Sometimes (Once a week)',
-                [t('rarely')]: 'Rarely (Few times a month)',
-                [t('never')]: 'Never',
-                
-                // Common status options
-                [t('available')]: 'Available',
-                [t('notAvailable')]: 'Not Available',
-                [t('availableAndFunctional')]: 'Available and Functional',
-                [t('availableButNotFunctional')]: 'Available but not Functional',
-                [t('yes')]: 'Yes',
-                [t('no')]: 'No',
-                [t('others')]: 'Others',
-                [t('other')]: 'Other',
-                
-                // Activity options
-                [t('aanganwadiCenter')]: 'Aanganwadi Center',
-                [t('cbeSession')]: 'CBE Session',
-                [t('vhsndSessionRISession')]: 'VHSND Session/RI Session',
-                [t('householdCaregiverInteraction')]: 'Household/caregiver interaction',
-                
-                // Common form values that need to stay in English
-                [t('moreThan3')]: 'More than 3',
-                [t('morethan3')]: 'More than 3', // Handle typo case
-            };
-            
-            // Check if we have a direct English mapping
-            if (englishMappings[value]) {
-                return englishMappings[value];
-            }
-            
-            // For values that don't have specific mappings, return the original value
-            // This ensures that user input (like names, dates, etc.) stays unchanged
-            return value;
-        };
-        
-        // Fields that have Combined versions - use combined versions instead of raw
-        const fieldsWithCombinedVersions = {
-            'typeOfRecordAvailable': 'typeOfRecordAvailableCombined',
-            'thrNotReceivedReasonChild': 'thrNotReceivedReasonChildCombined', 
-            'childNotConsumeThr': 'childNotConsumeThrCombined',
-            'thrQtyPrepareChild': 'thrQtyPrepareChildCombined',
-            'storeThr': 'storeThrCombined',
-            'awwActionsDuringVisit': 'awwActionsDuringVisitCombined',
-            'counsellingAdviceReceive': 'counsellingAdviceReceiveCombined',
-            'familyAttendedAnnaprashan': 'familyAttendedAnnaprashanCombined',
-            'qtyPrepareFood': 'qtyPrepareFoodCombined',
-            'thrStore': 'thrStoreCombined'
-        };
-        
-        for (const [key, value] of Object.entries(formData)) {
-            // Skip if this is an "Other" field that will be processed with its main field
-            // But don't skip otherFruitsVegetablesFrequency as it's a legitimate field name
-            if (key.endsWith('Other') || key.endsWith('Others') || ((key.startsWith('other') && key !== 'otherFruitsVegetablesFrequency')) || key.endsWith('Combined')) {
-                continue;
-            }
-            
-            // Use combined version if available, skip raw version
-            if (fieldsWithCombinedVersions[key]) {
-                const combinedKey = fieldsWithCombinedVersions[key];
-                if (formData[combinedKey] !== undefined) {
-                    // Use the combined value and map the key to the original field name
-                    mappedData[key] = formData[combinedKey];
-                    continue;
-                }
-            }
-            
-            // Handle array values (checkbox groups)
-            if (Array.isArray(value)) {
-                const mappedArray = value.map(item => {
-                    return getEnglishValue(item);
-                });
-                
-                // Handle "others" field if present
-                const possibleOtherFields = [
-                    key + 'Other',
-                    key + 'Others', 
-                    'other' + key.charAt(0).toUpperCase() + key.slice(1),
-                    'otherReasons' + key.charAt(0).toUpperCase() + key.slice(1).replace(/[a-z]/g, ''),
-                    'otherReasonsNotBreastfed',
-                    'otherThrNotReceivedReason',
-                    'thrNotReceivedReasonOther',
-                    'otherAdviceReceive',
-                    key.replace(/([A-Z])/g, '$1').toLowerCase() + '_other'
-                ];
-                
-                // Find the first matching other field value
-                let otherFieldValue = null;
-                for (const fieldName of possibleOtherFields) {
-                    if (formData[fieldName]) {
-                        otherFieldValue = formData[fieldName];
-                        break;
-                    }
-                }
-                
-                if (otherFieldValue && ((value.includes('others') || value.includes('Other') || value.includes('Others')))) {
-                    const otherIndex = mappedArray.findIndex(item => 
-                        item === 'Others' || item === 'others' || item === 'Other'
-                    );
-                    if (otherIndex !== -1) {
-                        mappedArray[otherIndex] = `Others - ${otherFieldValue}`;
-                        possibleOtherFields.forEach(field => processedOtherFields.add(field));
-                    }
-                }
-                
-                mappedData[key] = mappedArray.join(', ');
-            } else {
-                // Handle single values
-                let mappedValue = getEnglishValue(value);
-                
-                // Handle "others" field if present
-                const possibleOtherFields = [
-                    key + 'Other',
-                    key + 'Others', 
-                    'other' + key.charAt(0).toUpperCase() + key.slice(1),
-                    'otherReasons' + key.charAt(0).toUpperCase() + key.slice(1).replace(/[a-z]/g, ''),
-                    'otherReasonsNotBreastfed',
-                    'otherThrNotReceivedReason',
-                    'thrNotReceivedReasonOther',
-                    'otherAdviceReceive',
-                    key.replace(/([A-Z])/g, '$1').toLowerCase() + '_other'
-                ];
-                
-                // Find the first matching other field value
-                let otherFieldValue = null;
-                for (const fieldName of possibleOtherFields) {
-                    if (formData[fieldName]) {
-                        otherFieldValue = formData[fieldName];
-                        break;
-                    }
-                }
-                
-                if (otherFieldValue && ((value === 'Others' || value === 'others' || value === 'Other'))) {
-                    mappedValue = `Others - ${otherFieldValue}`;
-                    possibleOtherFields.forEach(field => processedOtherFields.add(field));
-                }
-                
-                mappedData[key] = mappedValue;
-            }
-        }
-        
-        return mappedData;
+    // ----- Submission (audit F01 / W1) -----------------------------------------
+    // One preparation step validates the active sections, reads their answers,
+    // resolves location codes and builds the complete request. Submit, Retry and
+    // Save Offline all send that same prepared request.
+
+    const sectionRefs = {
+        awaRegistration: awaRegistrationRef,
+        equipmentAvailability: equipmentAvailabilityRef,
+        skillAssessment: skillAssessmentRef,
+        cbe: cbeRef,
+        cmamClinic: cmamClinicRef,
+        anmChoKnowledge: anmChoKnowledgeRef,
+        section8: cmamChildServicesRef,
+        section9: infant0To6MonthsRef,
+        section10: child6To8MonthsRef,
+        section11: child9To23MonthsRef,
     };
 
-    // Helper function to get form data from a section
-    const getFormSectionData = (formId) => {
-        const formElement = document.getElementById(formId);
-        if (!formElement) {
-            return {};
+    const sectionIncompleteMessage = (sectionId) => {
+        switch (sectionId) {
+            case 'awaRegistration':
+                return t('awaRegistrationSectionIncomplete') || "Please complete all required fields in Section 2 - SAM Children Identification and CMAM Enrollment";
+            case 'equipmentAvailability':
+                return t('equipmentAvailabilitySectionIncomplete') ||
+                    "Please complete all required fields in Section 3 - Equipment/Supplies Availability. Check: Digital Weighing Scale, Salter Scale, Infantometer, Stadiometer, Supplementary Nutrition, Register Availability, Poshan Tracker Status, Amoxycillin Syrup, Folic Acid Tablet, Albendazole, Vitamin A, IFA Syrup, Multivitamin Syrup, Zinc, ORS, Paracetamol";
+            case 'skillAssessment':
+                return t('skillAssessmentSectionIncomplete') || "Please complete all required fields in Section 4 - Skill Assessment";
+            case 'cbe':
+                return "Please complete all required fields in Section 5 - Community Based Events, including the 'Other' details";
+            case 'cmamClinic':
+                return t('cmamClinicSectionIncomplete') || "Please complete all required fields in Section 6 - VHSND CMAM Clinic";
+            case 'anmChoKnowledge':
+                return t('anmChoKnowledgeSectionIncomplete') || "Please complete all required fields in Section 7 - ANM/CHO Knowledge Assessment";
+            case 'section8':
+                return t('cmamChildServicesSectionIncomplete') || "Please complete all required fields in Section 8 - CMAM Child Services";
+            case 'section9':
+                return t('infant0To6MonthsSectionIncomplete') || "Please complete all required fields in Section 9 - Infant 0-6 Months";
+            case 'section10':
+                return t('child6To8MonthsSectionIncomplete') || "Please complete all required fields in Section 10 - Child 6-8 Months";
+            case 'section11':
+                return t('child9To23MonthsSectionIncomplete') || "Please complete all required fields in Section 11 - Child 9-23 Months";
+            default:
+                return t('pleaseCompleteRequiredFields') || "Please complete all required fields";
         }
-        
-        // Get all input fields from the form (including Material-UI components)
-        const formControls = formElement.querySelectorAll('input, select, textarea, [role="textbox"]');
-        
-        // Also check for Material-UI TextField components
-        const muiTextFields = formElement.querySelectorAll('.MuiTextField-root input, .MuiTextField-root textarea');
-        
-        // Debug: Log all form control names and values
-        
-        // Debug: Specifically look for otherFruitsVegetablesFrequency
-        const otherFruitsInputs = Array.from(formControls).filter(c => c.name === 'otherFruitsVegetablesFrequency');
-        
-        let formData = {};
-        
-        // First pass: collect all form controls by name
-        const formControlsByName = {};
-        
-        // Process regular form controls
-        formControls.forEach(control => {
-            if (!control.name) return;
-            
-            if (!formControlsByName[control.name]) {
-                formControlsByName[control.name] = [];
-            }
-            formControlsByName[control.name].push(control);
+    };
+
+    /** Answers currently held by the mounted sections (for the draft and the prepared-request check). */
+    const liveSectionDrafts = (values) => {
+        const out = {};
+        activeSectionIds(values).forEach((id) => {
+            const state = sectionRefs[id]?.current?.getDraftState?.();
+            if (state) out[id] = state;
         });
-        
-        // Process Material-UI text fields
-        muiTextFields.forEach(control => {
-            if (!control.name) return;
-            
-            if (!formControlsByName[control.name]) {
-                formControlsByName[control.name] = [];
-            }
-            formControlsByName[control.name].push(control);
+        return out;
+    };
+
+    const scrollToElement = (el) => {
+        if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        }
+    };
+
+    /**
+     * Validate, collect and build. Returns { ok: true, request } or
+     * { ok: false, message, focusFormId?, fieldErrors? }. Never sends anything.
+     */
+    const prepareRoutineSubmission = (values) => {
+        const sectionIds = activeSectionIds(values);
+
+        // Show every active section's own errors, report the first failing one.
+        let firstInvalid = null;
+        sectionIds.forEach((id) => {
+            const ref = sectionRefs[id];
+            const valid = ref?.current?.triggerValidation ? ref.current.triggerValidation() : true;
+            if (!valid && !firstInvalid) firstInvalid = id;
         });
-        
-        // Second pass: process controls by groups
-        Object.entries(formControlsByName).forEach(([name, controls]) => {
-            // Debug: Log processing of otherFruitsVegetablesFrequency
-            if (name === 'otherFruitsVegetablesFrequency') {
-            }
-            
-            // Check if this is a checkbox group (multiple checkboxes with same name)
-            const isCheckboxGroup = controls.length > 1 && controls[0].type === 'checkbox';
-            
-            if (isCheckboxGroup) {
-                // For checkbox groups, collect values in an array
-                const checkedValues = controls
-                    .filter(control => control.checked)
-                    .map(control => control.value);
-                
-                if (checkedValues.length) {
-                    formData[name] = checkedValues;
-                } else {
-                    // Include empty array for checkbox groups with no selections
-                    formData[name] = [];
-                }
-            } else {
-                // Single controls or radio groups
-                controls.forEach(control => {
-                    if (control.type === 'checkbox') {
-                        if (control.checked) {
-                            formData[name] = control.value;
-                        }
-                    } else if (control.type === 'radio') {
-                        if (control.checked) {
-                            formData[name] = control.value;
-                        }
-                    } else if (control.type === 'select-multiple') {
-                        const selectedOptions = Array.from(control.selectedOptions).map(option => option.value);
-                        if (selectedOptions.length) {
-                            formData[name] = selectedOptions;
-                        }
-                    } else {
-                        // Text inputs, selects, etc.
-                        if (control.value !== undefined && control.value !== null) {
-                            formData[name] = control.value || '';
-                        }
-                    }
-                });
-                
-                // Ensure radio button fields have a value even if empty
-                if (controls.length > 0 && controls[0].type === 'radio' && !formData[name]) {
-                    formData[name] = '';
-                }
-            }
-            
-            // Debug: Log final value for otherFruitsVegetablesFrequency
-            if (name === 'otherFruitsVegetablesFrequency') {
-            }
+        if (firstInvalid) {
+            return { ok: false, message: sectionIncompleteMessage(firstInvalid), focusFormId: RMC_SECTION_FORM_IDS[firstInvalid] };
+        }
+
+        const toEnglish = makeToEnglish(t);
+        const sections = {};
+        sectionIds.forEach((id) => { sections[id] = collectSection(id, { toEnglish }); });
+
+        const request = buildRoutineRequest({
+            values,
+            coordinates,
+            sections,
+            isTestData: canMarkTestSubmission() && isTestSubmission,
+            enrichLocation: enrichRoutineMonitoringLocationCodes,
+            locationMetadata: surveyLocationMetadata,
         });
-        
-        // Map UI field names to exact database field names
-        // thrNotReceivedReasonChild now uses correct parameter name directly
-        
-        // Get Others text from DOM elements directly
-        const getOtherText = (fieldId) => {
-            const element = document.getElementById(fieldId);
-            return element ? element.value.trim() : '';
+
+        const limitErrors = routineRequestLimitErrors(request);
+        if (Object.keys(limitErrors).length > 0) {
+            return { ok: false, message: Object.values(limitErrors)[0], fieldErrors: limitErrors };
+        }
+        const missing = missingActivitySections(request);
+        if (missing.length > 0) {
+            return { ok: false, message: t('pleaseCompleteRequiredFields') || "Please complete the questions for the selected activity" };
+        }
+        return { ok: true, request };
+    };
+
+    const showProblems = (fieldErrors) => {
+        const described = describeFieldErrors(fieldErrors);
+        setSubmitProblems(described);
+        const formik = formikRef.current;
+        described.filter((d) => d.topLevelField && formik).forEach((d) => {
+            formik.setFieldTouched(d.topLevelField, true, false);
+            formik.setFieldError(d.topLevelField, d.message);
+        });
+        if (described.length > 0) {
+            setTimeout(() => scrollToElement(locateErrorControl(described[0])), 200);
+        }
+    };
+
+    const showPrepareError = (prepared) => {
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: prepared.message, type: "error" });
+        if (prepared.fieldErrors) {
+            showProblems(prepared.fieldErrors);
+        } else if (prepared.focusFormId) {
+            setTimeout(() => scrollToElement(document.getElementById(prepared.focusFormId)), 200);
+        }
+    };
+
+    /**
+     * The prepared submission when the answers are unchanged since it was built,
+     * else a freshly validated one. One clientSubmissionId per prepared
+     * submission (A08): a retry or post-failure offline save of a request that
+     * was already sent reuses it, so the server can recognise a lost acknowledgement.
+     */
+    const resolvePreparedRequest = (values) => {
+        const fingerprint = draftFingerprint(
+            { ...values, isTestData: canMarkTestSubmission() && isTestSubmission },
+            liveSectionDrafts(values)
+        );
+        const snapshot = preparedRef.current;
+        if (snapshot && snapshot.fingerprint === fingerprint) {
+            return { ok: true, snapshot };
+        }
+        const prepared = prepareRoutineSubmission(values);
+        if (!prepared.ok) return prepared;
+        preparedRef.current = {
+            request: prepared.request,
+            values,
+            fingerprint,
+            clientSubmissionId: newClientId(),
+            sent: false,
         };
-        
-        // Debug: Log all captured form data to see what's being collected
-        
-        // Only add Section 8 required fields if this is the CMAM Child Services form
-        // Exclude these fields from other sections (9, 10, 11)
-        if (formId === 'cmamChildServicesForm') {
-            // Check if child card record is available - if not, exclude typeOfRecordAvailable fields
-            const childCardRecordAvailability = formData.childCardRecordAvailability;
-            
-            // If child card record is not available, remove typeOfRecordAvailable and otherTypeOfRecord
-            if (childCardRecordAvailability && childCardRecordAvailability !== 'Available') {
-                delete formData.typeOfRecordAvailable;
-                delete formData.typeOfRecordAvailableCombined;
-                delete formData.otherTypeOfRecord;
-            }
-            
-            // Check if THR was received - if yes, exclude thrNotReceivedReasonChild fields
-            const thrReceivedFromAwc = formData.thrReceivedFromAwc;
-            if (thrReceivedFromAwc && thrReceivedFromAwc === 'Yes') {
-                delete formData.thrNotReceivedReasonChild;
-                delete formData.thrNotReceivedReasonChildCombined;
-                delete formData.otherThrNotReceivedReasonChild;
-            }
-            
-            // Check if counselling on home food was received - if no, exclude counselling advice fields
-            const counsellingOnHomeFood = formData.counsellingOnHomeFood;
-            if (counsellingOnHomeFood && counsellingOnHomeFood === 'No') {
-                delete formData.counsellingAdviceReceive;
-                delete formData.counsellingAdviceReceiveCombined;
-                delete formData.otherCounsellingAdvice;
-            }
-            
-            const requiredFields = [
-                'awwActionsDuringVisit', 
-                'childNotConsumeThr',
-                'thrQtyPrepareChild',
-                'storeThr'
-            ];
-            
-            // Only add counsellingAdviceReceive to required fields if counselling on home food is "Yes"
-            if (counsellingOnHomeFood === 'Yes') {
-                requiredFields.push('counsellingAdviceReceive');
-            }
-            
-            // Only add typeOfRecordAvailable to required fields if child card is available
-            if (childCardRecordAvailability === 'Available') {
-                requiredFields.push('typeOfRecordAvailable');
-            }
-            
-            requiredFields.forEach(field => {
-                if (!formData[field]) {
-                    formData[field] = '';
-                }
-            });
-            
-            // Only add thrNotReceivedReasonChild if THR was not received
-            if (thrReceivedFromAwc === 'No' && !formData.thrNotReceivedReasonChild) {
-                formData.thrNotReceivedReasonChild = '';
-            }
-        } else {
-            // For other sections (9, 10, 11), remove Section 8 specific fields if they exist
-            const section8Fields = [
-                'typeOfRecordAvailable',
-                'awwActionsDuringVisit', 
-                'childNotConsumeThr',
-                'thrQtyPrepareChild',
-                'storeThr',
-                'counsellingAdviceReceive',
-                'thrNotReceivedReasonChild'
-            ];
-            
-            section8Fields.forEach(field => {
-                delete formData[field];
-            });
-            
-            // For Section 10, ensure all food frequency fields are included
-            if (formId === 'child6To8MonthsForm') {
-                const foodFrequencyFields = [
-                    'porridgeFrequency', 'fortifiedBabyFoodFrequency', 'grainsFoodFrequency',
-                    'yellowOrangeVegetables', 'rootsFoodFrequency', 'darkGreenLeafyVegetables',
-                    'ripeFruitsFrequency', 'otherFruitsVegetablesFrequency', 'dryFruitsFrequency',
-                    'organMeatsFrequency', 'meatFoodFrequency', 'eggsFrequency', 'fishFrequency',
-                    'beansLentilsFrequency', 'nutsFrequency', 'milkProductsFrequency',
-                    'oilGheeFrequency', 'sugaryFoodsFrequency', 'beveragesFrequency', 'sweetenedBeveragesFrequency'
-                ];
-                
-                // Try to get values from button selections by checking which buttons are active
-                foodFrequencyFields.forEach(field => {
-                    if (!formData[field]) {
-                        // Look for active button for this food type
-                        const activeButton = formElement.querySelector(`button[data-food="${field}"][data-frequency].MuiButton-contained`);
-                        if (activeButton) {
-                            const frequency = activeButton.getAttribute('data-frequency');
-                            formData[field] = frequency;
-                        } else {
-                            // Also try to get from hidden input
-                            const hiddenInput = formElement.querySelector(`input[name="${field}"]`);
-                            if (hiddenInput && hiddenInput.value) {
-                                formData[field] = hiddenInput.value;
-                                console.log(`Captured ${field} from hidden input:`, hiddenInput.value);
-                            } else {
-                                formData[field] = '';
-                                console.log(`No value found for ${field}, setting to empty`);
-                            }
-                        }
-                    }
-                });
-                
-                // Special handling for otherFruitsVegetablesFrequency which might not be captured properly
-                if (!formData.otherFruitsVegetablesFrequency) {
-                    console.log('otherFruitsVegetablesFrequency not found in regular form data, trying manual capture...');
-                    
-                    // Try multiple selectors to find the field
-                    let element = document.querySelector(`#child6To8MonthsForm input[name="otherFruitsVegetablesFrequency"]`);
-                    if (!element) {
-                        // Try without the form ID
-                        element = document.querySelector(`input[name="otherFruitsVegetablesFrequency"]`);
-                    }
-                    if (!element) {
-                        // Try to find by looking for the specific field in the form
-                        const formElement = document.getElementById('child6To8MonthsForm');
-                        if (formElement) {
-                            element = formElement.querySelector(`input[name="otherFruitsVegetablesFrequency"]`);
-                        }
-                    }
-                    
-                    if (element) {
-                        formData.otherFruitsVegetablesFrequency = element.value || '';
-                        console.log(`Manually captured otherFruitsVegetablesFrequency:`, element.value);
-                    } else {
-                        console.log(`Could not find otherFruitsVegetablesFrequency input element`);
-                        // Try to find all input elements with similar names for debugging
-                        const allInputs = document.querySelectorAll('input[name*="otherFruits"]');
-                        console.log('Found inputs with "otherFruits" in name:', allInputs);
-                        formData.otherFruitsVegetablesFrequency = '';
-                    }
-                } else {
-                    console.log('otherFruitsVegetablesFrequency found in regular form data:', formData.otherFruitsVegetablesFrequency);
-                }
-            }
-        }
-        
-        // Convert translated values back to English for payload
-        return mapFormValuesToEnglish(formData);
+        return { ok: true, snapshot: preparedRef.current };
     };
 
-    const convertArraysToStrings = (obj) => {
-        if (!obj || typeof obj !== 'object') return obj;
-        
-        const result = {};
-        for (const key in obj) {
-            if (Array.isArray(obj[key])) {
-                // Only convert arrays to strings if they haven't been processed already
-                // (i.e., if they still contain raw values)
-                const firstItem = obj[key][0];
-                if (typeof firstItem === 'string' && firstItem.includes(' - ')) {
-                    // Already processed with "others" handling
-                    result[key] = obj[key].join(', ');
-                } else {
-                    result[key] = obj[key].join(', ');
-                }
-            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-                result[key] = convertArraysToStrings(obj[key]);
-            } else {
-                result[key] = obj[key];
-            }
-        }
-        return result;
+    // Id for an offline save: the sent attempt's id, or none (the queue makes a new one).
+    const offlineIdFor = (snapshot) => (snapshot?.sent ? snapshot.clientSubmissionId : undefined);
+
+    /**
+     * After a confirmed send or queue: close the gate at once (no second send or
+     * queue of the same answers), keep Submit/Retry/Save Offline disabled, and
+     * only reset the form and drop the prepared request when navigating away.
+     */
+    const finishSubmission = async (resetForm, successText, navigateAfterMs) => {
+        submitGateRef.current.succeed();
+        setSubmitted(true);
+        setSubmitButtonDisabled(true);
+        setHasUnsavedChanges(false);
+        setShowSaveOfflineOption(false);
+        setSubmitProblems([]);
+        await autoSave.clearDraft(); // submitted or queued — don't offer it for restore too
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: successText, type: "success" });
+        setTimeout(() => {
+            if (typeof resetForm === 'function') resetForm();
+            preparedRef.current = null;
+            navigate("/surveys", { replace: true });
+        }, navigateAfterMs);
     };
 
-    const handleFormSubmit = async (values, { resetForm }, saveOffline = false) => {
-        // Ensure coordinates are always available (fallback to 0,0 if needed)
-        let finalCoordinates = coordinates;
-        if (!finalCoordinates) {
-            console.log("📍 No coordinates available, using fallback (0, 0)");
-            finalCoordinates = { lat: 0, lng: 0, accuracy: 0 };
-        }
-
+    /**
+     * Queue a prepared request for upload. `resetForm` must be Formik's reset
+     * function. If the device cannot store it (C11), the form and every
+     * section keep their answers and an error is shown.
+     */
+    const queueRoutineRequest = async (request, resetForm, clientSubmissionId) => {
+        const reset = typeof resetForm === 'function' ? resetForm : formikRef.current?.resetForm;
+        // After a sent attempt (A08) queue the byte-identical request with its id, so a
+        // replay of an already-saved submission returns the original result. A fresh
+        // offline save is marked 'offline' and gets a new id from the queue.
+        const data = clientSubmissionId ? request : { ...request, responseMode: 'offline' };
         setLoadingStatus(true);
         setSubmitButtonDisabled(true);
-        setIsRetrying(false);
-        setShowSaveOfflineOption(false);
-
-        // Create clean payload without section flags
-        const enrichedValues = enrichRoutineMonitoringLocationCodes(values);
-        const { section8, section9, section10, section11, householdSection, ...cleanValues } = enrichedValues;
-        
-        const payload = {
-            ...cleanValues,
-            activityToObserve: values.activityToObserve,
-            latitude: finalCoordinates.lat,
-            longitude: finalCoordinates.lng,
-            ...surveyLocationMetadata(finalCoordinates)
-        };
-
-        if (values.activityToObserve.includes('Aanganwadi Center')) {
-            // Trigger validation display in AwaRegistration component and check if fields are valid
-            let isAwaRegistrationValid = true;
-            if (awaRegistrationRef.current) {
-                isAwaRegistrationValid = awaRegistrationRef.current.triggerValidation();
-            }
-            
-            // Trigger validation display in EquipmentAvailabilityAWC component
-            let isEquipmentAvailabilityValid = true;
-            if (equipmentAvailabilityRef.current) {
-                isEquipmentAvailabilityValid = equipmentAvailabilityRef.current.triggerValidation();
-            }
-            
-            // Trigger validation display in SkillAssessment component
-            let isSkillAssessmentValid = true;
-            if (skillAssessmentRef.current) {
-                isSkillAssessmentValid = skillAssessmentRef.current.triggerValidation();
-            }
-            
-            // Create specific error messages for each section
-            let errorMessage = t('pleaseCompleteRequiredFields') || "Please complete all required fields";
-
-            if (!isAwaRegistrationValid) {
-                errorMessage = t('awaRegistrationSectionIncomplete') || "Please complete all required fields in Section 2 - SAM Children Identification and CMAM Enrollment";
-            } else if (!isEquipmentAvailabilityValid) {
-                // Provide more specific guidance for equipment availability section
-                const missingEquipmentFields = [
-                    "Digital Weighing Scale", "Salter Scale", "Infantometer", "Stadiometer",
-                    "Supplementary Nutrition", "Register Availability", "Poshan Tracker Status",
-                    "Amoxycillin Syrup", "Folic Acid Tablet", "Albendazole", "Vitamin A",
-                    "IFA Syrup", "Multivitamin Syrup", "Zinc", "ORS", "Paracetamol"
-                ];
-                errorMessage = t('equipmentAvailabilitySectionIncomplete') ||
-                    `Please complete all required fields in Section 3 - Equipment/Supplies Availability. Check: ${missingEquipmentFields.join(", ")}`;
-            } else if (!isSkillAssessmentValid) {
-                errorMessage = t('skillAssessmentSectionIncomplete') || "Please complete all required fields in Section 4 - Skill Assessment";
-            }
-
-            // Only show error and return if any validation failed
-            if (!isAwaRegistrationValid || !isEquipmentAvailabilityValid || !isSkillAssessmentValid) {
-                setLoadingStatus(false);
-                setSubmitButtonDisabled(false);
-                setShowSnackBar(true);
-                setSnackBarMessage({
-                    text: errorMessage,
-                    type: "error",
-                });
-                
-                // Scroll to the first invalid section
-                setTimeout(() => {
-                    if (!isAwaRegistrationValid) {
-                        const awaRegistrationSection = document.getElementById('awaRegistrationForm');
-                        if (awaRegistrationSection) {
-                            awaRegistrationSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    } else if (!isEquipmentAvailabilityValid) {
-                        const equipmentSection = document.getElementById('equipmentAvailabilityForm');
-                        if (equipmentSection) {
-                            equipmentSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    } else if (!isSkillAssessmentValid) {
-                        const skillAssessmentSection = document.getElementById('skillAssessmentForm');
-                        if (skillAssessmentSection) {
-                            skillAssessmentSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }
-                }, 200); // Small delay to ensure snackbar is shown first
-                
-                return;
-            }
-
-            // Get data from AwaRegistration, EquipmentAvailabilityAWC, and SkillAssessment components
-            const awaRegistrationData = getFormSectionData('awaRegistrationForm');
-            const equipmentAvailabilityData = getFormSectionData('equipmentAvailabilityForm');
-            const skillAssessmentData = getFormSectionData('skillAssessmentForm');
-
-            // Fix field name mismatches and add missing fields
-            const fixedSkillAssessmentData = {
-                ...skillAssessmentData,
-                // Fix field name mismatches
-                dateChildMeasured: skillAssessmentData.lastMeasurementDate,
-                measurementFollowedStep: skillAssessmentData.measurementFollowedStepDigital || 
-                                       skillAssessmentData.measurementFollowedStepMechanical || 
-                                       skillAssessmentData.measurementFollowedStepSalter || '',
-                childHeightSteps: skillAssessmentData.stadiometerSteps || skillAssessmentData.infantometerSteps || '',
-                stadiometerSteps: skillAssessmentData.stadiometerSteps || '',
-                infantometerSteps: skillAssessmentData.infantometerSteps || '',
-                // Add missing fields with default values if not present
-                cmamTrainingMonth: skillAssessmentData.cmamTrainingMonth || '',
-                cmamTrainingDiscussed: skillAssessmentData.cmamTrainingDiscussed || '',
-                reasonPoshanTrackerNotUpdated: equipmentAvailabilityData.reasonPoshanTrackerNotUpdated || '',
-                // Add missing medicine fields
-                ifaSyrup: equipmentAvailabilityData.ifaSyrup || '',
-                multivitaminSyrup: equipmentAvailabilityData.multivitaminSyrup || '',
-                // Add missing nutritional status field
-                nutritionalStatusXScorecard: skillAssessmentData.nutritionalStatusXScorecard || '',
-                // Fix field name for household section
-                thrQtyPrepareChild: skillAssessmentData.thrQtyPrepareChild || skillAssessmentData.daysThrPrepareChild || ''
-            };
-
-            // Remove the old field names to avoid duplication
-            delete fixedSkillAssessmentData.lastMeasurementDate;
-            delete fixedSkillAssessmentData.measurementFollowedStepDigital;
-            delete fixedSkillAssessmentData.measurementFollowedStepMechanical;
-            delete fixedSkillAssessmentData.measurementFollowedStepSalter;
-            delete fixedSkillAssessmentData.stadiometerSteps;
-            delete fixedSkillAssessmentData.infantometerSteps;
-
-            // Define all required AWC fields
-            const requiredAwcFields = [
-                'samChildrenTotal', 'samChildren06', 'samChildren65', 'cmamChildrenTotal', 'cmamChildren06', 'cmamChildren65',
-                'variationReason', 'weighingScale', 'salterScale', 'infantometer', 'stadiometer', 'supplementaryNutrition',
-                'registerAvailability', 'poshanTrackerUpdated', 'reasonPoshanTrackerNotUpdated', 'amoxycillinSyrup',
-                'folicAcidTablet', 'albendazole', 'vitA', 'ifaSyrup', 'multivitaminSyrup', 'zinc', 'ors', 'pcm',
-                'cmamTraining', 'cmamTrainingMonth', 'cmamTrainingDiscussed', 'dateChildMeasured', 'childSex', 'childAge',
-                'childWeight', 'childHeight', 'instrumentAww', 'measurementFollowedStep', 'childWeightAww',
-                'childWeightFieldMonitor', 'childHeightInstrument', 'childHeightSteps', 'childHeightAww',
-                'childHeightFieldMonitor', 'classifyWastingAww', 'nutritionalStatusXScorecard', 'screeningSamChildren',
-                'appetiteTestFood', 'nutritionalOedema', 'childNrcMtc', 'childFollowupCmam', 'activitiesFollowupCmam'
-            ];
-            
-            // Combine data from all sections
-            const combinedAwcData = {
-                ...awaRegistrationData,
-                ...equipmentAvailabilityData,
-                ...fixedSkillAssessmentData
-            };
-            
-            // Ensure all required fields are present, use '.' for missing fields
-            requiredAwcFields.forEach(field => {
-                if (!combinedAwcData[field] || combinedAwcData[field] === '' || combinedAwcData[field] === null || combinedAwcData[field] === undefined) {
-                    combinedAwcData[field] = '.';
-                }
-            });
-            
-            payload.aganwadiData = combinedAwcData;
-        }
-
-        if (values.activityToObserve.includes('VHSND Session/RI Session')) {
-            // Trigger validation display in CMAMClinicSection component and check if fields are valid
-            let isCmamClinicValid = true;
-            if (cmamClinicRef.current) {
-                isCmamClinicValid = cmamClinicRef.current.triggerValidation();
-            }
-            
-            // Trigger validation display in ANMCHOKnowledgeAssessmentSection component
-            let isAnmChoKnowledgeValid = true;
-            if (anmChoKnowledgeRef.current) {
-                isAnmChoKnowledgeValid = anmChoKnowledgeRef.current.triggerValidation();
-            }
-            
-            // Create specific error messages for each section
-            let errorMessage = t('pleaseCompleteRequiredFields') || "Please complete all required fields";
-
-            if (!isCmamClinicValid) {
-                errorMessage = t('cmamClinicSectionIncomplete') || "Please complete all required fields in Section 6 - VHSND CMAM Clinic";
-            } else if (!isAnmChoKnowledgeValid) {
-                errorMessage = t('anmChoKnowledgeSectionIncomplete') || "Please complete all required fields in Section 7 - ANM/CHO Knowledge Assessment";
-            }
-
-            // Only show error and return if any validation failed
-            if (!isCmamClinicValid || !isAnmChoKnowledgeValid) {
-                setLoadingStatus(false);
-                setSubmitButtonDisabled(false);
-                setShowSnackBar(true);
-                setSnackBarMessage({
-                    text: errorMessage,
-                    type: "error",
-                });
-                
-                // Scroll to the first invalid section
-                setTimeout(() => {
-                    if (!isCmamClinicValid) {
-                        const cmamClinicSection = document.getElementById('cmamClinicForm');
-                        if (cmamClinicSection) {
-                            cmamClinicSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    } else if (!isAnmChoKnowledgeValid) {
-                        const anmChoKnowledgeSection = document.getElementById('anmChoKnowledgeForm');
-                        if (anmChoKnowledgeSection) {
-                            anmChoKnowledgeSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }
-                }, 200); // Small delay to ensure snackbar is shown first
-                
-                return;
-            }
-            // Get data from CMAMClinicSection and ANMCHOKnowledgeAssessmentSection components
-            const cmamClinicData = getFormSectionData('cmamClinicForm');
-            const anmChoKnowledgeData = getFormSectionData('anmChoKnowledgeForm');
-
-            // Combine data from both sections into vhsndData object
-            payload.vhsndData = {
-                ...cmamClinicData,
-                ...anmChoKnowledgeData
-            };
-        }
-
-        if (values.activityToObserve.includes('CBE Session')) {
-            // Get data from CommunityBasedEventsObservationSection component
-            const cbeData = getFormSectionData('cbeForm');
-            
-            // Get the textarea value directly from DOM
-            const textareaElement = document.querySelector('#cbeForm textarea[name="otherImportantObservation"]');
-            if (textareaElement) {
-                cbeData.otherImportantObservation = textareaElement.value || '';
-            } else {
-                cbeData.otherImportantObservation = '';
-            }
-            
-            payload.cbeData = cbeData;
-        }
-
-        if (values.activityToObserve.includes('Household/caregiver interaction')) {
-            // Validate Section 8 if it's selected
-            if (values.section8) {
-                let isCmamChildServicesValid = true;
-                if (cmamChildServicesRef.current) {
-                    isCmamChildServicesValid = cmamChildServicesRef.current.triggerValidation();
-                }
-                
-                if (!isCmamChildServicesValid) {
-                    setLoadingStatus(false);
-                    setSubmitButtonDisabled(false);
-                    setShowSnackBar(true);
-                    setSnackBarMessage({
-                        text: t('cmamChildServicesSectionIncomplete') || "Please complete all required fields in Section 8 - CMAM Child Services",
-                        type: "error",
-                    });
-                    
-                    // Scroll to the first invalid section
-                    setTimeout(() => {
-                        const cmamChildServicesSection = document.getElementById('cmamChildServicesForm');
-                        if (cmamChildServicesSection) {
-                            cmamChildServicesSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }, 200);
-                    
-                    return;
-                }
-            }
-            
-            // Validate Section 9 if it's selected
-            if (values.section9) {
-                let isInfant0To6MonthsValid = true;
-                if (infant0To6MonthsRef.current) {
-                    isInfant0To6MonthsValid = infant0To6MonthsRef.current.triggerValidation();
-                }
-                
-                if (!isInfant0To6MonthsValid) {
-                    setLoadingStatus(false);
-                    setSubmitButtonDisabled(false);
-                    setShowSnackBar(true);
-                    setSnackBarMessage({
-                        text: t('infant0To6MonthsSectionIncomplete') || "Please complete all required fields in Section 9 - Infant 0-6 Months",
-                        type: "error",
-                    });
-                    
-                    // Scroll to the first invalid section
-                    setTimeout(() => {
-                        const infant0To6MonthsSection = document.getElementById('infant0To6MonthsForm');
-                        if (infant0To6MonthsSection) {
-                            infant0To6MonthsSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }, 200);
-                    
-                    return;
-                }
-            }
-            
-            // Validate Section 10 if it's selected
-            if (values.section10) {
-                let isChild6To8MonthsValid = true;
-                if (child6To8MonthsRef.current) {
-                    isChild6To8MonthsValid = child6To8MonthsRef.current.triggerValidation();
-                }
-                
-                if (!isChild6To8MonthsValid) {
-                    setLoadingStatus(false);
-                    setSubmitButtonDisabled(false);
-                    setShowSnackBar(true);
-                    setSnackBarMessage({
-                        text: t('child6To8MonthsSectionIncomplete') || "Please complete all required fields in Section 10 - Child 6-8 Months",
-                        type: "error",
-                    });
-                    
-                    // Scroll to the first invalid section
-                    setTimeout(() => {
-                        const child6To8MonthsSection = document.getElementById('child6To8MonthsForm');
-                        if (child6To8MonthsSection) {
-                            child6To8MonthsSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }, 200);
-                    
-                    return;
-                }
-            }
-            
-            // Validate Section 11 if it's selected
-            if (values.section11) {
-                let isChild9To23MonthsValid = true;
-                if (child9To23MonthsRef.current) {
-                    isChild9To23MonthsValid = child9To23MonthsRef.current.triggerValidation();
-                }
-                
-                if (!isChild9To23MonthsValid) {
-                    setLoadingStatus(false);
-                    setSubmitButtonDisabled(false);
-                    setShowSnackBar(true);
-                    setSnackBarMessage({
-                        text: t('child9To23MonthsSectionIncomplete') || "Please complete all required fields in Section 11 - Child 9-23 Months",
-                        type: "error",
-                    });
-                    
-                    // Scroll to the first invalid section
-                    setTimeout(() => {
-                        const child9To23MonthsSection = document.getElementById('child9To23MonthsForm');
-                        if (child9To23MonthsSection) {
-                            child9To23MonthsSection.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'start',
-                                inline: 'nearest'
-                            });
-                        }
-                    }, 200);
-                    
-                    return;
-                }
-            }
-            
-            // Get data from all selected household sections
-            let householdData = {};
-            
-            if (values.section8) {
-                const section8Data = getFormSectionData('cmamChildServicesForm');
-                console.log('Section 8 captured data:', section8Data);
-                householdData = { ...householdData, ...section8Data };
-            }
-            if (values.section9) {
-                householdData = { ...householdData, ...getFormSectionData('infant0To6MonthsForm') };
-            }
-            if (values.section10) {
-                householdData = { ...householdData, ...getFormSectionData('child6To8MonthsForm') };
-            }
-            if (values.section11) {
-                const section11Data = getFormSectionData('child9To23MonthsForm');
-                
-                // Special handling for textarea field that might not be captured properly
-                const otherRegularFoodItemElement = document.querySelector('#child9To23MonthsForm textarea[name="otherRegularFoodItem"]');
-                if (otherRegularFoodItemElement) {
-                    section11Data.otherRegularFoodItem = otherRegularFoodItemElement.value || '';
-                }
-                
-                // Special handling for combined thrNotConsumedReason field
-                const thrNotConsumedReasonCombinedElement = document.querySelector('#child9To23MonthsForm input[name="thrNotConsumedReasonCombined"]');
-                if (thrNotConsumedReasonCombinedElement && thrNotConsumedReasonCombinedElement.value) {
-                    section11Data.thrNotConsumedReason = thrNotConsumedReasonCombinedElement.value;
-                }
-                
-                // Special handling for food frequency fields that might not be captured properly
-                const foodFrequencyFields = [
-                    'porridgeGruelFrequency', 'babyFoodFrequency', 'grainsBasedFoodFrequency',
-                    'yellowOrangeVeggies', 'rootsBasedFoodFrequency', 'darkGreenVeggiesFrequency',
-                    'ripeFruitsFrequencys', 'otherFruitsVeggiesFrequency', 'driedFruitsFrequency',
-                    'organMeatsFrequencys', 'chickenMeatFrequency', 'eggsConsumptionFrequency',
-                    'fishConsumptionFrequency', 'legumesFoodFrequency', 'nutsConsumptionFrequency',
-                    'dairyProductsFrequency', 'oilsFatsFrequency', 'sugaryFoodFrequency',
-                    'beveragesConsumptionFrequency', 'sweetenedBeveragesFrequencys'
-                ];
-                
-                foodFrequencyFields.forEach(field => {
-                    if (!section11Data[field]) {
-                        const element = document.querySelector(`#child9To23MonthsForm input[name="${field}"]`);
-                        if (element) {
-                            section11Data[field] = element.value || '';
-                            console.log(`Manually captured ${field}:`, element.value);
-                        }
-                    }
-                });
-                
-                householdData = { ...householdData, ...section11Data };
-            }
-
-            payload.householdData = householdData;
-        }
-
-        if (canMarkTestSubmission() && isTestSubmission) {
-            payload.isTestData = true;
-        }
-
-        console.log('Form payload:', payload);
-
-        // If offline, save directly to IndexedDB
-        if (!isOnline || saveOffline) {
-          await handleSaveOffline(payload, resetForm);
-          return;
-        }
-
         try {
-            const res = await apiService.post('/form/routine', payload);
-            
-            // Check for actual success: only statusCode: 200 indicates success
-            if (res.statusCode === 200) {
-                // Save form preferences for future use
+            await saveOfflineForm({ url: '/form/routine', data, clientSubmissionId });
+        } catch {
+            setLoadingStatus(false);
+            setSubmitButtonDisabled(false);
+            setShowSnackBar(true);
+            setSnackBarMessage({
+                text: "Could not save the survey on this device. Your answers are still on screen — free some storage and try again.",
+                type: "error",
+            });
+            return false;
+        }
+        setLoadingStatus(false);
+        await finishSubmission(reset, "Form saved offline. It will sync when you're back online.", 2000);
+        return true;
+    };
+
+    const showServerValidationFailure = (resOrError) => {
+        const backendMessage = apiErrorMessage(resOrError, "Some answers were not accepted. Please check them and submit again.");
+        setShowSaveOfflineOption(false); // the same answers would be rejected again on upload
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: `Submission not accepted: ${backendMessage}`, type: "error" });
+        const fieldErrors = apiFieldErrors(resOrError);
+        if (Object.keys(fieldErrors).length > 0) {
+            showProblems(fieldErrors);
+        } else {
+            setSubmitProblems([{ path: '', message: backendMessage, topLevelField: null, formIds: [], controlNames: [] }]);
+        }
+    };
+
+    /** Send a prepared submission. Answers stay on screen unless the server confirms the save. */
+    const sendRoutineRequest = async (snapshot, resetForm) => {
+        const { request, values: formValues, clientSubmissionId } = snapshot;
+        const reset = typeof resetForm === 'function' ? resetForm : formikRef.current?.resetForm;
+        setLoadingStatus(true);
+        setSubmitButtonDisabled(true);
+        try {
+            // From here on the server may have this submission even if no answer arrives.
+            snapshot.sent = true;
+            const res = await apiService.post('/form/routine', request, { params: { clientSubmissionId } });
+
+            if (isApiSuccess(res)) {
                 try {
-                    await saveRoutineMonitoringPreferences(values);
-                    console.log('✅ Routine monitoring preferences saved successfully');
+                    await saveRoutineMonitoringPreferences(formValues || {});
                 } catch (error) {
                     console.error('Error saving preferences:', error);
-                    // Don't show error to user as this is not critical
                 }
-                
-                // Increment daily count for surveyors and sync with API
+
                 if (isSurveyorUser()) {
                     try {
-                        // First increment local count (optimistic update)
                         incrementDailyCount(null, 'routine');
-                        console.log('✅ Daily survey count updated locally');
-                        
-                        // Then sync with API to get accurate count from backend
-                        // This ensures count is accurate even if localStorage was cleared
-                        syncAfterSubmission(apiService, 'routine').then(() => {
-                            console.log('✅ Daily survey count synced with API');
-                        }).catch((error) => {
+                        syncAfterSubmission(apiService, 'routine').catch((error) => {
                             console.error('Error syncing daily count with API:', error);
-                            // Don't show error to user as local count was updated
                         });
                     } catch (error) {
                         console.error('Error updating daily count:', error);
-                        // Don't show error to user as this is not critical
                     }
                 }
-                
-                setShowSaveOfflineOption(false);
-                setShowSnackBar(true);
-                setSnackBarMessage({
-                    text: t('formSubmittedSuccessfully'),
-                    type: "success",
-                });
 
-                await autoSave.clearDraft(); // submitted — don't offer it for restore next time
-                resetForm();
-                setTimeout(() => {
-                    navigate("/survey/list", { replace: true });
-                }, 1000);
+                await finishSubmission(reset, t('formSubmittedSuccessfully'), 1000);
+            } else if (isValidationFailure(res)) {
+                showServerValidationFailure(res);
             } else {
-                // Handle backend errors (including 200 responses with error statusCode)
-                const backendMessage = res.message || res.error || "Form submission failed";
-                const errorStatusCode = res.statusCode || 'Unknown';
-                
+                const backendMessage = apiErrorMessage(res, "Form submission failed");
+                const errorStatusCode = res?.statusCode || 'Unknown';
                 setShowSnackBar(true);
-                setSnackBarMessage({
-                    text: `Submission failed: ${backendMessage}`,
-                    type: "error",
-                });
+                setSnackBarMessage({ text: `Submission failed: ${backendMessage}`, type: "error" });
                 setShowSaveOfflineOption(true);
-                
-                // Show WhatsApp contact dialog for backend errors
                 setWhatsAppErrorMessage(`Backend Error (${errorStatusCode}): ${backendMessage}`);
-                setErrorPayload(payload);
+                setErrorPayload(request);
                 setShowWhatsAppDialog(true);
             }
         } catch (error) {
-            // Handle network/server errors with improved error messages
             console.error('RoutineMonitoring form submission error:', error);
             const statusCode = error.response?.status || error.status;
-            
+
             if (statusCode === 401 || statusCode === 403) {
                 setShowSnackBar(true);
-                setSnackBarMessage({
-                    text: "Session expired. Please login again.",
-                    type: "error",
-                });
+                setSnackBarMessage({ text: "Session expired. Please login again.", type: "error" });
+                setShowSaveOfflineOption(true);
                 return;
             }
-            
-            const backendMessage = error.response?.data?.message || error.response?.data?.error || error.message;
+            if (isValidationFailure(error)) {
+                showServerValidationFailure(error);
+                return;
+            }
+
+            const backendMessage = apiErrorMessage(error, 'Network error');
             setShowSaveOfflineOption(true);
             setShowSnackBar(true);
-            setSnackBarMessage({
-                text: `Error: ${backendMessage}`,
-                type: "error",
-            });
-            
-            // Show WhatsApp contact dialog for errors
+            setSnackBarMessage({ text: `Error: ${backendMessage}`, type: "error" });
             const errorType = statusCode >= 500 ? 'Server Error' : 'Network/Connection Error';
             setWhatsAppErrorMessage(`${errorType} (${statusCode || 'Unknown'}): ${backendMessage}`);
-            setErrorPayload(payload);
+            setErrorPayload(request);
             setShowWhatsAppDialog(true);
         } finally {
-            // Always re-enable submit button after API call completes
             setLoadingStatus(false);
-            setSubmitButtonDisabled(false);
+            // After a confirmed save Submit stays disabled until the page navigates away.
+            if (!submitGateRef.current.isDone) setSubmitButtonDisabled(false);
         }
     };
+
+    // Formik onSubmit: prepare once, then send (online) or queue (offline).
+    const handleFormSubmit = (values, { resetForm }) => runGated(submitGateRef.current, async () => {
+        setSubmitProblems([]);
+        setShowSaveOfflineOption(false);
+        setIsRetrying(false);
+
+        // Unchanged answers after a failed attempt reuse that attempt's request and id.
+        const resolved = resolvePreparedRequest(values);
+        if (!resolved.ok) {
+            showPrepareError(resolved);
+            return;
+        }
+
+        if (!isOnline) {
+            await queueRoutineRequest(resolved.snapshot.request, resetForm, offlineIdFor(resolved.snapshot));
+            return;
+        }
+        await sendRoutineRequest(resolved.snapshot, resetForm);
+    });
+
+    // Post-failure "Save Offline": queue the prepared request (rebuilt only if answers changed).
+    const handleSaveOfflineAfterFailure = (values, resetForm) => runGated(submitGateRef.current, async () => {
+        const resolved = resolvePreparedRequest(values);
+        if (!resolved.ok) {
+            showPrepareError(resolved);
+            return;
+        }
+        await queueRoutineRequest(resolved.snapshot.request, resetForm, offlineIdFor(resolved.snapshot));
+    });
+
+    // Post-failure "Retry": resend the prepared request (rebuilt only if answers changed).
+    const handleRetryAfterFailure = (values, resetForm) => runGated(submitGateRef.current, async () => {
+        const resolved = resolvePreparedRequest(values);
+        if (!resolved.ok) {
+            showPrepareError(resolved);
+            return;
+        }
+        setIsRetrying(true);
+        setRetryCount((c) => c + 1);
+        setShowSaveOfflineOption(false);
+        try {
+            await sendRoutineRequest(resolved.snapshot, resetForm);
+        } finally {
+            setIsRetrying(false);
+        }
+    });
 
     // Consent and error handling functions
     const handleConsentGiven = () => {
@@ -1428,104 +835,23 @@ const RoutineMonitoring = () => {
         }
     };
 
-    const checkAndRequestConsent = (formType, errorMessage, payload) => {
-        const consentStatus = getConsentStatus();
-        if (consentStatus === 'granted') {
-            sendSilentWhatsAppReport(formType, errorMessage, payload);
-        } else if (consentStatus === 'denied') {
-            // User has denied consent, don't send report
-            console.log('User has denied WhatsApp error reporting consent');
-        } else {
-            // Consent not determined yet, show dialog
-            setPendingErrorReport({ formType, errorMessage, payload });
-            setShowConsentDialog(true);
-        }
-    };
-
-    // Error dialog handlers
+    // Error dialog handlers — they reuse the prepared request and Formik's own reset function.
     const handleErrorDialogClose = () => {
         setShowErrorDialog(false);
         setCurrentError(null);
-        setCurrentPayload(null);
     };
 
-    const handleRetry = () => {
-        setIsRetrying(true);
+    const handleRetry = async () => {
         setShowErrorDialog(false);
-        // Retry the form submission
-        if (currentPayload) {
-            handleFormSubmit(currentPayload, { 
-                resetForm: () => {}, 
-                setSubmitting: () => {} 
-            });
-        }
-        setIsRetrying(false);
+        const formik = formikRef.current;
+        if (!formik) return;
+        await handleRetryAfterFailure(formik.values, formik.resetForm);
     };
 
     const handleErrorSaveOffline = async () => {
-        if (currentPayload) {
-            await handleSaveOffline(currentPayload, {
-                resetForm: () => {},
-                setSubmitting: () => {}
-            });
-        }
-    };
-
-    // Update handleSubmissionFailure and handleSubmissionError to use error dialog
-    const handleSubmissionFailure = (payload, resetForm, response) => {
-        setLoadingStatus(false);
-        // Create error object for the dialog
-        const error = {
-            status: response?.statusCode || 'Unknown',
-            message: response?.message || response?.error || "Form submission failed",
-            response: { data: response }
-        };
-        setCurrentError(error);
-        setCurrentPayload(payload);
-        setShowErrorDialog(true);
-    };
-
-    const handleSubmissionError = (error, payload, resetForm) => {
-        console.error('Form submission error:', error);
-        setLoadingStatus(false);
-        const statusCode = error.response?.status || error.status;
-        if (statusCode === 401 || statusCode === 403) {
-            setShowSnackBar(true);
-            setSnackBarMessage({
-                text: "Session expired. Please login again.",
-                type: "error",
-            });
-            return;
-        }
-        setCurrentError(error);
-        setCurrentPayload(payload);
-        setShowErrorDialog(true);
-    };
-
-    const handleSaveOffline = async (payload, resetForm) => {
-        try {
-          await saveOfflineForm({ url: '/form/routine', data: { ...payload, responseMode: 'offline' } });
-        } catch {
-          setSubmitButtonDisabled(false);
-          setLoadingStatus(false);
-          setShowSnackBar(true);
-          setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
-          return;
-        }
-
-        await autoSave.clearDraft(); // now queued for upload — don't offer it for restore too
-        setHasUnsavedChanges(false);
-        resetForm();
-        
-        setShowSnackBar(true);
-        setSnackBarMessage({
-            text: "Form saved offline. It will sync when you're back online.",
-            type: "success"
-        });
-
-        setTimeout(() => {
-            navigate("/survey/list", { replace: true });
-        }, 2000);
+        const formik = formikRef.current;
+        if (!formik) return;
+        await handleSaveOfflineAfterFailure(formik.values, formik.resetForm);
     };
 
     // Get today's date in the format YYYY-MM-DD
@@ -1668,12 +994,17 @@ const RoutineMonitoring = () => {
             }
         }, [isOnline, values.responseMode, values.location, setFieldValue]);
 
-        // Restore draft if requested
+        // Restore draft if requested: top-level values (incl. the selected activity
+        // and household section), then remount the sections with their saved answers.
         useEffect(() => {
             if (draftToRestore && draftToRestore.formData) {
-                Object.keys(draftToRestore.formData).forEach(k => {
-                    setFieldValue(k, draftToRestore.formData[k]);
+                const { values: savedValues, sections: savedSections, step: savedStep } = splitRoutineDraft(draftToRestore.formData);
+                Object.keys(savedValues).forEach(k => {
+                    setFieldValue(k, savedValues[k]);
                 });
+                setRestoredSections(savedSections);
+                setSectionEpoch((e) => e + 1);
+                setStep(savedStep);
                 if (draftToRestore.coordinates) setCoordinates(draftToRestore.coordinates);
                 setDraftToRestore(null);
             }
@@ -1682,8 +1013,8 @@ const RoutineMonitoring = () => {
         // Update submit button state based on form readiness - with interval check for DOM changes
         useEffect(() => {
             const checkFormReadiness = () => {
-                // Don't enable submit button if currently loading
-                if (loadingStatus) {
+                // Don't enable submit button while loading, or once this survey was saved
+                if (loadingStatus || submitted || submitGateRef.current.isDone) {
                     setSubmitButtonDisabled(true);
                     return;
                 }
@@ -1699,10 +1030,16 @@ const RoutineMonitoring = () => {
             const intervalId = setInterval(checkFormReadiness, 1000);
             
             return () => clearInterval(intervalId);
-        }, [values, isOnline, loadingStatus]);
+        }, [values, isOnline, loadingStatus, submitted]);
 
         return null;
     };
+
+    const sectionDraftProps = (sectionId) => ({
+        sectionId,
+        initialDraft: restoredSections[sectionId],
+        onDraftChange: handleSectionDraftChange,
+    });
 
     return (
         <>
@@ -1736,7 +1073,7 @@ const RoutineMonitoring = () => {
             <SOPViewer
                 open={showSOPDialog}
                 onClose={() => setShowSOPDialog(false)}
-                sopFilePath="/Mobile SoP- Routine Monitoring.pptx"
+                sopFilePath={RMC_SOP_PATH}
                 title="Routine Monitoring - Standard Operating Procedures"
             />
             {loadingStatus && <Loader />}
@@ -1841,6 +1178,7 @@ const RoutineMonitoring = () => {
                             </Box>
                         </Box>
                         <Formik
+                            innerRef={formikRef}
                             initialValues={initialValues}
                             validationSchema={getValidationSchema}
                             validate={(values) => {
@@ -2196,6 +1534,7 @@ const RoutineMonitoring = () => {
                                                     name="activityToObserve"
                                                     value={values.activityToObserve}
                                                     onChange={(e) => {
+                                                        setRestoredSections({}); // a restored draft only applies to the sections it was saved with
                                                         setFieldValue('activityToObserve', e.target.value);
                                                         // Reset household sections when activity changes
                                                         setFieldValue('section8', false);
@@ -2236,6 +1575,7 @@ const RoutineMonitoring = () => {
                                                                         value={values.householdSection || ''}
                                                                         onChange={(e) => {
                                                                             const selectedSection = e.target.value;
+                                                                            setRestoredSections({});
                                                                             setFieldValue('householdSection', selectedSection);
                                                                             // Reset all section flags
                                                                             setFieldValue('section8', false);
@@ -2282,9 +1622,9 @@ const RoutineMonitoring = () => {
                                             <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: '#2196f3' }}>
                                                 {t('aanganwadiCenterVisitSections')}
                                             </Typography>
-                                            <AwaRegistration ref={awaRegistrationRef} />
-                                            <EquipmentAvailabilityAWC ref={equipmentAvailabilityRef} />
-                                            <SkillAssessment ref={skillAssessmentRef} />
+                                            <AwaRegistration key={`awaRegistration-${sectionEpoch}`} ref={awaRegistrationRef} {...sectionDraftProps('awaRegistration')} />
+                                            <EquipmentAvailabilityAWC key={`equipmentAvailability-${sectionEpoch}`} ref={equipmentAvailabilityRef} {...sectionDraftProps('equipmentAvailability')} />
+                                            <SkillAssessment key={`skillAssessment-${sectionEpoch}`} ref={skillAssessmentRef} {...sectionDraftProps('skillAssessment')} />
                                         </Grid>
                                     )}
 
@@ -2293,7 +1633,7 @@ const RoutineMonitoring = () => {
                                                     <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: '#2196f3' }}>
                                                         {t('cbeSessionVisitSection')}
                                                     </Typography>
-                                                    <CommunityBasedEventsObservationSection />
+                                                    <CommunityBasedEventsObservationSection key={`cbe-${sectionEpoch}`} ref={cbeRef} {...sectionDraftProps('cbe')} />
                                                 </Grid>
                                             )}
                                     
@@ -2302,8 +1642,8 @@ const RoutineMonitoring = () => {
                                             <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: '#2196f3' }}>
                                                 {t('vhsndSessionVisitSections')}
                                             </Typography>
-                                            <CMAMClinicSection ref={cmamClinicRef} />
-                                            <ANMCHOKnowledgeAssessmentSection ref={anmChoKnowledgeRef} />
+                                            <CMAMClinicSection key={`cmamClinic-${sectionEpoch}`} ref={cmamClinicRef} {...sectionDraftProps('cmamClinic')} />
+                                            <ANMCHOKnowledgeAssessmentSection key={`anmChoKnowledge-${sectionEpoch}`} ref={anmChoKnowledgeRef} {...sectionDraftProps('anmChoKnowledge')} />
                                         </Grid>
                                     )}
                                     
@@ -2312,10 +1652,10 @@ const RoutineMonitoring = () => {
                                             <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 'bold', color: '#2196f3' }}>
                                                 {t('householdVisitSections')}
                                             </Typography>
-                                            {values.section8 && <CMAMChildServicesSection ref={cmamChildServicesRef} />}
-                                            {values.section9 && <Infant0To6MonthsSection ref={infant0To6MonthsRef} />}
-                                            {values.section10 && <Child6To8MonthsSection ref={child6To8MonthsRef} />}
-                                            {values.section11 && <Child9To23MonthsSection ref={child9To23MonthsRef} />}
+                                            {values.section8 && <CMAMChildServicesSection key={`section8-${sectionEpoch}`} ref={cmamChildServicesRef} {...sectionDraftProps('section8')} />}
+                                            {values.section9 && <Infant0To6MonthsSection key={`section9-${sectionEpoch}`} ref={infant0To6MonthsRef} {...sectionDraftProps('section9')} />}
+                                            {values.section10 && <Child6To8MonthsSection key={`section10-${sectionEpoch}`} ref={child6To8MonthsRef} {...sectionDraftProps('section10')} />}
+                                            {values.section11 && <Child9To23MonthsSection key={`section11-${sectionEpoch}`} ref={child9To23MonthsRef} {...sectionDraftProps('section11')} />}
                                         </Grid>
                                     )}
 
@@ -2351,7 +1691,7 @@ const RoutineMonitoring = () => {
                                                 variant="contained" 
                                                 color="primary" 
                                                 type="submit" 
-                                                disabled={submitButtonDisabled}
+                                                disabled={submitButtonDisabled || submitted}
                                                 className={styles.submitButton}
                                                 size="large"
                                                 sx={{ minWidth: '200px', py: 1.5 }}
@@ -2365,11 +1705,25 @@ const RoutineMonitoring = () => {
                                             {showSaveOfflineOption && (
                                                 <Button
                                                     variant="outlined"
+                                                    color="primary"
+                                                    onClick={async () => {
+                                                        await handleRetryAfterFailure(values, resetForm);
+                                                    }}
+                                                    disabled={loadingStatus || submitted}
+                                                    size="large"
+                                                    sx={{ minWidth: '200px', py: 1.5 }}
+                                                >
+                                                    Retry
+                                                </Button>
+                                            )}
+                                            {showSaveOfflineOption && (
+                                                <Button
+                                                    variant="outlined"
                                                     color="warning"
                                                     onClick={async () => {
-                                                        await handleFormSubmit(values, { resetForm }, true);
+                                                        await handleSaveOfflineAfterFailure(values, resetForm);
                                                     }}
-                                                    disabled={loadingStatus}
+                                                    disabled={loadingStatus || submitted}
                                                     size="large"
                                                     sx={{ minWidth: '200px', py: 1.5 }}
                                                 >
@@ -2377,6 +1731,29 @@ const RoutineMonitoring = () => {
                                                 </Button>
                                             )}
                                             </Box>
+                                            {submitProblems.length > 0 && (
+                                                <Alert severity="error" sx={{ width: '100%', maxWidth: 720 }}>
+                                                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                                        Please correct these answers (your other answers are kept):
+                                                    </Typography>
+                                                    <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                                                        {submitProblems.map((p, i) => (
+                                                            <li key={`${p.path}-${i}`}>
+                                                                <Box
+                                                                    component="span"
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    sx={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                                                    onClick={() => scrollToElement(locateErrorControl(p))}
+                                                                    onKeyDown={(e) => { if (e.key === 'Enter') scrollToElement(locateErrorControl(p)); }}
+                                                                >
+                                                                    {p.field || p.topLevelField ? `${p.field || p.topLevelField}: ` : ''}{p.message}
+                                                                </Box>
+                                                            </li>
+                                                        ))}
+                                                    </Box>
+                                                </Alert>
+                                            )}
                                         </Grid>
                                     )}
                                         </Grid>

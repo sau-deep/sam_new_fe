@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -38,21 +39,23 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // State for conditional rendering
-    const [breastfedInLast24Hours, setBreastfedInLast24Hours] = useState('');
-    const [foodsOrDrinksReceived, setFoodsOrDrinksReceived] = useState([]);
-    const [reasonsNotExclusivelyBreastfed, setReasonsNotExclusivelyBreastfed] = useState([]);
-    const [receieveAdviceFeeding, setReceieveAdviceFeeding] = useState('');
-    const [adviceReceive, setAdviceReceive] = useState([]);
-    const [childWeighedAware, setChildWeighedAware] = useState('');
+    const [breastfedInLast24Hours, setBreastfedInLast24Hours] = useDraftField(sectionDraft, 'breastfedInLast24Hours', '');
+    const [foodsOrDrinksReceived, setFoodsOrDrinksReceived] = useDraftField(sectionDraft, 'foodsOrDrinksReceived', []);
+    const [reasonsNotExclusivelyBreastfed, setReasonsNotExclusivelyBreastfed] = useDraftField(sectionDraft, 'reasonsNotExclusivelyBreastfed', []);
+    const [receieveAdviceFeeding, setReceieveAdviceFeeding] = useDraftField(sectionDraft, 'receieveAdviceFeeding', '');
+    const [adviceReceive, setAdviceReceive] = useDraftField(sectionDraft, 'adviceReceive', []);
+    const [childWeighedAware, setChildWeighedAware] = useDraftField(sectionDraft, 'childWeighedAware', '');
     const [ageError, setAgeError] = useState('');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         nameOfChild06: '',
         sexOfChild06: '',
         currentAgeMonths06: '',
@@ -261,10 +264,6 @@ const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
         return true;
     };
 
-    // Expose validation function to parent
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     return (
         <div id="infant0To6MonthsForm">
@@ -517,7 +516,7 @@ const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
                             value={(() => {
                                 let finalOptions = [...foodsOrDrinksReceived];
                                 if (finalOptions.includes('others')) {
-                                    const otherText = document.getElementById('otherFoodsOrDrinks')?.value;
+                                    const otherText = formValues.otherFoodsOrDrinks || ''; // state, not the DOM: correct on the first render after a draft restore
                                     if (otherText && otherText.trim()) {
                                         finalOptions = finalOptions.filter(option => option !== 'others');
                                         finalOptions.push(`Others - ${otherText.trim()}`);
@@ -610,7 +609,7 @@ const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
                             value={(() => {
                                 let finalOptions = [...reasonsNotExclusivelyBreastfed];
                                 if (finalOptions.includes('others')) {
-                                    const otherText = document.getElementById('otherReasonsNotBreastfed')?.value;
+                                    const otherText = formValues.otherReasonsNotBreastfed || ''; // state, not the DOM: correct on the first render after a draft restore
                                     if (otherText && otherText.trim()) {
                                         finalOptions = finalOptions.filter(option => option !== 'others');
                                         finalOptions.push(`Others - ${otherText.trim()}`);
@@ -848,6 +847,7 @@ const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
                                             <Checkbox
                                                 name="adviceReceive"
                                                 value={option}
+                                                checked={adviceReceive.includes(option)}
                                                 onChange={(e) => {
                                                     handleAdviceReceiveChange(option, e.target.checked);
                                                 }}
@@ -864,7 +864,7 @@ const Infant0To6MonthsSection = React.forwardRef((props, ref) => {
                                 value={(() => {
                                     let finalOptions = [...adviceReceive];
                                     if (finalOptions.includes('others')) {
-                                        const otherText = document.getElementById('otherAdviceReceive')?.value;
+                                        const otherText = formValues.otherAdviceReceive || ''; // state, not the DOM: correct on the first render after a draft restore
                                         if (otherText && otherText.trim()) {
                                             finalOptions = finalOptions.filter(option => option !== 'others');
                                             finalOptions.push(`Others - ${otherText.trim()}`);

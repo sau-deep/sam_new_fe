@@ -204,6 +204,8 @@ function AppRoutes() {
 
           {/* Surveys */}
           <Route path="/surveys" element={<SurveyHome />} />
+          {/* Legacy completion redirect used by older bundles/APKs (audit A12). */}
+          <Route path="/survey/list" element={<Navigate to="/surveys" replace />} />
           <Route path="/surveys/record-edit" element={
             <ProtectedRoute roles={ALL_ROLES}><RecordSearchEdit /></ProtectedRoute>
           } />

@@ -3,7 +3,310 @@
  * Handles complex multiple-choice fields and "Others" options without backend changes
  */
 
+// ── Saved-field definitions for the Complete Response downloads (audit E01/E05) ──
+// Headers come from these definitions, not from whichever values happen to be
+// non-null in the selected rows, so a field that is blank in every row still gets
+// its column. Existing columns keep the headers and order earlier downloads had
+// (the backend's JSON order as of the previous release); fields added since are
+// appended. Keys the API returns that are not listed here come after the listed
+// ones, so new backend fields still reach the workbook.
+
+// Household Checklist. The leading part is the exact column order every earlier
+// Complete Response download used (entity order as of the previous release); new
+// fields are APPENDED so existing columns keep their positions.
+const HOUSEHOLD_FIELDS = Object.freeze([
+  'id', 'nameParticipant', 'verbalConsent', 'date', 'time', 'state', 'stateCode', 'district',
+  'districtCode', 'block', 'blockCode', 'village', 'villageCode', 'clusterNumber', 'structureCode',
+  'householdNumber', 'mobileNumber', 'headOfHousehold', 'numberOfChildren', 'childrenStayingHh',
+  'locationHousehold', 'latitude', 'longitude', 'locationAccuracyMeters', 'locationCapturedAt',
+  'childId', 'responseMode', 'createdOn', 'createdBy',
+  // Appended:
+  'reverseGeocodedAddress',
+]);
+
+// Follow-Up Assessment: previous order, then appended fields (THR11 / THR13 Other details).
+const FOLLOWUP_FIELDS = Object.freeze([
+  'id', 'visitDate', 'state', 'stateCode', 'district', 'districtCode', 'block', 'blockCode',
+  'village', 'villageCode', 'icdsProject', 'childCode', 'latitude', 'longitude',
+  'locationAccuracyMeters', 'locationCapturedAt', 'childId', 'nameOfRespondent', 'sexOfRespondent',
+  'ageRespondent', 'educationRespondent', 'childName', 'childSex', 'childDob', 'birthWeight',
+  'childAgeMonths', 'chronicMedicalCondition', 'chronicMedicalConditionSpecify',
+  'childWeightLast1Month', 'weightMeasuredTimes', 'childHeightLast1Month', 'heightMeasuredTimes',
+  'receivedThr', 'receivedThrMonthsCount', 'infoRecordsVerification', 'reasonNotReceivedThr',
+  'receivedThrSam', 'quantityThrReceived', 'thrConsumed', 'reasonNotConsumed', 'whoConsumedThr',
+  'daysThrConsumed1Month', 'quantityThrEveryDay', 'thrMostLiked', 'storeThrPacket',
+  'receivedOtherThr', 'receivedOtherFoodAwc', 'fedSolidOrSemisolidFood',
+  'timesFedSolidOrSemisolidFood', 'yesterdayFoodItemsConsumed', 'howToEnrichHomemadeFood',
+  'toldAboutUndernutritionTreatment', 'referredToHealthFacility', 'takenToHealthFacility',
+  'reasonNotTakenToHealthFacility', 'admittedToHealthFacility', 'receivedMedicinesFromAnmOrMo',
+  'consumedAntibiotics', 'consumedDewormingMedicine', 'consumedIronSyrup',
+  'timesIronSyrupConsumed', 'reasonLessIronSyrupConsumed', 'consumedMultivitamin',
+  'timesMultivitaminConsumed', 'reasonLessMultivitaminConsumed', 'awwHomeVisitsCount',
+  'familyPresentDuringAwwVisit', 'familyMembersPresentDuringAwwVisit', 'awwInformationDiscussed',
+  'awwCounselingToolsUsed', 'ashaHomeVisitsCount', 'familyPresentDuringAshaVisit',
+  'familyMembersPresentDuringAshaVisit', 'ashaInformationDiscussed', 'ashaCounselingToolsUsed',
+  'recordedWeightAtAdmission', 'recordedHeightLengthAtAdmission', 'admissionMeasurementDate',
+  'lastRecordedWeight', 'lastRecordedHeightLength', 'lastMeasurementDate', 'currentWeight',
+  'currentHeightLength', 'measurementMethod', 'bilateralPittingOedema', 'reasonNotMeasured',
+  'relevantInfo', 'responseMode', 'createdOn', 'createdBy',
+  // Appended:
+  'quantityThrEveryDayOtherText', 'storeThrPacketOtherText',
+]);
+
+const RMC_AWC_FIELDS = Object.freeze([
+  'samChildrenTotal', 'samChildren06', 'samChildren65', 'cmamChildrenTotal', 'cmamChildren06',
+  'cmamChildren65', 'variationReason', 'weighingScale', 'salterScale', 'infantometer',
+  'stadiometer', 'supplementaryNutrition', 'registerAvailability', 'poshanTrackerUpdated',
+  'reasonPoshanTrackerNotUpdated', 'amoxycillinSyrup', 'folicAcidTablet', 'albendazole', 'vitA',
+  'ifaSyrup', 'multivitaminSyrup', 'zinc', 'ors', 'pcm', 'cmamTraining', 'cmamTrainingMonth',
+  'cmamTrainingDiscussed', 'dateChildMeasured', 'childSex', 'childAge', 'childWeight',
+  'childHeight', 'instrumentAww', 'measurementFollowedStep', 'childWeightAww',
+  'childWeightFieldMonitor', 'childHeightInstrument', 'childHeightSteps', 'childHeightAww',
+  'childHeightFieldMonitor', 'classifyWastingAww', 'nutritionalStatusXScorecard',
+  'screeningSamChildren', 'appetiteTestFood', 'nutritionalOedema', 'childNrcMtc',
+  'childFollowupCmam', 'activitiesFollowupCmam',
+]);
+
+const RMC_CBE_FIELDS = Object.freeze([
+  'themeOfCbe', 'typeOfBeneficiaryAttendedCbe', 'serviceProvidersPresentCbe',
+  'groupCounsellingConducted', 'counsellingTopicsCbe', 'counsellingAidsUsed',
+  'otherImportantObservation',
+]);
+
+const RMC_VHSND_FIELDS = Object.freeze([
+  'vhsndVisitDay', 'physicalExamSam', 'testConductedSam', 'vhsndMedicalComplication',
+  'vhsndAppetiteTestConducted', 'childReferralNrc', 'motherAgreeNrc', 'motherNotAgreeReason',
+  'childEnrolledCmam', 'vhsndAmoxycillin', 'vhsndFolicAcidTablet', 'vhsndAlbendazole',
+  'vhsndIfaSyrup', 'vhsndVitA', 'vhsndMultivitaminSyrup', 'vhsndZinc', 'vhsndOrs', 'vhsndPcm',
+  'firstDoseAmoxicillin', 'motherAmoxicillin', 'motherAmoxicillinCounselled', 'childFolic',
+  'albendazoleGuidelines', 'vitAEnrolement', 'firstDoseMultivit', 'motherMultivitamin',
+  'motherCounsel', 'motherThr', 'motherGivenMessage', 'childDischargedCmam', 'counsellingAids',
+  'cmamTraining', 'cmamTrainingMonth', 'confirmChildSam', 'assessingMedicalComplication',
+  'childSamReferredNrc', 'medicinesGivenCommunityLevel',
+]);
+
+const RMC_HOUSEHOLD_FIELDS = Object.freeze([
+  'nameOfChild', 'currentAgeMonths', 'sexOfChild', 'currentFollowupOrRecovered',
+  'childCardRecordAvailability', 'typeOfRecordAvailable', 'lastWeighedDate',
+  'lastMeasuredHeightDate', 'whoMeasuredChild', 'awwVisitsPastMonth', 'awwActionsDuringVisit',
+  'frequencyOfWeightMeasurement', 'anmMedicineAtEnrollment', 'medicinesConsumedDuringTreatment',
+  'childConsumeAntibioticFiveDays', 'thrReceivedFromAwc', 'thrNotReceivedReasonChild',
+  'recordForVerification', 'qtyThrReceivedPastMonth', 'childConsumeThr', 'childNotConsumeThr',
+  'whoConsumeThr', 'daysThrConsumeChild', 'thrQtyPrepareChild', 'storeThr',
+  'counsellingOnHomeFood', 'counsellingAdviceReceive', 'nameOfChild06', 'sexOfChild06',
+  'currentAgeMonths06', 'breastfedInLast24Hours', 'breastfedPerDay', 'breastfedPerNight',
+  'foodsOrDrinksReceived', 'reasonsNotExclusivelyBreastfed', 'bottleUsedToFeedMilk',
+  'awwHomeVisitsLast4Weeks', 'ashaHomeVisitsLast4Weeks', 'anmHomeVisitsLast4Weeks',
+  'receieveAdviceFeeding', 'adviceReceive', 'childWeighedAwc', 'childWeighedAware',
+  'childWeighedLastAwc', 'childGrowingWell', 'nameOfChild68', 'sexOfChild68', 'currentAgeMonths68',
+  'startedTakingFoodOtherThanBreastmilk', 'annaprashanConductedAtAwc', 'familyAttendedAnnaprashan',
+  'timesBreastfedInLast24Hours', 'timesFedFoodInLast24Hours', 'porridgeFrequency',
+  'fortifiedBabyFoodFrequency', 'grainsFoodFrequency', 'yellowOrangeVegetables',
+  'rootsFoodFrequency', 'darkGreenLeafyVegetables', 'ripeFruitsFrequency',
+  'otherFruitsVegetablesFrequency', 'dryFruitsFrequency', 'organMeatsFrequency',
+  'meatFoodFrequency', 'eggsFrequency', 'fishFrequency', 'beansLentilsFrequency', 'nutsFrequency',
+  'milkProductsFrequency', 'oilGheeFrequency', 'sugaryFoodsFrequency', 'beveragesFrequency',
+  'sweetenedBeveragesFrequency', 'foodConsistencyCorrect', 'thrReceivedPastMonth',
+  'thrNotReceivedReason', 'thrReceivedDays', 'thrQtyReceived', 'thrConsumed',
+  'reasonNotConsumedThr', 'thrConsumedBy', 'thrConsumedDays', 'qtyPrepareFood', 'thrStore',
+  'awwVisitsLast4Weeks', 'ashaVisitsLast4Weeks', 'anmVisitsLast4Weeks', 'receivedFeedingAdvice',
+  'adviceReceived', 'ifaSyrupReceivedLastWeek', 'childWeighedAtAwc', 'awareWeightChild',
+  'weightChild', 'isChildGrowingWell', 'childFullName', 'childGender', 'childAgeInMonths',
+  'breastfedTimesIn24Hrs', 'fedFoodTimesIn24Hrs', 'porridgeGruelFrequency', 'babyFoodFrequency',
+  'grainsBasedFoodFrequency', 'yellowOrangeVeggies', 'rootsBasedFoodFrequency',
+  'darkGreenVeggiesFrequency', 'ripeFruitsFrequencys', 'otherFruitsVeggiesFrequency',
+  'driedFruitsFrequency', 'organMeatsFrequencys', 'chickenMeatFrequency',
+  'eggsConsumptionFrequency', 'fishConsumptionFrequency', 'legumesFoodFrequency',
+  'nutsConsumptionFrequency', 'dairyProductsFrequency', 'oilsFatsFrequency', 'sugaryFoodFrequency',
+  'beveragesConsumptionFrequency', 'sweetenedBeveragesFrequencys', 'otherRegularFoodItem',
+  'otherRegularFood', 'rightFoodConsistency', 'thrReceivedLast3Month',
+  'thrNotReceivedReasonLast3Month', 'monthsThrReceivedLast3Month', 'qtyThrReceived',
+  'thrConsumedByChild', 'thrNotConsumedReason', 'thrConsumer', 'daysThrConsumed', 'qtyThrFood',
+  'storeOpenedThr', 'albendazoleReceived', 'vitaminAReceived', 'ifaSyrupGiven',
+  'awwVisitsLast4Week', 'ashaVisitsLast4Week', 'anmVisitsLast4Week', 'feedingAdviceReceived',
+  'typeOfFeedingAdvice', 'childLastWeighed', 'childAwareLastWeighed', 'childWeighed',
+  'childGrowWell',
+]);
+
+// RoutineMonitoringDTO top-level fields (GET /form/routines), in the order every
+// earlier Complete Response download used — including the section statistics,
+// which earlier downloads always carried. The flattened sections follow them.
+const RMC_TOP_FIELDS = Object.freeze([
+  'state', 'stateCode', 'district', 'districtCode', 'block', 'blockCode', 'village', 'villageCode',
+  'icdsProject', 'sector', 'awc', 'fieldMonitorName', 'dateVisit', 'latitude', 'longitude',
+  'locationAccuracyMeters', 'locationCapturedAt', 'location', 'selectionCriteriaAwc',
+  'activityToObserve', 'createdOn', 'createdBy', 'responseMode', 'isTestData',
+  'filledSectionsCount', 'totalSectionsCount', 'hasAganwadiData', 'hasVhsndData', 'hasCbeData',
+  'hasHouseholdData',
+]);
+
+// The four nested RMC sections, flattened explicitly with section-prefixed headers
+// ("AWC - samChildrenTotal", "HH - otherRegularFood", ...). Values are written
+// exactly as stored — no splitting on commas — so free text is never cut.
+const RMC_SECTIONS = Object.freeze([
+  { key: 'aganwadiData', label: 'AWC', fields: RMC_AWC_FIELDS },
+  { key: 'cbeData', label: 'CBE', fields: RMC_CBE_FIELDS },
+  { key: 'vhsndData', label: 'VHSND', fields: RMC_VHSND_FIELDS },
+  // thrNotReceivedReasonChild is the JSON name of the DTO field thrNotReceivedReason_child.
+  { key: 'householdData', label: 'HH', fields: RMC_HOUSEHOLD_FIELDS, aliases: { thrNotReceivedReasonChild: ['thrNotReceivedReason_child'] } },
+]);
+
+// The nested section objects themselves are replaced by their flattened columns.
+const RMC_EXCLUDED_TOP_KEYS = new Set(['aganwadiData', 'cbeData', 'vhsndData', 'householdData']);
+
+// Header titles the Complete Response download has always used for these API keys
+// (any other key is its own header). Shared with the page's preview table.
+const COMPLETE_RESPONSE_TITLES = Object.freeze({
+  // Location
+  state: 'State',
+  district: 'District',
+  block: 'Block',
+  village: 'Village',
+  villageName: 'Village',
+  villageCode: 'Village Code',
+  // Surveyor
+  surveyorName: 'Surveyor Name',
+  surveyorUserName: 'Surveyor Username',
+  userName: 'Surveyor Username',
+  surveyedBy: 'Surveyor',
+  // Date fields — entity uses 'date' for survey date
+  date: 'Survey Date',
+  submittedAt: 'Submitted At',
+  createdAt: 'Created At',
+  submissionDate: 'Submitted At',
+  submittedDate: 'Submitted At',
+  updatedAt: 'Updated At',
+  // Identity
+  id: 'ID',
+  nameParticipant: 'Participant Name',
+  childName: 'Child Name',
+  childId: 'Child ID',
+  headOfHousehold: 'Head of HH',
+  // Misc
+  formType: 'Form Type',
+  mobileNumber: 'Mobile',
+  gender: 'Gender',
+  ageMonths: 'Age (months)',
+  verbalConsent: 'Consent',
+  numberOfChildren: 'No. of Children',
+});
+
+const COMPLETE_RESPONSE_FIELDS = Object.freeze({
+  household: HOUSEHOLD_FIELDS,
+  followup: FOLLOWUP_FIELDS,
+  routine: RMC_TOP_FIELDS,
+});
+
+// Identifiers and location codes are written as text so leading zeros survive.
+const TEXT_VALUE_KEY = /^(id|childId|childCode|householdNumber|clusterNumber|mobileNumber)$|Code$/;
+
+// LocalDate / LocalDateTime serialized as arrays ([2026, 11, 27] or [..., h, m, s]).
+const isDateArray = (v) => Array.isArray(v) && v.length >= 3 && v.length <= 7
+  && v.every((n) => Number.isInteger(n)) && v[0] >= 1900 && v[0] <= 2999;
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** One Excel cell value for a saved field: blanks stay blank, codes stay text, nothing is dropped. */
+function exportCell(key, value) {
+  if (value === null || value === undefined) return '';
+  if (isDateArray(value)) {
+    const [y, m, d, h, mi, sec] = value;
+    const date = `${y}-${pad2(m)}-${pad2(d)}`;
+    return h === undefined ? date : `${date} ${pad2(h)}:${pad2(mi || 0)}:${pad2(sec || 0)}`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((x) => (x && typeof x === 'object' ? JSON.stringify(x) : String(x))).join(', ');
+  }
+  if (typeof value === 'object') return JSON.stringify(value);
+  if (TEXT_VALUE_KEY.test(key)) return String(value);
+  return value;
+}
+
+// Keys, in first-seen order, that records carry beyond the known list.
+function extraKeys(objects, known, excluded = new Set()) {
+  const knownSet = new Set(known);
+  const extras = [];
+  const seen = new Set();
+  objects.forEach((obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.keys(obj).forEach((k) => {
+      if (knownSet.has(k) || excluded.has(k) || seen.has(k)) return;
+      seen.add(k);
+      extras.push(k);
+    });
+  });
+  return extras;
+}
+
 class ExcelMappingService {
+
+  /** Saved-field definitions used by the Complete Response downloads (read-only). */
+  static COMPLETE_RESPONSE_FIELDS = COMPLETE_RESPONSE_FIELDS;
+  static COMPLETE_RESPONSE_TITLES = COMPLETE_RESPONSE_TITLES;
+  static RMC_SECTIONS = RMC_SECTIONS;
+
+  /**
+   * Column plan for a Complete Response download: [{ header, get(record) }].
+   * Derived from the saved-field definitions plus any extra keys in the data, so
+   * headers do not depend on which fields are null in the selected rows.
+   * titles: { apiKey: 'Header' } for top-level fields (defaults to the titles the
+   * download has always used).
+   */
+  static completeResponseColumns(records, formType, { titles = COMPLETE_RESPONSE_TITLES } = {}) {
+    const rows = Array.isArray(records) ? records : [];
+    const known = COMPLETE_RESPONSE_FIELDS[formType] || [];
+    const excluded = formType === 'routine' ? RMC_EXCLUDED_TOP_KEYS : new Set();
+    const usedHeaders = new Set();
+    const headerFor = (preferred, fallback) => {
+      const h = preferred && !usedHeaders.has(preferred) ? preferred : fallback;
+      usedHeaders.add(h);
+      return h;
+    };
+
+    const columns = [...known, ...extraKeys(rows, known, excluded)].map((key) => ({
+      key,
+      header: headerFor(titles[key], key),
+      get: (record) => exportCell(key, record?.[key]),
+    }));
+
+    if (formType === 'routine') {
+      RMC_SECTIONS.forEach((section) => {
+        const sectionObjects = rows.map((r) => r?.[section.key]).filter((o) => o && typeof o === 'object');
+        const aliasKeys = new Set(Object.values(section.aliases || {}).flat());
+        const keys = [...section.fields, ...extraKeys(sectionObjects, section.fields, aliasKeys)];
+        keys.forEach((field) => {
+          const aliases = section.aliases?.[field] || [];
+          columns.push({
+            key: `${section.key}.${field}`,
+            header: headerFor(`${section.label} - ${field}`, `${section.key}.${field}`),
+            get: (record) => {
+              const data = record?.[section.key];
+              if (!data || typeof data !== 'object') return '';
+              let value = data[field];
+              for (const alias of aliases) {
+                if (value === null || value === undefined) value = data[alias];
+              }
+              return exportCell(field, value);
+            },
+          });
+        });
+      });
+    }
+    return columns;
+  }
+
+  /**
+   * Excel rows for Complete Response → Household / Follow-Up / Routine Monitoring.
+   * Every row has every column (blank when the record has no value), in the same order.
+   */
+  static generateCompleteResponseData(records, formType, options = {}) {
+    if (!Array.isArray(records)) return [];
+    const columns = this.completeResponseColumns(records, formType, options);
+    return records.map((record) => {
+      const row = {};
+      columns.forEach((c) => { row[c.header] = c.get(record); });
+      return row;
+    });
+  }
 
   /**
    * Generate Excel-ready data from routine monitoring records
@@ -275,7 +578,18 @@ class ExcelMappingService {
       'waz06',
       'whz06',
       'latitude',
-      'longitude'
+      'longitude',
+      // Appended (survey audit E05/F02): keep everything above unchanged for existing reports.
+      'location',
+      'primaryCaregiverOtherText',
+      'caregiversexOtherText',
+      'childSexOtherText',
+      'weightNotMeasuredReasonOtherText',
+      'heightNotMeasuredReasonOtherText',
+      'childUndernourishedTypeOtherText',
+      'reasonWtNotMeasuringOtherText',
+      'reasonHtNotMeasuringOtherText',
+      'reasonNotAssessingOtherText'
     ];
 
     const safe = (val) => (val === null || val === undefined ? '' : val);
@@ -358,18 +672,10 @@ class ExcelMappingService {
       excelRow.gi8a = safe(record.hhHeadReligion);
       excelRow.gi8a_other_text = safe(record.hhHeadReligionOther);
       excelRow.gi8b = safe(record.hhHeadCaste);
-      const computeChildId = (r) => {
-        if (!r.districtCode && !r.blockCode) return '';
-        const dc = String(r.districtCode    || '').padStart(3, '0').slice(-3);
-        // Block codes are 4 digits (rural) or 6 digits (urban local bodies); pad, never truncate.
-        const bc = String(r.blockCode       || '').padStart(4, '0');
-        const vc = String(r.villageCode     || '').padStart(2, '0').slice(-2);
-        const cc = String(r.clusterCode     || '').padStart(2, '0').slice(-2);
-        const sc = String(r.structureCode   || '').padStart(2, '0').slice(-2);
-        const hh = String(r.householdNumber || '').padStart(3, '0').slice(-3);
-        return dc + bc + vc + cc + sc + hh;
-      };
-      excelRow.childId = record.childId || computeChildId(record);
+      // The STORED Child ID only (audit F03): a blank stored ID stays blank. Never
+      // synthesize one here — that hid missing IDs and the old fallback kept only the
+      // last two village-code characters, so village 345 and 45 collided.
+      excelRow.childId = record.childId == null ? '' : String(record.childId);
       excelRow.primaryCaregiver = safe(record.primaryCaregiver);
       excelRow.careGiverInterview = safe(record.careGiverInterview);
       excelRow.caregiverName = safe(record.caregiverName);
@@ -637,6 +943,18 @@ class ExcelMappingService {
       // Geolocation captured at submission time
       excelRow.latitude = safe(record.latitude);
       excelRow.longitude = safe(record.longitude);
+
+      // Appended columns: persisted address and the nine typed "Other" details (contract C3).
+      excelRow.location = safe(record.location);
+      excelRow.primaryCaregiverOtherText = safe(record.primaryCaregiverOtherText);
+      excelRow.caregiversexOtherText = safe(record.caregiversexOtherText);
+      excelRow.childSexOtherText = safe(record.childSexOtherText);
+      excelRow.weightNotMeasuredReasonOtherText = safe(record.weightNotMeasuredReasonOtherText);
+      excelRow.heightNotMeasuredReasonOtherText = safe(record.heightNotMeasuredReasonOtherText);
+      excelRow.childUndernourishedTypeOtherText = safe(record.childUndernourishedTypeOtherText);
+      excelRow.reasonWtNotMeasuringOtherText = safe(record.reasonWtNotMeasuringOtherText);
+      excelRow.reasonHtNotMeasuringOtherText = safe(record.reasonHtNotMeasuringOtherText);
+      excelRow.reasonNotAssessingOtherText = safe(record.reasonNotAssessingOtherText);
 
       // Ensure every template column exists (and in the correct insertion order).
       const orderedRow = {};

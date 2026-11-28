@@ -41,7 +41,7 @@ import { usePreventPageReload } from '../../hooks/usePreventPageReload';
 // Utils
 import { speak, stopSpeak } from "utils/TextToSpeech";
 import { filterNumberKeyDown } from 'utils';
-import { saveOfflineForm } from 'utils/indexDB';
+import { saveOfflineForm, newClientId } from 'utils/indexDB';
 import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 import { sendSilentWhatsAppReport, createErrorMessage } from '../../utils/whatsappUtils';
 import { getConsentStatus } from '../../utils/consentManager';
@@ -49,6 +49,16 @@ import { incrementDailyCount, isSurveyorUser, syncAfterSubmission } from '../../
 
 // Services
 import apiService from '../../services/api';
+
+// One request builder + final check for Submit, Save Offline and Retry (audit W1)
+import {
+  HOUSEHOLD_LIMITS, HOUSEHOLD_URL, PHONE_MESSAGE, buildHouseholdPayload, householdFieldForKey,
+  normalizePhoneInput, validateHouseholdRequest,
+} from './payload/householdPayload';
+import { CODE_WIDTHS, padCode } from './payload/childId';
+import {
+  SURVEY_LIST_ROUTE, collectYupErrors, errorSummary, localIsoDate, mapRequestErrors, requiredTextRule, sendSurvey,
+} from './payload/common';
 
 // Per-form location helpers (block-level, backend-driven + offline cache).
 import { getFormLocationHelpers } from "utils/formLocations";
@@ -58,7 +68,8 @@ const { getStateOptions, getDistrictOptions, getBlockOptions, getVillageOptions 
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
-  nameParticipant: Yup.string().required("This is required field"),
+  // F07: required, whitespace-only rejected, at most 255 characters
+  nameParticipant: requiredTextRule(HOUSEHOLD_LIMITS.nameParticipant, 'Participant name'),
   verbalConsent: Yup.string().required("This is required field"),
   date: Yup.string().required("This is required field"),
   time: Yup.string().required("This is required field"),
@@ -69,7 +80,7 @@ const step1ValidationSchema = Yup.object({
 // the four consent fields — already filled on step 1 — were checked and the household
 // fields could be left blank. Location/coordinates are intentionally not listed here:
 // they're enforced separately by the `hasValidCoordinates` gate (the submit button
-// stays disabled and handleSubmit re-checks before posting).
+// stays disabled and prepareSubmission re-checks before posting or queueing).
 const step2ValidationSchema = Yup.object({
   state: Yup.string().required("This is required field"),
   district: Yup.string().required("This is required field"),
@@ -79,11 +90,15 @@ const step2ValidationSchema = Yup.object({
   clusterNumber: Yup.string().required("This is required field"),
   structureCode: Yup.string().required("This is required field"),
   householdNumber: Yup.string().required("This is required field"),
-  mobileNumber: Yup.string().required("This is required field"),
-  headOfHousehold: Yup.string().required("This is required field"),
+  // F07: exactly 10 digits on the final value (typed, pasted or restored)
+  mobileNumber: Yup.string().required("This is required field").matches(/^\d{10}$/, PHONE_MESSAGE),
+  headOfHousehold: requiredTextRule(HOUSEHOLD_LIMITS.headOfHousehold, 'Head of household name'),
   numberOfChildren: Yup.string().required("This is required field"),
   childrenStayingHh: Yup.string().required("This is required field"),
 });
+
+/** Fields shown on step 1 (consent); everything else is on step 2. */
+const STEP1_FIELDS = new Set(Object.keys(step1ValidationSchema.fields));
 
 const HouseHold = () => {
   const [loadingStatus, setLoadingStatus] = useState(false);
@@ -109,7 +124,6 @@ const HouseHold = () => {
   // Error reporting states
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [currentError, setCurrentError] = useState(null);
-  const [currentPayload, setCurrentPayload] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
   
   // Consent management states
@@ -242,7 +256,7 @@ const HouseHold = () => {
   // Helper function to get current date and time
   const getCurrentDateTime = () => {
     const now = new Date();
-    const date = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const date = localIsoDate(now); // YYYY-MM-DD on the device's calendar, matching the local time below
     const time = now.toTimeString().split(' ')[0].substring(0, 5); // HH:MM format
     return { date, time };
   };
@@ -484,170 +498,197 @@ const HouseHold = () => {
     );
   };
 
-  const handleSubmit = async (values, { resetForm, setSubmitting }) => {
-    // If offline, save directly to IndexedDB
-    if (!isOnline) {
-      handleSaveOffline(values, { resetForm, setSubmitting });
-      return;
-    }
+  // ── Submission (audit W1 / F10) ─────────────────────────────────────────────
+  // Submit (online and offline), the Save Offline button and Retry share one
+  // builder (buildHouseholdPayload) and one final check (validateHouseholdRequest).
+  // Retry and the error dialog's Save Offline reuse the built request.
+  const formikRef = useRef(null);
+  // The last request that passed validation: { request, clientSubmissionId, sent }.
+  // `sent` = it was actually POSTed (the response may have been lost).
+  const preparedRef = useRef(null);
 
-    // If online, proceed with form submission
+  /** Show field errors beside their inputs (switching to their step) and keep every answer. */
+  const showFormErrors = (fieldErrors, message) => {
+    const fields = Object.keys(fieldErrors || {});
+    const formik = formikRef.current;
+    if (fields.length && formik) {
+      formik.setTouched({ ...formik.touched, ...Object.fromEntries(fields.map((f) => [f, true])) }, false);
+      formik.setErrors(fieldErrors);
+      const stepOf = (f) => (STEP1_FIELDS.has(f) ? 1 : 2);
+      if (!fields.some((f) => stepOf(f) === step)) setStep(Math.min(...fields.map(stepOf)));
+      setTimeout(() => {
+        const element = document.querySelector(`[name="${fields[0]}"]`);
+        element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 500);
+    }
+    setShowSnackBar(true);
+    setSnackBarMessage({ text: message || errorSummary(fieldErrors), type: "error" });
+  };
+
+  /** Validate both steps and the final request. Returns { request, clientSubmissionId } or null. */
+  const prepareSubmission = async (values) => {
+    // Location is required for both submit and offline save.
     if (!hasValidCoordinates) {
       setShowSnackBar(true);
       setSnackBarMessage({
         text: `${t('locationRequired')} ${t('enableLocation')}.`,
         type: "error",
       });
-      setSubmitting(false);
-      return;
+      return null;
     }
+    const yupErrors = await collectYupErrors([step1ValidationSchema, step2ValidationSchema], values);
+    const request = buildHouseholdPayload(values, { coordinates, locationMetadata: surveyLocationMetadata });
+    const { fields, unmatched } = mapRequestErrors(validateHouseholdRequest(request), householdFieldForKey, values);
+    const errors = { ...fields, ...yupErrors };
+    if (Object.keys(errors).length > 0) {
+      showFormErrors(errors, `Please correct the highlighted fields. ${errorSummary(errors)}`);
+      return null;
+    }
+    if (Object.keys(unmatched).length > 0) {
+      showFormErrors({}, Object.values(unmatched)[0]);
+      return null;
+    }
+    // Same request as the last attempt that may have reached the server: reuse that
+    // attempt (same id, same bytes) so the server can recognise a repeat.
+    const previous = preparedRef.current;
+    const sameAsPrevious = previous && JSON.stringify(previous.request) === JSON.stringify(request);
+    if (sameAsPrevious) return previous;
+    return { request, clientSubmissionId: newClientId(), sent: false };
+  };
 
-    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng, ...surveyLocationMetadata(coordinates) };
-    
+  /** Queue a complete, validated request for upload. Keeps the form if storage fails (A07). */
+  const queueOffline = async (prepared) => {
+    setSubmitButtonDisabled(true);
     setLoadingStatus(true);
-
     try {
-      const res = await apiService.post('/form/household', payload);
-      setLoadingStatus(false);
-      setSubmitting(false);
-      
-      // Check for actual success: only statusCode: 200 indicates success
-      if (res.statusCode === 200) {
-        // Increment daily count for surveyors and sync with API
-        if (isSurveyorUser()) {
-          try {
-            incrementDailyCount(null, 'household');
-            syncAfterSubmission(apiService, 'household').catch((error) => {
-              console.error('Error syncing daily count with API:', error);
-            });
-          } catch (error) {
-            console.error('Error updating daily count:', error);
-          }
-        }
-
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: "Form submitted successfully!",
-          type: "success",
-        });
-
-        resetForm();
-        setTimeout(() => {
-          navigate("/survey/list", { replace: true });
-        }, 1000);
-      } else {
-        // Handle backend errors (including 200 responses with error statusCode)
-        handleSubmissionFailure(payload, resetForm, setSubmitting, res);
-      }
+      await saveOfflineForm(prepared.sent
+        // Already POSTed (the response may have been lost): queue the byte-identical
+        // request under the same id, so a replay the server already saved returns the
+        // original result instead of saving it twice (A08).
+        ? { url: HOUSEHOLD_URL, data: prepared.request, clientSubmissionId: prepared.clientSubmissionId }
+        // Never sent: a normal offline submission with a fresh id.
+        : { url: HOUSEHOLD_URL, data: { ...prepared.request, responseMode: 'offline' } });
     } catch (error) {
-      // Handle network/server errors
-      handleSubmissionError(error, payload, resetForm, setSubmitting);
+      console.error('Error saving form offline:', error);
+      setLoadingStatus(false);
+      setSubmitButtonDisabled(false);
+      setShowSnackBar(true);
+      setSnackBarMessage({ text: "Could not save the survey on this device. Your answers are still here - please try again.", type: "error" });
+      return false;
     }
-  };
-
-  const handleSubmissionFailure = (payload, resetForm, setSubmitting, response) => {
     setLoadingStatus(false);
-    setSubmitting(false);
-    
-    // Create error object for the dialog
-    const error = {
-      status: response?.statusCode || 'Unknown',
-      message: response?.message || response?.error || "Form submission failed",
-      response: { data: response }
-    };
-    
-    // Show error dialog
-    setCurrentError(error);
-    setCurrentPayload(payload);
-    setShowErrorDialog(true);
-  };
-
-  const handleSubmissionError = (error, payload, resetForm, setSubmitting) => {
-    console.error('Form submission error:', error);
-    setLoadingStatus(false);
-    setSubmitting(false);
-    
-    const statusCode = error.response?.status || error.status;
-    
-    // Handle authentication/authorization errors
-    if (statusCode === 401 || statusCode === 403) {
-      setShowSnackBar(true);
-      setSnackBarMessage({
-        text: "Session expired. Please login again.",
-        type: "error",
-      });
-      return;
-    }
-    
-    // For all other errors, show error dialog
-    setCurrentError(error);
-    setCurrentPayload(payload);
-    setShowErrorDialog(true);
-  };
-
-  const handleSaveOffline = async (values, { resetForm, setSubmitting }) => {
-    // Validate location before offline save
-    if (!hasValidCoordinates) {
-      setShowSnackBar(true);
-      setSnackBarMessage({
-        text: `${t('locationRequired')} ${t('enableLocation')}.`,
-        type: "error",
-      });
-      setSubmitting(false);
-      return;
-    }
-
-    const payload = { ...values, latitude: coordinates.lat, longitude: coordinates.lng, ...surveyLocationMetadata(coordinates) };
-    try {
-      await saveOfflineForm({ url: '/form/household', data: { ...payload, responseMode: 'offline' } });
-    } catch {
-      setSubmitting(false);
-      setShowSnackBar(true);
-      setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
-      return;
-    }
-
+    preparedRef.current = null;
     setHasUnsavedChanges(false);
-    
-    resetForm();
-    setSubmitting(false);
+    setShowSaveOfflineOption(false);
+    formikRef.current?.resetForm();
     setShowSnackBar(true);
     setSnackBarMessage({
       text: "Form saved offline successfully with location coordinates.",
       type: "warning",
     });
     setTimeout(() => {
-      navigate("/survey/list", { replace: true });
+      navigate(SURVEY_LIST_ROUTE, { replace: true });
     }, 3000);
+    return true;
+  };
+
+  /** POST a prepared request; on failure keep it for Retry / Save Offline. */
+  const submitOnline = async (prepared) => {
+    // From here on the server may receive it: Retry and Save Offline reuse this attempt.
+    const attempt = prepared.sent ? prepared : { ...prepared, sent: true };
+    preparedRef.current = attempt;
+    setSubmitButtonDisabled(true);
+    setLoadingStatus(true);
+    setShowSaveOfflineOption(false);
+
+    const result = await sendSurvey(apiService.post, HOUSEHOLD_URL, attempt.request, attempt.clientSubmissionId);
+    setLoadingStatus(false);
+
+    if (result.status === 'ok') {
+      // Increment daily count for surveyors and sync with API
+      if (isSurveyorUser()) {
+        try {
+          incrementDailyCount(null, 'household');
+          syncAfterSubmission(apiService, 'household').catch((error) => {
+            console.error('Error syncing daily count with API:', error);
+          });
+        } catch (error) {
+          console.error('Error updating daily count:', error);
+        }
+      }
+      preparedRef.current = null;
+      setShowSnackBar(true);
+      setSnackBarMessage({
+        text: "Form submitted successfully!",
+        type: "success",
+      });
+      setHasUnsavedChanges(false);
+      formikRef.current?.resetForm();
+      setTimeout(() => {
+        navigate(SURVEY_LIST_ROUTE, { replace: true });
+      }, 1000);
+      return;
+    }
+
+    setSubmitButtonDisabled(false);
+    if (result.status === 'auth') {
+      setShowSnackBar(true);
+      setSnackBarMessage({ text: result.message, type: "error" });
+      return;
+    }
+    if (result.status === 'invalid') {
+      // C1: show the server's message, mark the fields it names, keep every answer.
+      const { fields } = mapRequestErrors(result.fieldErrors, householdFieldForKey, formikRef.current?.values || {});
+      showFormErrors(fields, `Submission failed: ${result.message}`);
+      return;
+    }
+    // Network / server problem: offer Retry and Save Offline with the same request.
+    setShowSaveOfflineOption(true);
+    setCurrentError({
+      status: result.statusCode,
+      message: result.message,
+      response: result.error ? result.error.response : { data: result.body },
+    });
+    setShowErrorDialog(true);
+  };
+
+  /** Formik submit (final step): full validation, then send or queue. */
+  const handleFinalSubmit = async (values) => {
+    const prepared = await prepareSubmission(values);
+    if (!prepared) return;
+    if (!isOnline) await queueOffline(prepared);
+    else await submitOnline(prepared);
+  };
+
+  /** The page's Save Offline button: same validation as Submit, never a bypass. */
+  const handleSaveOfflineClick = async (values) => {
+    const prepared = await prepareSubmission(values);
+    if (prepared) await queueOffline(prepared);
   };
 
   // Error dialog handlers
   const handleErrorDialogClose = () => {
     setShowErrorDialog(false);
     setCurrentError(null);
-    setCurrentPayload(null);
   };
 
-  const handleRetry = () => {
-    setIsRetrying(true);
+  // Retry re-sends the request that was built (same submission id), not the form values.
+  const handleRetry = async () => {
     setShowErrorDialog(false);
-    // Retry the form submission
-    if (currentPayload) {
-      handleSubmit(currentPayload, { 
-        resetForm: () => {}, 
-        setSubmitting: () => {} 
-      });
+    const prepared = preparedRef.current;
+    if (!prepared) return;
+    setIsRetrying(true);
+    try {
+      await submitOnline(prepared);
+    } finally {
+      setIsRetrying(false);
     }
-    setIsRetrying(false);
   };
 
+  // The dialog's Save Offline queues the request that just failed to send.
   const handleErrorSaveOffline = () => {
-    if (currentPayload) {
-      handleSaveOffline(currentPayload, { 
-        resetForm: () => {}, 
-        setSubmitting: () => {} 
-      });
-    }
+    const prepared = preparedRef.current;
+    if (prepared) queueOffline(prepared);
   };
 
   // Get today's date in the format YYYY-MM-DD
@@ -858,7 +899,9 @@ const HouseHold = () => {
             <Formik
               initialValues={initialValues}
               validationSchema={step === 1 ? step1ValidationSchema : step2ValidationSchema}
-              onSubmit={handleSubmit}
+              innerRef={formikRef}
+              // Always return a promise so Formik clears isSubmitting; Enter on step 1 moves on instead of submitting.
+              onSubmit={async (values, actions) => { if (step === 1) handleNext(values, actions); else await handleFinalSubmit(values); }}
             >
               {({ values, handleChange, handleBlur, setFieldValue, errors, touched, isValid, dirty, setErrors, setTouched, isSubmitting, resetForm, setSubmitting }) => {
                 
@@ -1273,7 +1316,8 @@ const HouseHold = () => {
                                 if (value) {
                                   const villageData = address.block_code ? getVillageOptions(address.state_code, address.district_code, address.block_code).find(v => v.text === value) : null;
                                   setSelectedVillage(villageData);
-                                  setFieldValue("villageCode", villageData ? villageData.village_code.toString().padStart(2, '0') : '');
+                                  // F08: keep the code as a string, pad only when shorter, never truncate
+                                  setFieldValue("villageCode", villageData ? padCode(villageData.village_code, CODE_WIDTHS.village) : '');
                                 } else {
                                   setSelectedVillage(null);
                                   setFieldValue("villageCode", '');
@@ -1417,15 +1461,20 @@ const HouseHold = () => {
                             <TextField
                               size="small"
                               className={styles.formInput}
-                              type="number"
+                              type="tel"
+                              inputProps={{ inputMode: 'numeric', autoComplete: 'off' }}
                               name="mobileNumber"
                               id="mobileNumber"
                               value={values.mobileNumber}
                               onChange={(e) => {
-                                const { value } = e.target;
-                                const regex = /^\d{0,10}$/; // Regex to allow only numbers and max 2 digits
-                                if (regex.test(value)) {
-                                  handleChange(e); // Allow the change if it matches the regex
+                                // Typed or pasted: drop spaces/dashes/brackets, keep up to 10 digits.
+                                // Anything else (e.g. a +91 prefix) is refused, not silently cut.
+                                const value = normalizePhoneInput(e.target.value);
+                                if (/^\d{0,10}$/.test(value)) {
+                                  setFieldValue('mobileNumber', value);
+                                } else {
+                                  setShowSnackBar(true);
+                                  setSnackBarMessage({ text: `${PHONE_MESSAGE} (without +91 or a leading 0).`, type: "warning" });
                                 }
                               }}
                               onBlur={handleBlur}
@@ -1639,7 +1688,7 @@ const HouseHold = () => {
                         {showSaveOfflineOption && isOnline && (
                           <Button
                             className={styles.warningButton}
-                            onClick={() => handleSaveOffline(values, { resetForm, setSubmitting })}
+                            onClick={() => handleSaveOfflineClick(values)}
                             disabled={isSubmitting || loadingStatus || !hasValidCoordinates || submitButtonDisabled}
                             title={!hasValidCoordinates ? "Location coordinates are required even for offline save" : ""}
                           >

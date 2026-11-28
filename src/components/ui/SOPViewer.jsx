@@ -22,33 +22,87 @@ import {
   OpenInNew as OpenInNewIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
+import { isNativeApp } from '../../utils/nativeAppInfo';
+
+const PPTX_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+// Public web origin that serves the same public/ files, for the Android app
+// (its own origin is local to the WebView). Optional build setting.
+const publicWebOrigin = () => {
+  const configured = (process.env.REACT_APP_PUBLIC_WEB_ORIGIN || '').trim().replace(/\/+$/, '');
+  return /^https:\/\//i.test(configured) ? configured : '';
+};
 
 const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Procedures" }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  
-  const handleDownload = () => {
-    // Create a temporary anchor element to trigger download
+  const native = isNativeApp();
+  const [notice, setNotice] = useState('');
+
+  // Ensure the path starts with / for public folder files
+  const filePath = sopFilePath.startsWith('/') ? sopFilePath : `/${sopFilePath}`;
+  const fileName = filePath.split('/').pop() || 'SOP.pptx';
+  // Office Online must fetch the file itself: only a public https URL works.
+  // On the web that is this site's origin; in the Android app the WebView origin
+  // is local to the device, so it is used only when a public origin is configured.
+  const remoteBase = native ? publicWebOrigin() : window.location.origin;
+  const canPreviewOnline = !!remoteBase && /^https?:\/\//i.test(remoteBase);
+
+  const downloadWithLink = (href) => {
     const link = document.createElement('a');
-    // Ensure the path starts with / for public folder files
-    const filePath = sopFilePath.startsWith('/') ? sopFilePath : `/${sopFilePath}`;
-    link.href = filePath;
-    link.download = filePath.split('/').pop() || 'SOP.pptx';
+    link.href = href;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Android: hand the bundled asset to the device (share sheet → PowerPoint,
+  // Drive, Files…). A WebView-local URL is never sent to a remote viewer.
+  const openBundledOnDevice = async () => {
+    setNotice('');
+    try {
+      const response = await fetch(filePath);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const file = typeof File === 'function' ? new File([blob], fileName, { type: PPTX_TYPE }) : null;
+      if (file && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+        await navigator.share({ files: [file], title });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // user closed the share sheet
+    }
+    const base = publicWebOrigin();
+    if (base) {
+      // Leaving the app's origin makes Capacitor open the system browser, which downloads the file.
+      window.location.assign(`${base}${filePath}`);
+      return;
+    }
+    downloadWithLink(filePath);
+    setNotice('If the document did not open, find it under Resources on the SAM website, or ask your supervisor for the SOP file.');
+  };
+
+  const handleDownload = () => {
+    if (native) {
+      openBundledOnDevice();
+      return;
+    }
+    downloadWithLink(filePath);
+  };
+
   const handleOpenInNewTab = () => {
-    // Use Office Online Viewer to open PPT in browser
-    const filePath = sopFilePath.startsWith('/') ? sopFilePath : `/${sopFilePath}`;
-    const fullUrl = window.location.origin + filePath;
-    
+    if (!canPreviewOnline) {
+      openBundledOnDevice();
+      return;
+    }
+    const fullUrl = remoteBase + filePath;
     // Office Online Viewer URL - works for PPT, PPTX, DOC, DOCX, XLS, XLSX files
-    // This allows viewing the file directly in the browser without downloading
     const viewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fullUrl)}`;
-    
-    // Open in new tab
+    if (native) {
+      window.location.assign(viewerUrl); // external host: opened by the system browser
+      return;
+    }
     window.open(viewerUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -95,6 +149,11 @@ const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Pro
       </DialogTitle>
 
       <DialogContent sx={{ p: isMobile ? 2 : 3, bgcolor: 'background.paper' }}>
+        {notice && (
+          <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setNotice('')}>
+            <Typography variant="body2">{notice}</Typography>
+          </Alert>
+        )}
         <Alert severity="info" icon={<InfoIcon />} sx={{ mb: 3 }}>
           <Typography variant="body2">
             This document contains the Standard Operating Procedures (SOP) for Routine Monitoring activities. 
@@ -135,17 +194,20 @@ const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Pro
                 </Box>
                 <Box sx={{ flex: 1 }}>
                   <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                    Download SOP Document
+                    {native ? 'Open SOP Document' : 'Download SOP Document'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Download the PowerPoint file to view on your device
+                    {native
+                      ? 'Open the PowerPoint file in an app on this device'
+                      : 'Download the PowerPoint file to view on your device'}
                   </Typography>
                 </Box>
               </CardContent>
             </CardActionArea>
           </Card>
 
-          {/* View Online Card */}
+          {/* View Online Card (needs a public URL the online viewer can fetch) */}
+          {canPreviewOnline && (
           <Card
             sx={{
               border: '2px solid',
@@ -185,6 +247,7 @@ const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Pro
               </CardContent>
             </CardActionArea>
           </Card>
+          )}
         </Box>
 
         {/* Instructions for Mobile */}
@@ -195,7 +258,9 @@ const SOPViewer = ({ open, onClose, sopFilePath, title = "Standard Operating Pro
             </Typography>
             <Typography variant="body2" component="div">
               <Box component="ul" sx={{ m: 0, pl: 2 }}>
-                <li>Use "View Online" to open the document in Office Online Viewer directly in your browser</li>
+                {canPreviewOnline && (
+                  <li>Use "View Online" to open the document in Office Online Viewer directly in your browser</li>
+                )}
                 <li>Download the file to view it offline with Microsoft PowerPoint, Google Slides, or any compatible app</li>
                 <li>For best offline experience, download the file and view it in a presentation app</li>
               </Box>

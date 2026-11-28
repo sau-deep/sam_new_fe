@@ -12,6 +12,17 @@ import {
 } from "@mui/material";
 import styles from "./survey.module.css";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
+import { otherDetailMaxFor, otherDetailFeedback } from './rmc/rmcLimits';
+
+// Other details stored as "Others - <detail>" in a VARCHAR column: the detail may
+// use the column width minus the 9-character prefix (Q8.6, Q8.17, Q8.24, Q8.25).
+const S8_OTHER_DETAILS = [
+    { text: 'otherTypeOfRecord', main: 'typeOfRecordAvailable', isOther: (fv) => fv.typeOfRecordAvailable === 'Others' },
+    { text: 'otherThrNotReceivedReason', control: 'otherThrNotReceivedReasonChild', main: 'thrNotReceivedReasonChild', isOther: (fv) => fv.thrNotReceivedReason === 'Other' },
+    { text: 'otherThrQtyPrepareChild', main: 'thrQtyPrepareChild', isOther: (fv) => fv.thrQtyPrepareChild === 'Any Other' },
+    { text: 'otherStoreThr', main: 'storeThr', isOther: (fv) => fv.storeThr === 'Any other' },
+].map((d) => ({ ...d, max: otherDetailMaxFor('householdData', d.main) }));
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -38,28 +49,30 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const CMAMChildServicesSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // State for conditional rendering
-    const [childCardRecordAvailability, setChildCardRecordAvailability] = useState('');
-    const [typeOfRecordAvailable, setTypeOfRecordAvailable] = useState('');
-    const [awwVisitsPastMonth, setAwwVisitsPastMonth] = useState('0');
-    const [awwActionsDuringVisit, setAwwActionsDuringVisit] = useState([]);
-    const [anmMedicineAtEnrollment, setAnmMedicineAtEnrollment] = useState('');
-    const [thrReceivedFromAwc, setThrReceivedFromAwc] = useState('');
-    const [thrNotReceivedReason, setThrNotReceivedReason] = useState('');
-    const [childConsumeThr, setChildConsumeThr] = useState('');
-    const [childNotConsumeThr, setChildNotConsumeThr] = useState([]);
-    const [thrQtyPrepareChild, setThrQtyPrepareChild] = useState('');
-    const [storeThr, setStoreThr] = useState('');
-    const [counsellingOnHomeFood, setCounsellingOnHomeFood] = useState('');
-    const [counsellingAdviceReceive, setCounsellingAdviceReceive] = useState([]);
-    const [childConsumeThrSuggested, setChildConsumeThrSuggested] = useState('');
+    const [childCardRecordAvailability, setChildCardRecordAvailability] = useDraftField(sectionDraft, 'childCardRecordAvailability', '');
+    const [typeOfRecordAvailable, setTypeOfRecordAvailable] = useDraftField(sectionDraft, 'typeOfRecordAvailable', '');
+    const [awwVisitsPastMonth, setAwwVisitsPastMonth] = useDraftField(sectionDraft, 'awwVisitsPastMonth', '0');
+    const [awwActionsDuringVisit, setAwwActionsDuringVisit] = useDraftField(sectionDraft, 'awwActionsDuringVisit', []);
+    const [anmMedicineAtEnrollment, setAnmMedicineAtEnrollment] = useDraftField(sectionDraft, 'anmMedicineAtEnrollment', '');
+    const [thrReceivedFromAwc, setThrReceivedFromAwc] = useDraftField(sectionDraft, 'thrReceivedFromAwc', '');
+    const [thrNotReceivedReason, setThrNotReceivedReason] = useDraftField(sectionDraft, 'thrNotReceivedReason', '');
+    const [childConsumeThr, setChildConsumeThr] = useDraftField(sectionDraft, 'childConsumeThr', '');
+    const [childNotConsumeThr, setChildNotConsumeThr] = useDraftField(sectionDraft, 'childNotConsumeThr', []);
+    const [thrQtyPrepareChild, setThrQtyPrepareChild] = useDraftField(sectionDraft, 'thrQtyPrepareChild', '');
+    const [storeThr, setStoreThr] = useDraftField(sectionDraft, 'storeThr', '');
+    const [counsellingOnHomeFood, setCounsellingOnHomeFood] = useDraftField(sectionDraft, 'counsellingOnHomeFood', '');
+    const [counsellingAdviceReceive, setCounsellingAdviceReceive] = useDraftField(sectionDraft, 'counsellingAdviceReceive', []);
+    const [childConsumeThrSuggested, setChildConsumeThrSuggested] = useDraftField(sectionDraft, 'childConsumeThrSuggested', '');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         currentAgeMonths: '',
         sexOfChild: '',
         currentFollowupOrRecovered: '',
@@ -186,6 +199,13 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
     };
 
     // Validation function
+    const detailFeedback = (d) => otherDetailFeedback(formValues[d.text], d.max);
+    const detailProps = (textKey) => {
+        const d = S8_OTHER_DETAILS.find((x) => x.text === textKey);
+        const fb = detailFeedback(d);
+        return { error: !!fb.error, helperText: fb.helperText };
+    };
+
     const triggerValidation = () => {
         setShowValidation(true);
         
@@ -307,6 +327,12 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
             }
         }
 
+        // Stored-length limits for the Other details (kept as typed, never trimmed).
+        if (!firstInvalidField) {
+            const tooLong = S8_OTHER_DETAILS.find((d) => d.isOther(formValues) && detailFeedback(d).error);
+            if (tooLong) firstInvalidField = tooLong.control || tooLong.text;
+        }
+
         if (firstInvalidField) {
             setTimeout(() => {
                 const element = document.querySelector(`[name="${firstInvalidField}"]`);
@@ -321,10 +347,6 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
         return true;
     };
 
-    // Expose triggerValidation function to parent component
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     return (
         <div id="cmamChildServicesForm">
@@ -340,9 +362,8 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                             id="nameOfChild"
                             name="nameOfChild"
                             inputProps={{ maxLength: 100 }}
-                            onInput={e => {
-                                e.target.value = e.target.value.replace(/[^A-Za-z\s]/g, '');
-                            }}
+                            value={formValues.nameOfChild || ''}
+                            onChange={e => updateFormValue('nameOfChild', e.target.value.replace(/[^A-Za-z\s]/g, ''))}
                         />
                     </Grid>
 
@@ -527,7 +548,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                 value={formValues.otherTypeOfRecord}
                                 onChange={(e) => updateFormValue('otherTypeOfRecord', e.target.value)}
                                 placeholder={t('pleaseSpecifyOtherTypeOfRecord')}
-                                inputProps={{ maxLength: 200 }}
+                                {...detailProps('otherTypeOfRecord')}
                             />
                             {showValidation && formValues.typeOfRecordAvailable === 'Others' && (!formValues.otherTypeOfRecord || formValues.otherTypeOfRecord.trim() === '') && (
                                 <Typography 
@@ -614,6 +635,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                         <Checkbox
                                             name="whoMeasuredChild"
                                             value={option}
+                                            checked={(formValues.whoMeasuredChild || '').split(', ').includes(option)}
                                             onChange={(e) => {
                                                 const checked = e.target.checked;
                                                 const currentValues = formValues.whoMeasuredChild ? formValues.whoMeasuredChild.split(', ') : [];
@@ -862,6 +884,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                                 <Checkbox
                                                     name="medicinesConsumedDuringTreatment"
                                                     value={option}
+                                                    checked={(formValues.medicinesConsumedDuringTreatment || '').split(', ').includes(option)}
                                                     onChange={(e) => {
                                                         const checked = e.target.checked;
                                                         const currentValues = formValues.medicinesConsumedDuringTreatment ? formValues.medicinesConsumedDuringTreatment.split(', ') : [];
@@ -1003,7 +1026,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                 value={formValues.otherThrNotReceivedReason}
                                 onChange={(e) => updateFormValue('otherThrNotReceivedReason', e.target.value)}
                                 placeholder={t('otherSpecify')}
-                                inputProps={{ maxLength: 500 }}
+                                {...detailProps('otherThrNotReceivedReason')}
                             />
                             {showValidation && formValues.thrNotReceivedReason === 'Other' && (!formValues.otherThrNotReceivedReason || formValues.otherThrNotReceivedReason.trim() === '') && (
                                 <Typography 
@@ -1133,6 +1156,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                                     <Checkbox
                                                         name="childNotConsumeThr"
                                                         value={option}
+                                                        checked={childNotConsumeThr.includes(option)}
                                                         onChange={(e) => {
                                                             const checked = e.target.checked;
                                                             let updatedValues;
@@ -1306,7 +1330,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                                 value={formValues.otherThrQtyPrepareChild}
                                                 onChange={(e) => updateFormValue('otherThrQtyPrepareChild', e.target.value)}
                                                 placeholder={t('If other, please specify')}
-                                                inputProps={{ maxLength: 200 }}
+                                                {...detailProps('otherThrQtyPrepareChild')}
                                             />
                                             {showValidation && formValues.thrQtyPrepareChild === 'Any Other' && (!formValues.otherThrQtyPrepareChild || formValues.otherThrQtyPrepareChild.trim() === '') && (
                                                 <Typography 
@@ -1370,7 +1394,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                                 value={formValues.otherStoreThr}
                                                 onChange={(e) => updateFormValue('otherStoreThr', e.target.value)}
                                                 placeholder={t('If other, please specify')}
-                                                inputProps={{ maxLength: 200 }}
+                                                {...detailProps('otherStoreThr')}
                                             />
                                             {showValidation && formValues.storeThr === 'Any other' && (!formValues.otherStoreThr || formValues.otherStoreThr.trim() === '') && (
                                                 <Typography 
@@ -1464,6 +1488,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                                             <Checkbox
                                                 name="counsellingAdviceReceive"
                                                 value={option}
+                                                checked={counsellingAdviceReceive.includes(option)}
                                                 onChange={(e) => {
                                                     const checked = e.target.checked;
                                                     let updatedValues;
@@ -1533,7 +1558,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                             type="hidden"
                             name="typeOfRecordAvailableCombined"
                             value={(() => {
-                                const otherText = document.getElementById('otherTypeOfRecord')?.value;
+                                const otherText = formValues.otherTypeOfRecord || ''; // state, not the DOM: correct on the first render after a draft restore
                                 if (typeOfRecordAvailable === 'Others' && otherText?.trim()) {
                                     return `Others - ${otherText.trim()}`;
                                 }
@@ -1548,7 +1573,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                             type="hidden"
                             name="thrNotReceivedReasonChildCombined"
                             value={(() => {
-                                const otherText = document.getElementById('otherThrNotReceivedReasonChild')?.value;
+                                const otherText = formValues.otherThrNotReceivedReason || ''; // state, not the DOM: correct on the first render after a draft restore
                                 if (thrNotReceivedReason === 'Other' && otherText?.trim()) {
                                     return `Others - ${otherText.trim()}`;
                                 }
@@ -1562,9 +1587,9 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                         name="childNotConsumeThrCombined"
                         value={(() => {
                             let finalOptions = [...childNotConsumeThr];
-                            const otherText = document.getElementById('otherChildNotConsumeThr')?.value;
-                            if (childNotConsumeThr.includes('other') && otherText?.trim()) {
-                                finalOptions = finalOptions.filter(option => option !== 'other');
+                            const otherText = formValues.otherChildNotConsumeThr || ''; // state, not the DOM: correct on the first render after a draft restore
+                            if (childNotConsumeThr.includes('others') && otherText?.trim()) {
+                                finalOptions = finalOptions.filter(option => option !== 'others');
                                 finalOptions.push(`Others - ${otherText.trim()}`);
                             }
                             return finalOptions.join(', ');
@@ -1575,7 +1600,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                         type="hidden"
                         name="thrQtyPrepareChildCombined"
                         value={(() => {
-                            const otherText = document.getElementById('otherThrQtyPrepareChild')?.value;
+                            const otherText = formValues.otherThrQtyPrepareChild || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (thrQtyPrepareChild === 'Any Other' && otherText?.trim()) {
                                 return `Others - ${otherText.trim()}`;
                             }
@@ -1587,7 +1612,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                         type="hidden"
                         name="storeThrCombined"
                         value={(() => {
-                            const otherText = document.getElementById('otherStoreThr')?.value;
+                            const otherText = formValues.otherStoreThr || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (storeThr === 'Any other' && otherText?.trim()) {
                                 return `Others - ${otherText.trim()}`;
                             }
@@ -1600,7 +1625,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                         name="awwActionsDuringVisitCombined"
                         value={(() => {
                             let finalOptions = [...awwActionsDuringVisit];
-                            const otherText = document.getElementById('otherCounsellingTopic')?.value;
+                            const otherText = formValues.otherCounsellingTopic || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (awwActionsDuringVisit.includes('counselledOnAnyOtherTopic') && otherText?.trim()) {
                                 finalOptions = finalOptions.filter(option => option !== 'counselledOnAnyOtherTopic');
                                 finalOptions.push(`Others - ${otherText.trim()}`);
@@ -1616,7 +1641,7 @@ const CMAMChildServicesSection = React.forwardRef((props, ref) => {
                             name="counsellingAdviceReceiveCombined"
                             value={(() => {
                                 let finalOptions = [...counsellingAdviceReceive];
-                                const otherText = document.getElementById('otherCounsellingAdvice')?.value;
+                                const otherText = formValues.otherCounsellingAdvice || ''; // state, not the DOM: correct on the first render after a draft restore
                                 if (counsellingAdviceReceive.includes('others') && otherText?.trim()) {
                                     finalOptions = finalOptions.filter(option => option !== 'others');
                                     finalOptions.push(`Others - ${otherText.trim()}`);

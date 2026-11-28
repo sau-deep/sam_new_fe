@@ -4,10 +4,10 @@
  * Mobile-first layout (surveyor uses mobile view).
  * No form editing allowed — edit only via notification flow.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Card, Row, Col, Typography, Tag, Button, DatePicker, Select,
-  Table, Spin, Empty, Statistic, Badge, Space, message,
+  Table, Spin, Empty, Space, message,
 } from "antd";
 import {
   CheckCircleOutlined, CloudUploadOutlined, CalendarOutlined,
@@ -16,6 +16,8 @@ import {
 import dayjs from "dayjs";
 import axiosInstance from "../../services/axiosInstance";
 import { useAuth } from "../../context/AuthContext";
+import { getCurrentOwnerId } from "../../utils/currentOwner";
+import { getOfflineForms, offlineFormOwnership } from "../../utils/indexDB";
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -30,42 +32,71 @@ const FORM_KEYS = {
 
 export default function MySubmissions() {
   const { user } = useAuth();
+  // The account whose data this screen shows: the LOGIN ID, re-read on every render
+  // so a sign-in as another account (here or in another tab) is picked up.
+  const ownerId = getCurrentOwnerId() || user?.username || null;
+  const ownerRef = useRef(ownerId);
+  ownerRef.current = ownerId;
   const [todayData, setTodayData] = useState(null);
   const [rangeData, setRangeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rangeLoading, setRangeLoading] = useState(false);
   const [dateRange, setDateRange] = useState(null);
   const [selectedForm, setSelectedForm] = useState("Routine Monitoring Common Checklist");
+  const [pendingUploads, setPendingUploads] = useState(0);
+
+  // Surveys still queued on this device for THIS account.
+  const refreshPending = useCallback(async () => {
+    try {
+      const queued = await getOfflineForms();
+      setPendingUploads(queued.filter((r) => offlineFormOwnership(r, ownerId) === "mine").length);
+    } catch {
+      setPendingUploads(0);
+    }
+  }, [ownerId]);
 
   const fetchToday = useCallback(async () => {
+    const requestedFor = ownerId;
     setLoading(true);
     try {
-      const res = await axiosInstance.get("/survey/daily-submissions-count");
+      // Private, fast-changing counts: always read fresh, never from the shared GET cache.
+      const res = await axiosInstance.get("/survey/daily-submissions-count", { noCache: true });
+      if (ownerRef.current !== requestedFor) return; // account changed meanwhile
       setTodayData(res.data?.data || null);
     } catch (e) {
-      message.error("Failed to load today's submissions.");
+      if (ownerRef.current === requestedFor) message.error("Failed to load today's submissions.");
     } finally {
-      setLoading(false);
+      if (ownerRef.current === requestedFor) setLoading(false);
     }
-  }, []);
+  }, [ownerId]);
 
-  useEffect(() => { fetchToday(); }, [fetchToday]);
+  // On mount and whenever the signed-in account changes: drop the previous
+  // account's numbers and load this account's.
+  useEffect(() => {
+    setTodayData(null);
+    setRangeData(null);
+    fetchToday();
+    refreshPending();
+  }, [fetchToday, refreshPending]);
 
   const fetchByRange = async () => {
     if (!dateRange?.[0] || !dateRange?.[1]) {
       message.warning("Please select a date range.");
       return;
     }
+    const requestedFor = ownerId;
     setRangeLoading(true);
     try {
       const start = dateRange[0].format("YYYY-MM-DD");
       const end = dateRange[1].format("YYYY-MM-DD");
       const res = await axiosInstance.get("/survey/daily-submissions-count-by-range", {
         params: { startDate: start, endDate: end, formType: selectedForm },
+        noCache: true,
       });
+      if (ownerRef.current !== requestedFor) return;
       setRangeData(res.data?.data || null);
     } catch (e) {
-      message.error("Failed to load submissions for the selected range.");
+      if (ownerRef.current === requestedFor) message.error("Failed to load submissions for the selected range.");
     } finally {
       setRangeLoading(false);
     }
@@ -128,7 +159,7 @@ export default function MySubmissions() {
           </Text>
           <Button
             size="small" icon={<ReloadOutlined />}
-            onClick={fetchToday} loading={loading}
+            onClick={() => { fetchToday(); refreshPending(); }} loading={loading}
             style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "white" }}
           >
             Refresh
@@ -159,15 +190,25 @@ export default function MySubmissions() {
         </Spin>
       </Card>
 
-      {/* Sync Status Banner */}
-      <Card style={{ borderRadius: 12, marginBottom: 16, borderColor: "#B7EB8F" }}>
+      {/* Sync Status Banner — reflects this account's queue on this device */}
+      <Card style={{ borderRadius: 12, marginBottom: 16, borderColor: pendingUploads > 0 ? "#FFD591" : "#B7EB8F" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <CheckCircleOutlined style={{ color: "#52C41A", fontSize: 20 }} />
+          {pendingUploads > 0 ? (
+            <CloudUploadOutlined style={{ color: "#FA8C16", fontSize: 20 }} />
+          ) : (
+            <CheckCircleOutlined style={{ color: "#52C41A", fontSize: 20 }} />
+          )}
           <div>
-            <Text strong style={{ color: "#135200" }}>All data synced to server</Text>
+            <Text strong style={{ color: pendingUploads > 0 ? "#AD4E00" : "#135200" }}>
+              {pendingUploads > 0
+                ? `${pendingUploads} survey${pendingUploads !== 1 ? "s" : ""} waiting to upload from this device`
+                : "No surveys waiting on this device"}
+            </Text>
             <br />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              Submissions upload automatically when connected. No pending uploads.
+              {pendingUploads > 0
+                ? "They upload automatically when connected, or from Offline Saved Forms. Counts below include only uploaded surveys."
+                : "Submissions upload automatically when connected."}
             </Text>
           </div>
         </div>

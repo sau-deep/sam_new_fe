@@ -3,6 +3,7 @@ import { API_BASE_URL, JWT_KEY } from "../config";
 import { RELEASE_INFO } from "../constants/releaseInfo";
 import { addFormSchemaParam } from "./formSchemaParam";
 import { getCurrentOwnerId } from "../utils/currentOwner";
+import { isApiSuccess } from "../utils/apiResult";
 import { getNativeAppInfo, isNativeApp } from "../utils/nativeAppInfo";
 import { pingServerNow } from "../utils/networkState";
 
@@ -40,19 +41,51 @@ const wantsReleaseHeaders = (config) =>
 
 const cacheOwner = () => getCurrentOwnerId() || "anon";
 
-// In-memory GET cache: key → { data, expiresAt }. Keys include the signed-in
-// account's login id so one user's cached responses are never served to the next login.
+// Private in-memory GET cache (audit A11): key → { data, expiresAt }.
+//  * Keys start with the signed-in account's login id, so one user's responses are
+//    never served to the next login.
+//  * A cache hit never renews its own expiry: an entry lives CACHE_TTL_MS from the
+//    moment the server produced it, however often it is read.
+//  * Only semantic successes are stored (isApiSuccess on the body), never an error
+//    body that happened to arrive with HTTP 200.
+//  * Clearing (login, logout, account change) bumps a generation. A response to a
+//    request that started before the clear — or under a different account than the
+//    one signed in when it arrives — is handed to its caller but never cached.
 const GET_CACHE = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let cacheGeneration = 0;
+let lastSeenOwner = null;
 
 export function clearApiCache(urlPattern) {
   if (!urlPattern) {
     GET_CACHE.clear();
+    cacheGeneration++;
     return;
   }
   for (const key of GET_CACHE.keys()) {
     if (key.includes(urlPattern)) GET_CACHE.delete(key);
   }
+  // A read already in flight may predate the change that made it stale.
+  cacheGeneration++;
+}
+
+// Called on every request: if another account signed in (here or in another tab)
+// since the last request, drop everything cached for the previous one.
+function noteOwner(owner) {
+  if (lastSeenOwner !== null && lastSeenOwner !== owner) clearApiCache();
+  lastSeenOwner = owner;
+}
+
+const cacheKeyFor = (owner, config) => {
+  const params = config.params ? JSON.stringify(config.params) : "";
+  return `${owner}|${config.url}|${params}`;
+};
+
+const isCacheableGet = (config) => String(config?.method).toLowerCase() === "get" && !config.noCache;
+
+/** Test hook: number of cached entries. */
+export function _apiCacheSize() {
+  return GET_CACHE.size;
 }
 
 api.interceptors.request.use((config) => {
@@ -67,14 +100,18 @@ api.interceptors.request.use((config) => {
   }
   addFormSchemaParam(config);
 
-  // Serve cached GET responses
-  if (config.method === "get" && !config.noCache) {
-    const params = config.params ? JSON.stringify(config.params) : "";
-    const cacheKey = `${cacheOwner()}|${config.url}|${params}`;
+  if (isCacheableGet(config)) {
+    const owner = cacheOwner();
+    noteOwner(owner);
+    const cacheKey = cacheKeyFor(owner, config);
+    // Remember who asked and when, so the response can be checked before caching.
+    config.samCache = { key: cacheKey, owner, generation: cacheGeneration };
     const cached = GET_CACHE.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       config.adapter = () =>
         Promise.resolve({ data: cached.data, status: 200, statusText: "OK (cached)", headers: {}, config, fromCache: true });
+    } else if (cached) {
+      GET_CACHE.delete(cacheKey);
     }
   }
 
@@ -83,12 +120,12 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => {
-    // Cache successful GET responses
-    // (a cache hit must not extend its own expiry)
-    if (res.config.method === "get" && !res.config.noCache && res.status === 200 && !res.fromCache) {
-      const params = res.config.params ? JSON.stringify(res.config.params) : "";
-      const cacheKey = `${cacheOwner()}|${res.config.url}|${params}`;
-      GET_CACHE.set(cacheKey, { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
+    const meta = res.config?.samCache;
+    if (meta && !res.fromCache && isCacheableGet(res.config) && isApiSuccess(res)) {
+      // Same account and no clear since the request started: safe to keep.
+      if (meta.owner === cacheOwner() && meta.generation === cacheGeneration) {
+        GET_CACHE.set(meta.key, { data: res.data, expiresAt: Date.now() + CACHE_TTL_MS });
+      }
     }
     return res;
   },

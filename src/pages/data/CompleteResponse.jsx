@@ -11,9 +11,10 @@
  * Fetch → preview record count table → Export to Excel (frontend)
  */
 import { useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Card, Button, Select, DatePicker, Typography, Table, Tag,
-  Space, Row, Col, Statistic, message, Empty, Alert, Checkbox, Divider,
+  Space, Row, Col, message, Empty, Alert, Checkbox,
 } from "antd";
 import { SearchOutlined, DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import * as XLSX from "xlsx";
@@ -34,7 +35,7 @@ const FORM_OPTIONS = [
     endpoint: "/form/households",
     formKey: "HOUSE_HOLD",
     color: "#8e44ad",
-    description: "All household survey responses",
+    description: "Every Household Checklist response in the range (full download, not the 25-record Child List sample), including the captured address",
   },
   {
     label: "Concurrent Assessment",
@@ -58,46 +59,18 @@ const FORM_OPTIONS = [
     endpoint: "/form/routines",
     formKey: "ROUTINE_MONITORING",
     color: "#16a085",
-    description: "Routine monitoring checklist (AWC, VHSND, CBE)",
+    description: "Routine monitoring checklist with every section flattened into its own columns (AWC, CBE, VHSND, Household visit Sections 8–11)",
   },
 ];
 
-// Generic flat-mapper — works for any form type
-function flattenRecord(record, formType) {
-  if (!record || typeof record !== "object") return { raw: String(record) };
-  const base = {
-    State: record.state,
-    District: record.district,
-    Block: record.block,
-    Village: record.village || record.villageName,
-    "Surveyor Name": record.surveyorName || record.surveyor,
-    "Submitted At": record.submittedAt || record.createdAt || record.submissionDate,
-    "Form Type": formType,
-  };
-  // Merge remaining flat fields
-  Object.entries(record).forEach(([k, v]) => {
-    if (typeof v !== "object" && !base[k]) base[k] = v;
-  });
-  return base;
-}
-
 function exportToExcel(data, formLabel, formType) {
   if (!data.length) { message.warning("No data to export."); return; }
-  let rows;
-  if (formType === "biannual") {
-    rows = ExcelMappingService.generateBiAnnualExcelData(data);
-  } else {
-    rows = data.map((record) => {
-      const row = {};
-      Object.entries(record).forEach(([k, v]) => {
-        if (v === null || v === undefined) return;
-        if (typeof v === "object") return;
-        const title = FIELD_TITLES[k] || k;
-        row[title] = v;
-      });
-      return row;
-    });
-  }
+  // Concurrent uses the official template. Every other form uses its saved-field
+  // definitions: stable headers even when a field is blank in every row, codes and
+  // IDs as text, and Routine Monitoring sections flattened explicitly (audit E01/E05).
+  const rows = formType === "biannual"
+    ? ExcelMappingService.generateBiAnnualExcelData(data)
+    : ExcelMappingService.generateCompleteResponseData(data, formType, { titles: FIELD_TITLES });
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, formLabel.slice(0, 31));
@@ -105,41 +78,8 @@ function exportToExcel(data, formLabel, formType) {
   message.success(`Excel downloaded — ${data.length.toLocaleString()} records`);
 }
 
-// Human-readable titles for known API field names
-const FIELD_TITLES = {
-  // Location
-  state: "State",
-  district: "District",
-  block: "Block",
-  village: "Village",
-  villageName: "Village",
-  villageCode: "Village Code",
-  // Surveyor
-  surveyorName: "Surveyor Name",
-  surveyorUserName: "Surveyor Username",
-  userName: "Surveyor Username",
-  surveyedBy: "Surveyor",
-  // Date fields — entity uses 'date' for survey date
-  date: "Survey Date",
-  submittedAt: "Submitted At",
-  createdAt: "Created At",
-  submissionDate: "Submitted At",
-  submittedDate: "Submitted At",
-  updatedAt: "Updated At",
-  // Identity
-  id: "ID",
-  nameParticipant: "Participant Name",
-  childName: "Child Name",
-  childId: "Child ID",
-  headOfHousehold: "Head of HH",
-  // Misc
-  formType: "Form Type",
-  mobileNumber: "Mobile",
-  gender: "Gender",
-  ageMonths: "Age (months)",
-  verbalConsent: "Consent",
-  numberOfChildren: "No. of Children",
-};
+// Human-readable titles for known API field names (the same ones the Excel uses).
+const FIELD_TITLES = ExcelMappingService.COMPLETE_RESPONSE_TITLES;
 
 // Priority order for columns — shown first if present in the data
 const PRIORITY_FIELDS = [
@@ -172,7 +112,13 @@ function buildPreviewColumns(data) {
 }
 
 export default function CompleteResponse() {
-  const [selectedForm, setSelectedForm] = useState(null);
+  // ?form=household (etc.) preselects a form — used by the Data Export screen's
+  // "Household Checklist — full responses" entry.
+  const [searchParams] = useSearchParams();
+  const requestedForm = searchParams.get("form");
+  const [selectedForm, setSelectedForm] = useState(
+    FORM_OPTIONS.some((f) => f.value === requestedForm) ? requestedForm : null
+  );
   const [dateRange, setDateRange] = useState(null);
   const [selectedState, setSelectedState] = useState(null);
   const [testDataOnly, setTestDataOnly] = useState(false);

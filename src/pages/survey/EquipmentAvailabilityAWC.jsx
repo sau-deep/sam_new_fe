@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -40,16 +41,18 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const EquipmentAvailabilityAWC = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
-    const [poshanTrackerUpdated, setPoshanTrackerUpdated] = useState('');
-    const [reasonPoshanTrackerNotUpdated, setReasonPoshanTrackerNotUpdated] = useState([]);
-    const [reasonPoshanTrackerNotUpdatedOther, setReasonPoshanTrackerNotUpdatedOther] = useState('');
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
+    const [poshanTrackerUpdated, setPoshanTrackerUpdated] = useDraftField(sectionDraft, 'poshanTrackerUpdated', '');
+    const [reasonPoshanTrackerNotUpdated, setReasonPoshanTrackerNotUpdated] = useDraftField(sectionDraft, 'reasonPoshanTrackerNotUpdated', []);
+    const [reasonPoshanTrackerNotUpdatedOther, setReasonPoshanTrackerNotUpdatedOther] = useDraftField(sectionDraft, 'reasonPoshanTrackerNotUpdatedOther', '');
     const [reasonPoshanTrackerNotUpdatedOtherError, setReasonPoshanTrackerNotUpdatedOtherError] = useState(false);
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         weighingScale: '',
         salterScale: '',
         infantometer: '',
@@ -174,10 +177,6 @@ const EquipmentAvailabilityAWC = React.forwardRef((props, ref) => {
         return true;
     };
     
-    // Expose validation function to parent component
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     // Helper function to check if field is empty and validation should show
     const shouldShowError = (fieldName) => {

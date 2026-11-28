@@ -9,7 +9,8 @@ import {
   UploadOutlined, DownloadOutlined, CloudUploadOutlined,
 } from "@ant-design/icons";
 import * as XLSX from "xlsx";
-import api from "../../services/axiosInstance";
+import api, { clearApiCache } from "../../services/axiosInstance";
+import { isApiSuccess, apiErrorMessage } from "../../utils/apiResult";
 import { clearFormLocationCache } from "../../services/formLocationService";
 import { clearFormLocationsCache } from "../../utils/formLocations";
 import { StateList } from "../../constants/locations";
@@ -34,6 +35,49 @@ const ENTRY_TYPES = [
 const TYPE_COLOR = { DISTRICT: "orange", BLOCK: "blue", VILLAGE: "green" };
 
 const STATUS_COLOR = { IMPORTED: "green", REACTIVATED: "cyan", SKIPPED: "default", FAILED: "red" };
+
+// Location codes are strings end to end (audit F08 / contract C5): never parsed as
+// numbers, never truncated, alphanumeric allowed. Widths follow the narrowest
+// column that stores each code: district_code 3 and block_code 6 in the survey
+// tables; village_code 10 (form_location, Concurrent, Household).
+const CODE_LIMITS = Object.freeze({ district: 3, block: 6, village: 10 });
+const ALNUM = /^[a-zA-Z0-9]+$/;
+const codeRules = (label, max) => [
+  { required: true, message: `Enter ${label.toLowerCase()}` },
+  { whitespace: true, message: `Enter ${label.toLowerCase()}` },
+  { max, message: `${label}: at most ${max} characters` },
+  { pattern: ALNUM, message: `${label}: letters and digits only (no spaces or symbols)` },
+];
+
+/** A code as the backend stores it: a trimmed string ("" for none), never "null". */
+const codeStr = (v) => (v === null || v === undefined ? "" : String(v).trim());
+
+// Turn an axios response whose BODY reports failure (HTTP 200 with success=false or
+// statusCode 400/404/500) into a rejected promise, so it is never shown as success.
+const requireApiSuccess = (res, fallback) => {
+  if (isApiSuccess(res)) return res;
+  const err = new Error(apiErrorMessage(res, fallback));
+  err.apiResult = res?.data;
+  throw err;
+};
+
+// Run async tasks with limited parallelism; resolves like Promise.allSettled.
+async function settleWithLimit(items, limit, task) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try {
+        results[i] = { status: "fulfilled", value: await task(items[i]) };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 
 export default function FormLocationManagement() {
@@ -67,6 +111,8 @@ export default function FormLocationManagement() {
 
   // Track bulk activate/deactivate loading
   const [bulkToggling, setBulkToggling] = useState(false);
+  // Per-row outcome of the last bulk change: { action, total, ok, failures: [{ id, label, reason }] }
+  const [bulkReport, setBulkReport] = useState(null);
 
   // ── Custom / new location add form ──────────────────────────────────────
   const [customEntryType,      setCustomEntryType]      = useState("DISTRICT");
@@ -113,6 +159,9 @@ export default function FormLocationManagement() {
   const invalidateFormCache = (fk) => {
     clearFormLocationCache(fk);
     clearFormLocationsCache(fk);
+    // Also drop any in-memory GET responses for this form's locations
+    // (matches both /form-location/{fk} and /admin/form-location/{fk}).
+    clearApiCache(`/form-location/${fk}`);
   };
 
   // ─── Data fetching ────────────────────────────────────────────────────────
@@ -196,14 +245,7 @@ export default function FormLocationManagement() {
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   const postEntry = (fk, payload) =>
-    api.post(`/admin/form-location/${fk}`, payload).then((res) => {
-      if (res.data?.success === false) {
-        const err = new Error(res.data?.message || "Request failed");
-        err.response = { data: res.data };
-        throw err;
-      }
-      return res;
-    });
+    api.post(`/admin/form-location/${fk}`, payload).then((res) => requireApiSuccess(res, "Request failed"));
 
   const handleSubmit = async () => {
     try {
@@ -230,9 +272,9 @@ export default function FormLocationManagement() {
         for (const fk of selectedForms) {
           for (const b of blockOptions) {
             calls.push(postEntry(fk, {
-              state: selectedState, stateCode: String(stateCode),
-              district: selectedDistrict, districtCode: String(districtCode),
-              block: b.block, blockCode: String(b.blockCode),
+              state: selectedState, stateCode: codeStr(stateCode),
+              district: selectedDistrict, districtCode: codeStr(districtCode),
+              block: b.block, blockCode: codeStr(b.blockCode),
               village: null, villageCode: "",
               entryType: "BLOCK",
             }));
@@ -240,19 +282,19 @@ export default function FormLocationManagement() {
         }
       } else if (entryType === "BLOCK") {
         calls = selectedForms.map(fk => postEntry(fk, {
-          state: selectedState, stateCode: String(stateCode),
-          district: selectedDistrict, districtCode: String(districtCode),
-          block: selectedBlock, blockCode: String(blockCode),
+          state: selectedState, stateCode: codeStr(stateCode),
+          district: selectedDistrict, districtCode: codeStr(districtCode),
+          block: selectedBlock, blockCode: codeStr(blockCode),
           village: null, villageCode: "",
           entryType: "BLOCK",
         }));
       } else {
         // VILLAGE
         calls = selectedForms.map(fk => postEntry(fk, {
-          state: selectedState, stateCode: String(stateCode),
-          district: selectedDistrict, districtCode: String(districtCode),
-          block: selectedBlock, blockCode: String(blockCode),
-          village: selectedVillage, villageCode: String(villageCode),
+          state: selectedState, stateCode: codeStr(stateCode),
+          district: selectedDistrict, districtCode: codeStr(districtCode),
+          block: selectedBlock, blockCode: codeStr(blockCode),
+          village: selectedVillage, villageCode: codeStr(villageCode),
           entryType: "VILLAGE",
         }));
       }
@@ -264,7 +306,7 @@ export default function FormLocationManagement() {
       if (failed > 0) {
         const reason = results
           .filter(r => r.status === "rejected")
-          .map(r => r.reason?.response?.data?.message || r.reason?.message)
+          .map(r => apiErrorMessage(r.reason, ""))
           .find(Boolean);
         message.warning(reason || `${failed} entr${failed > 1 ? "ies" : "y"} skipped.`);
       }
@@ -284,20 +326,34 @@ export default function FormLocationManagement() {
   };
 
   // ─── Toggle active / inactive ─────────────────────────────────────────────
+  // Every mutation checks the response BODY (isApiSuccess): the controller answers
+  // HTTP 200 with success=false / statusCode 400/404/500 on failure (audit A10).
+
+  const patchActive = (row, value) =>
+    api.patch(`/admin/form-location/${row.id}/active?value=${value}`)
+      .then((res) => requireApiSuccess(res, "Failed to update status."));
+
+  const rowLabel = (r) => r.village || r.block || `#${r.id}`;
 
   const handleToggleActive = async (record, checked) => {
-    const previous = assigned.slice();
+    // Optimistic change for this row only.
     setAssigned(prev =>
       prev.map(r => r.id === record.id ? { ...r, isActive: checked } : r)
     );
     setTogglingId(record.id);
     try {
-      await api.patch(`/admin/form-location/${record.id}/active?value=${checked}`);
+      const res = await patchActive(record, checked);
       invalidateFormCache(formKey);
-      message.success(`"${record.village || record.block}" ${checked ? "activated" : "deactivated"}.`);
+      const updated = res.data?.data;
+      if (updated && updated.id === record.id) {
+        setAssigned(prev => prev.map(r => r.id === record.id ? { ...r, ...updated } : r));
+      }
+      message.success(`"${rowLabel(record)}" ${checked ? "activated" : "deactivated"}.`);
     } catch (err) {
-      setAssigned(previous);
-      message.error(err?.response?.data?.message || "Failed to update status.");
+      // Put this row back and re-read the authoritative list.
+      setAssigned(prev => prev.map(r => r.id === record.id ? { ...r, isActive: record.isActive } : r));
+      message.error(apiErrorMessage(err, "Failed to update status."));
+      fetchAssigned(formKey);
     } finally {
       setTogglingId(null);
     }
@@ -311,19 +367,30 @@ export default function FormLocationManagement() {
       message.info(`All locations are already ${activate ? "active" : "inactive"}.`);
       return;
     }
-    const previous = assigned.slice();
-    setAssigned(prev => prev.map(r => ({ ...r, isActive: activate })));
+    setBulkReport(null);
+    setAssigned(prev => prev.map(r => (r.isActive !== activate ? { ...r, isActive: activate } : r)));
     setBulkToggling(true);
     try {
-      await Promise.all(
-        toChange.map(r => api.patch(`/admin/form-location/${r.id}/active?value=${activate}`))
-      );
-      invalidateFormCache(formKey);
-      message.success(`All ${toChange.length} location(s) ${activate ? "activated" : "deactivated"}.`);
-    } catch (err) {
-      setAssigned(previous);
-      message.error(err?.response?.data?.message || "Failed to update some locations.");
+      const results = await settleWithLimit(toChange, 6, (row) => patchActive(row, activate));
+      const failures = results
+        .map((r, i) => (r.status === "rejected"
+          ? { id: toChange[i].id, label: rowLabel(toChange[i]), reason: apiErrorMessage(r.reason, "Failed") }
+          : null))
+        .filter(Boolean);
+      const ok = toChange.length - failures.length;
+      if (ok > 0) invalidateFormCache(formKey);
+      const verb = activate ? "activated" : "deactivated";
+      if (failures.length === 0) {
+        message.success(`All ${ok} location(s) ${verb}.`);
+      } else {
+        setBulkReport({ action: verb, total: toChange.length, ok, failures });
+        if (ok > 0) message.warning(`${ok} of ${toChange.length} location(s) ${verb}; ${failures.length} failed — see the list above the table.`);
+        else message.error(`No locations were ${verb}; ${failures.length} failed — see the list above the table.`);
+      }
     } finally {
+      // The backend's list is the truth: it keeps the successful changes and shows
+      // the failed rows as they really are (no blanket rollback of the snapshot).
+      await fetchAssigned(formKey);
       setBulkToggling(false);
     }
   };
@@ -332,14 +399,16 @@ export default function FormLocationManagement() {
 
   const handleRemove = async (record) => {
     try {
-      const bc = encodeURIComponent(record.blockCode ?? "");
-      const vc = encodeURIComponent(record.villageCode ?? "");
-      await api.delete(`/admin/form-location/${formKey}/${bc}?villageCode=${vc}`);
+      const bc = encodeURIComponent(codeStr(record.blockCode));
+      const vc = encodeURIComponent(codeStr(record.villageCode));
+      const res = await api.delete(`/admin/form-location/${formKey}/${bc}?villageCode=${vc}`);
+      requireApiSuccess(res, "Failed to remove entry.");
       invalidateFormCache(formKey);
-      message.success(`Removed "${record.village || record.block}" from ${formKey}.`);
-      fetchAssigned(formKey);
+      message.success(`Removed "${rowLabel(record)}" from ${formKey}.`);
     } catch (err) {
-      message.error(err?.response?.data?.message || "Failed to remove entry.");
+      message.error(apiErrorMessage(err, "Failed to remove entry."));
+    } finally {
+      fetchAssigned(formKey);
     }
   };
 
@@ -354,7 +423,7 @@ export default function FormLocationManagement() {
     let basePayload;
 
     if (customEntryType === "DISTRICT") {
-      const stc   = String(customStateCode);
+      const stc   = codeStr(customStateCode);
       const dist  = (values.customDistrict      || "").trim();
       const dCode = (values.customDistrictCode  || "").trim();
       const blk   = (values.customBlock         || "").trim();
@@ -376,8 +445,8 @@ export default function FormLocationManagement() {
       const vCode = (values.customVillageCode  || "").trim();
       const d     = customSelDistrict;
       basePayload = {
-        state: d.state, stateCode: d.stateCode,
-        district: d.district, districtCode: d.districtCode,
+        state: d.state, stateCode: codeStr(d.stateCode),
+        district: d.district, districtCode: codeStr(d.districtCode),
         block: blk, blockCode: bCode,
         village: vlg, villageCode: vCode,
         entryType: "VILLAGE",
@@ -388,9 +457,9 @@ export default function FormLocationManagement() {
       const vCode = (values.customVillageCode || "").trim();
       const b     = customSelBlock;
       basePayload = {
-        state: b.state, stateCode: b.stateCode,
-        district: b.district, districtCode: b.districtCode,
-        block: b.block, blockCode: b.blockCode,
+        state: b.state, stateCode: codeStr(b.stateCode),
+        district: b.district, districtCode: codeStr(b.districtCode),
+        block: b.block, blockCode: codeStr(b.blockCode),
         village: vlg, villageCode: vCode,
         entryType: "VILLAGE",
       };
@@ -406,7 +475,7 @@ export default function FormLocationManagement() {
       if (failed > 0) {
         const reason = results
           .filter(r => r.status === "rejected")
-          .map(r => r.reason?.response?.data?.message || r.reason?.message)
+          .map(r => apiErrorMessage(r.reason, ""))
           .find(Boolean);
         message.warning(reason || `${failed} form(s) skipped.`);
       }
@@ -465,8 +534,8 @@ export default function FormLocationManagement() {
       // Let axios set the multipart Content-Type (with boundary) from the FormData body.
       const res  = await api.post("/admin/form-location/import", fd);
       const body = res.data;
-      if (body?.success === false) {
-        message.error(body.message || "Import failed.");
+      if (!isApiSuccess(res)) {
+        message.error(apiErrorMessage(res, "Import failed."));
         return;
       }
       const result = body?.data ?? body;
@@ -779,12 +848,8 @@ export default function FormLocationManagement() {
                           <Input placeholder="District name" maxLength={100} disabled={!customStateName} />
                         </Form.Item>
                         <Form.Item label="District Code" name="customDistrictCode"
-                          rules={[
-                            { required: true, message: "Enter district code" },
-                            { max: 3, message: "Max 3 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
-                          ]}>
-                          <Input placeholder="e.g. D01" maxLength={3} disabled={!customStateName} />
+                          rules={codeRules("District code", CODE_LIMITS.district)}>
+                          <Input placeholder="e.g. D01" maxLength={CODE_LIMITS.district} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -793,12 +858,8 @@ export default function FormLocationManagement() {
                           <Input placeholder="Block name" maxLength={100} disabled={!customStateName} />
                         </Form.Item>
                         <Form.Item label="Block Code" name="customBlockCode"
-                          rules={[
-                            { required: true, message: "Enter block code" },
-                            { max: 6, message: "Max 6 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
-                          ]}>
-                          <Input placeholder="e.g. B001" maxLength={6} disabled={!customStateName} />
+                          rules={codeRules("Block code", CODE_LIMITS.block)}>
+                          <Input placeholder="e.g. B001" maxLength={CODE_LIMITS.block} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -807,13 +868,9 @@ export default function FormLocationManagement() {
                           <Input placeholder="Village name" maxLength={150} disabled={!customStateName} />
                         </Form.Item>
                         <Form.Item label="Village Code" name="customVillageCode"
-                          rules={[
-                            { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 digits" },
-                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
-                          ]}>
-                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customStateName}
-                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
+                          extra="Kept exactly as typed, leading zeros included."
+                          rules={codeRules("Village code", CODE_LIMITS.village)}>
+                          <Input placeholder="e.g. 10001" maxLength={CODE_LIMITS.village} disabled={!customStateName} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -870,12 +927,8 @@ export default function FormLocationManagement() {
                           <Input placeholder="Block name" maxLength={100} disabled={!customSelDistrict} />
                         </Form.Item>
                         <Form.Item label="Block Code" name="customBlockCode"
-                          rules={[
-                            { required: true, message: "Enter block code" },
-                            { max: 6, message: "Max 6 characters" },
-                            { pattern: /^[a-zA-Z0-9]+$/, message: "Alphanumeric only" },
-                          ]}>
-                          <Input placeholder="e.g. B001" maxLength={6} disabled={!customSelDistrict} />
+                          rules={codeRules("Block code", CODE_LIMITS.block)}>
+                          <Input placeholder="e.g. B001" maxLength={CODE_LIMITS.block} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={12} md={6}>
@@ -884,13 +937,9 @@ export default function FormLocationManagement() {
                           <Input placeholder="Village name" maxLength={150} disabled={!customSelDistrict} />
                         </Form.Item>
                         <Form.Item label="Village Code" name="customVillageCode"
-                          rules={[
-                            { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 digits" },
-                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
-                          ]}>
-                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customSelDistrict}
-                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
+                          extra="Kept exactly as typed, leading zeros included."
+                          rules={codeRules("Village code", CODE_LIMITS.village)}>
+                          <Input placeholder="e.g. 10001" maxLength={CODE_LIMITS.village} disabled={!customSelDistrict} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -972,13 +1021,9 @@ export default function FormLocationManagement() {
                           <Input placeholder="Village name" maxLength={150} disabled={!customSelBlock} />
                         </Form.Item>
                         <Form.Item label="Village Code" name="customVillageCode"
-                          rules={[
-                            { required: true, message: "Enter village code" },
-                            { max: 6, message: "Max 6 digits" },
-                            { pattern: /^[0-9]+$/, message: "Numbers only, no alphabets" },
-                          ]}>
-                          <Input placeholder="e.g. 10001" maxLength={6} disabled={!customSelBlock}
-                            onKeyPress={(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault(); }} />
+                          extra="Kept exactly as typed, leading zeros included."
+                          rules={codeRules("Village code", CODE_LIMITS.village)}>
+                          <Input placeholder="e.g. 10001" maxLength={CODE_LIMITS.village} disabled={!customSelBlock} />
                         </Form.Item>
                       </Col>
                     </>)}
@@ -1180,6 +1225,23 @@ export default function FormLocationManagement() {
           )
         }
       >
+        {bulkReport && (
+          <Alert
+            type={bulkReport.ok > 0 ? "warning" : "error"}
+            showIcon
+            closable
+            onClose={() => setBulkReport(null)}
+            style={{ margin: 12 }}
+            message={`${bulkReport.ok} of ${bulkReport.total} location(s) ${bulkReport.action}; ${bulkReport.failures.length} failed`}
+            description={
+              <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 160, overflowY: "auto" }}>
+                {bulkReport.failures.map(f => (
+                  <li key={f.id}><Text strong>{f.label}</Text>: {f.reason}</li>
+                ))}
+              </ul>
+            }
+          />
+        )}
         <Table
           dataSource={assigned}
           columns={columns}

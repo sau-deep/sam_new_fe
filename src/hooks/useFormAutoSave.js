@@ -1,5 +1,5 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { saveFormDraft, getFormDraft, deleteFormDraft, cleanupOldDrafts } from 'utils/indexDB';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { saveFormDraft, getFormDraft, deleteFormDraft, cleanupOldDrafts, getCurrentOwnerId } from 'utils/indexDB';
 
 // Fields the app fills in by itself (GPS, response mode). Changes to these alone
 // are not "the surveyor entered something".
@@ -62,14 +62,35 @@ const debounce = (func, wait) => {
   return debouncedFunction;
 };
 
+const hasAnyData = (values) => !!values && Object.values(values).some(value => {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim() !== '';
+  return value !== null && value !== undefined && value !== '';
+});
+
+const snapshotOf = (values) => {
+  try { return JSON.stringify(values); } catch { return null; }
+};
+
 /**
  * Custom hook for auto-saving form data
  * @param {string} formType - Type of form (e.g., 'biannual', 'household', 'followup')
  * @param {string} formKey - Unique identifier for this specific form instance
- * @param {object} formValues - Current form values from Formik
+ *   (use stableDraftKey(formType) so the draft is found again after reopening)
+ * @param {object} formValues - Current form values from Formik; callers may add extra
+ *   keys (e.g. nested section state) so the whole questionnaire is restored
  * @param {object} coordinates - GPS coordinates if available
  * @param {boolean} isEnabled - Whether auto-save is enabled
  * @param {number} saveInterval - Auto-save interval in milliseconds (default: 3000)
+ *
+ * Durability rules (audit A06):
+ *  - Writes are serialized, so an older snapshot can never overwrite a newer one,
+ *    and clearDraft() runs after any write already in flight.
+ *  - forceSave() resolves true only after the draft is durably stored (false on a
+ *    storage failure). Callers leaving through the UI or queueing must await it.
+ *  - Page unload / unmount saves are best effort only.
+ *  - A draft saved by another account is never restored here.
+ *  - Current-format drafts are never deleted by age.
  */
 export const useFormAutoSave = (
   formType,
@@ -84,42 +105,60 @@ export const useFormAutoSave = (
   const [isDraftRestored, setIsDraftRestored] = useState(false);
   const saveTimeoutRef = useRef(null);
   const isInitialMount = useRef(true);
-  const lastSavedValues = useRef(null);
+  // JSON snapshot of the last values durably written (null = nothing written yet).
+  const lastSavedSnapshot = useRef(null);
+  // Values at the moment the draft was cleared: re-saving the same values would
+  // resurrect a draft that was just submitted/queued/declined.
+  const clearedSnapshot = useRef(null);
+  const clearedSinceLastSave = useRef(false);
+  const writeChain = useRef(Promise.resolve());
+
+  // Latest inputs, for the unmount flush and other callbacks that outlive a render.
+  const latest = useRef({ formType, formKey, formValues, coordinates, isEnabled });
+  latest.current = { formType, formKey, formValues, coordinates, isEnabled };
+
+  // Run storage operations strictly one after another.
+  const enqueue = useCallback((task) => {
+    const run = writeChain.current.then(task, task);
+    writeChain.current = run.catch(() => {});
+    return run;
+  }, []);
+
+  // Durably write one snapshot (queued). Resolves true when stored or when there is
+  // nothing new to store; throws if storage failed.
+  const persist = useCallback((values, coords) => enqueue(async () => {
+    const { formKey: key, formType: type } = latest.current;
+    if (!key || !type || !values) return true;
+    const snapshot = snapshotOf(values);
+    if (snapshot != null && snapshot === lastSavedSnapshot.current) return true;
+    if (snapshot != null && snapshot === clearedSnapshot.current) return true;
+    if (!hasAnyData(values)) return true;
+
+    setIsSaving(true);
+    try {
+      const success = await saveFormDraft(key, type, values, coords);
+      if (success) {
+        lastSavedSnapshot.current = snapshot;
+        clearedSinceLastSave.current = false;
+        setLastSaved(new Date());
+      }
+      return success;
+    } finally {
+      setIsSaving(false);
+    }
+  }), [enqueue]);
 
   // Debounced save function to prevent excessive saving
-  const debouncedSave = useCallback(
-    debounce(async (values, coords) => {
+  const debouncedSave = useMemo(
+    () => debounce(async (values, coords) => {
       if (!isEnabled || !formKey || !formType) return;
-      
-      // Don't save if values haven't changed
-      if (JSON.stringify(values) === JSON.stringify(lastSavedValues.current)) {
-        return;
-      }
-
-      // Don't save empty forms
-      const hasData = Object.values(values).some(value => {
-        if (Array.isArray(value)) return value.length > 0;
-        if (typeof value === 'string') return value.trim() !== '';
-        return value !== null && value !== undefined && value !== '';
-      });
-
-      if (!hasData) return;
-
-      setIsSaving(true);
       try {
-        const success = await saveFormDraft(formKey, formType, values, coords);
-        if (success) {
-          setLastSaved(new Date());
-          lastSavedValues.current = values;
-          console.log(`✅ Auto-saved ${formType} form at ${new Date().toLocaleTimeString()}`);
-        }
+        await persist(values, coords);
       } catch (error) {
         console.error('Auto-save failed:', error);
-      } finally {
-        setIsSaving(false);
       }
     }, 1000), // 1 second debounce
-    [isEnabled, formKey, formType]
+    [isEnabled, formKey, formType, persist]
   );
 
   // Auto-save when form values change
@@ -147,13 +186,18 @@ export const useFormAutoSave = (
   // Load saved draft on component mount
   const loadDraft = useCallback(async () => {
     if (!formKey || !formType || isDraftRestored) return null;
-    
+
     try {
       const draft = await getFormDraft(formKey);
+      const owner = getCurrentOwnerId();
+      if (draft?.ownerId && owner && draft.ownerId !== owner) {
+        // Another account's draft: never shown or restored in this session.
+        return null;
+      }
       if (draft && draft.formData) {
         setIsDraftRestored(true);
         setLastSaved(new Date(draft.lastModified));
-        console.log(`📖 Restored draft for ${formType} form from ${new Date(draft.lastModified).toLocaleString()}`);
+        lastSavedSnapshot.current = snapshotOf(draft.formData);
         return {
           formData: draft.formData,
           coordinates: draft.coordinates,
@@ -166,57 +210,42 @@ export const useFormAutoSave = (
     return null;
   }, [formKey, formType, isDraftRestored]);
 
-  // Clear saved draft
+  // Clear saved draft (after submit/queue, or when the user declines to restore).
   const clearDraft = useCallback(async () => {
     if (!formKey) return;
-    
+
     // Stop any pending save so a cleared draft isn't immediately re-written.
     debouncedSave.cancel();
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    clearedSnapshot.current = snapshotOf(latest.current.formValues);
+    clearedSinceLastSave.current = true;
     try {
-      await deleteFormDraft(formKey);
+      // Queued behind any write already in flight, so that write cannot land afterwards.
+      await enqueue(() => deleteFormDraft(formKey));
       setLastSaved(null);
       setIsDraftRestored(false);
-      lastSavedValues.current = null;
-      console.log(`🗑️ Cleared draft for ${formType} form`);
+      lastSavedSnapshot.current = null;
     } catch (error) {
       console.error('Error clearing form draft:', error);
     }
-  }, [formKey, formType, debouncedSave]);
+  }, [formKey, debouncedSave, enqueue]);
 
-  // Force save immediately
+  // Save immediately and wait until it is durable. Resolves true when stored (or
+  // nothing new to store), false when storage failed.
   const forceSave = useCallback(async () => {
     if (!isEnabled || !formKey || !formType) return true;
-    
-    // Cancel any pending debounced save
+
+    // Cancel any pending debounced save; this save covers it.
     debouncedSave.cancel();
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    // Nothing new to persist
-    if (!formValues || JSON.stringify(formValues) === JSON.stringify(lastSavedValues.current)) return true;
-    const hasData = Object.values(formValues).some(value => {
-      if (Array.isArray(value)) return value.length > 0;
-      if (typeof value === 'string') return value.trim() !== '';
-      return value !== null && value !== undefined && value !== '';
-    });
-    if (!hasData) return true;
-    
-    setIsSaving(true);
     try {
-      const success = await saveFormDraft(formKey, formType, formValues, coordinates);
-      if (success) {
-        setLastSaved(new Date());
-        lastSavedValues.current = formValues;
-        console.log(`💾 Force-saved ${formType} form`);
-      }
-      return success;
+      return await persist(formValues, coordinates);
     } catch (error) {
       console.error('Force save failed:', error);
       return false;
-    } finally {
-      setIsSaving(false);
     }
-  }, [formKey, formType, formValues, coordinates, isEnabled, debouncedSave]);
+  }, [formKey, formType, formValues, coordinates, isEnabled, debouncedSave, persist]);
 
   // Only drafts left by older builds under random keys (unreachable from any
   // screen) are removed after 7 days, as before. Current drafts are never aged out.
@@ -235,7 +264,7 @@ export const useFormAutoSave = (
 
   // Handle page unload - try to save before leaving
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
+    const handleBeforeUnload = () => {
       if (isEnabled && formKey && formType) {
         // Best effort only: the browser does not wait for this async save.
         // Durable paths (Save and update, explicit save) must await forceSave/flushAllFormDrafts.
@@ -259,7 +288,7 @@ export const useFormAutoSave = (
     };
   }, [isEnabled, formKey, formType, forceSave]);
 
-  // Cleanup on unmount
+  // Cancel pending timers when the save function changes or on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -268,6 +297,16 @@ export const useFormAutoSave = (
       debouncedSave.cancel();
     };
   }, [debouncedSave]);
+
+  // Unmount (leaving the screen): best-effort save of answers typed since the last
+  // auto-save, unless the draft was just cleared (submitted / queued / declined).
+  useEffect(() => {
+    return () => {
+      const { formKey: key, formType: type, formValues: values, coordinates: coords, isEnabled: enabled } = latest.current;
+      if (!enabled || !key || !type || clearedSinceLastSave.current) return;
+      persist(values, coords).catch(error => console.error('Auto-save on leave failed:', error));
+    };
+  }, [persist]);
 
   return {
     loadDraft,
@@ -279,4 +318,4 @@ export const useFormAutoSave = (
   };
 };
 
-export default useFormAutoSave; 
+export default useFormAutoSave;

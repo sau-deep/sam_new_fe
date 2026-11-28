@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   TextField,
   RadioGroup,
@@ -20,6 +20,43 @@ import {
   getQuestionNumber,
   getSingleChoiceRadioConfig
 } from '../../utils/fieldMappings';
+import {
+  parseMultiSelect,
+  serializeMultiSelect,
+  findOtherOptionKey,
+  parseSingleChoice,
+  serializeSingleChoice
+} from '../../pages/survey/rmc/otherOptions';
+import {
+  columnLimitFor,
+  SECTION_TYPE_TO_KEY,
+  otherDetailMax,
+  otherDetailError,
+  storedValueError
+} from '../../pages/survey/rmc/rmcLimits';
+import { textLength } from '../../utils/textLimits';
+
+// Multi-select questions whose intake option keys differ from fieldMappings.
+// Section 10 Q10.25 stores the intake keys below ("othersAdvice" is its Other option).
+const MULTI_CHOICE_OVERRIDES = {
+  household: {
+    adviceReceived: [
+      'timelyInitiationComplementaryFeeding',
+      'reinforcedMessagesContinuedBreastfeeding',
+      'immunization',
+      'managementIllnessHome',
+      'managementContinuedFeedingIllness',
+      'hygieneSanitation',
+      'counselledFamilyReferral',
+      'responsiveFeeding',
+      'dietaryDiversity',
+      'consistencyFood',
+      'quantityQualityFood',
+      'consumptionTHR',
+      'othersAdvice'
+    ]
+  }
+};
 
 /**
  * Intelligent field renderer that renders form fields based on field type and configuration.
@@ -46,6 +83,17 @@ const SectionFieldRenderer = ({
 
     if (!sectionKey) return null;
 
+    const override = MULTI_CHOICE_OVERRIDES[sectionKey]?.[fieldName];
+    if (override) {
+      return {
+        type: 'multiple',
+        config: {
+          options: override,
+          displayNames: Object.fromEntries(override.map((k) => [k, k === 'othersAdvice' ? (t('others') || 'Others') : t(k)]))
+        }
+      };
+    }
+
     // Check if it's a multiple choice field
     if (MULTIPLE_CHOICE_FIELDS[sectionKey] && MULTIPLE_CHOICE_FIELDS[sectionKey][fieldName]) {
       return {
@@ -68,26 +116,8 @@ const SectionFieldRenderer = ({
 
   const fieldConfig = getFieldConfig();
 
-  // Initialize other value from stored data
-  const getInitialOtherValue = () => {
-    if (!value) return '';
-    if (typeof value === 'string') {
-      if (value.includes('Others - ')) {
-        return value.split('Others - ')[1] || '';
-      }
-      if (value.includes('Other - ')) {
-        return value.split('Other - ')[1] || '';
-      }
-    }
-    return '';
-  };
-
-  const [otherValue, setOtherValue] = useState(getInitialOtherValue());
-
-  // Update other value when value prop changes
-  React.useEffect(() => {
-    setOtherValue(getInitialOtherValue());
-  }, [value]);
+  // Character limit of the stored answer (contract cap or column width, F05 / C4), else undefined.
+  const columnLimit = columnLimitFor(SECTION_TYPE_TO_KEY[sectionType], fieldName);
 
   // Common option sets
   const yesNoOptions = [
@@ -159,63 +189,21 @@ const SectionFieldRenderer = ({
         );
       }
 
-      // Parse value - handle different formats: JSON array, comma-separated string, or array
-      let selectedValues = [];
-      if (value) {
-        if (typeof value === 'string') {
-          // Try to parse as JSON first (in case it's stored as JSON string)
-          try {
-            const parsed = JSON.parse(value);
-            if (Array.isArray(parsed)) {
-              selectedValues = parsed.map(v => String(v).trim());
-            } else {
-              // If not JSON array, treat as comma-separated string
-              selectedValues = value.split(',').map(v => v.trim()).filter(v => v);
-            }
-          } catch (e) {
-            // Not JSON, treat as comma-separated string
-            selectedValues = value.split(',').map(v => v.trim()).filter(v => v);
-          }
-        } else if (Array.isArray(value)) {
-          selectedValues = value.map(v => String(v).trim());
-        } else {
-          selectedValues = [String(value).trim()];
-        }
-      }
-
-      // Normalize selected values to match option keys (case-insensitive)
-      const normalizedSelectedValues = selectedValues.map(v => {
-        // Try to find matching option key (case-insensitive)
-        const matchingOption = config.options.find(opt =>
-          opt.toLowerCase() === v.toLowerCase() ||
-          (config.displayNames?.[opt] && config.displayNames[opt].toLowerCase() === v.toLowerCase())
-        );
-        return matchingOption || v;
-      });
-
-      const hasOthers = config.options.includes('other') || config.options.includes('others');
-      const isOtherSelected = normalizedSelectedValues.some(v =>
-        v.toLowerCase().includes('other') ||
-        v.toLowerCase().startsWith('others -') ||
-        v.toLowerCase().startsWith('other -')
-      );
+      // Exact option keys; the Other text keeps its commas; tokens that match no
+      // option (older rows, renamed options) are kept and shown (audit A02).
+      const parsed = parseMultiSelect(value, config);
+      const otherKey = findOtherOptionKey(config.options);
+      const write = (next) => onChange(serializeMultiSelect({ ...parsed, ...next }, config));
+      const otherMax = columnLimit ? otherDetailMax(columnLimit) : null;
+      const otherLengthError = otherMax != null && parsed.otherSelected ? otherDetailError(parsed.otherText, otherMax) : null;
 
       return (
         <Box>
           <FormGroup>
             {config.options.map((optionKey) => {
               const displayName = config.displayNames?.[optionKey] || optionKey;
-              const isSelected = normalizedSelectedValues.some(selected => {
-                if (optionKey === 'other' || optionKey === 'others') {
-                  return isOtherSelected;
-                }
-                // Match by option key (case-insensitive) or display name (case-insensitive)
-                return selected.toLowerCase() === optionKey.toLowerCase() ||
-                       selected.toLowerCase() === displayName.toLowerCase() ||
-                       selected === optionKey ||
-                       selected === displayName;
-              });
-
+              const isOther = optionKey === otherKey;
+              const isSelected = isOther ? parsed.otherSelected : parsed.selected.includes(optionKey);
               return (
                 <FormControlLabel
                   key={optionKey}
@@ -224,44 +212,14 @@ const SectionFieldRenderer = ({
                       checked={isSelected}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        let newValues = [...normalizedSelectedValues];
-
-                        if (optionKey === 'other' || optionKey === 'others') {
-                          if (checked) {
-                            // Add 'other' key if not already present
-                            if (!newValues.some(v => v.toLowerCase() === 'other' || v.toLowerCase() === 'others')) {
-                              newValues.push(optionKey);
-                            }
-                          } else {
-                            newValues = newValues.filter(v =>
-                              v.toLowerCase() !== 'other' &&
-                              v.toLowerCase() !== 'others' &&
-                              !v.toLowerCase().includes('other') &&
-                              !v.toLowerCase().startsWith('others -') &&
-                              !v.toLowerCase().startsWith('other -')
-                            );
-                            setOtherValue('');
-                          }
+                        if (isOther) {
+                          write(checked ? { otherSelected: true } : { otherSelected: false, otherText: '' });
                         } else {
-                          if (checked) {
-                            // Add option key if not already present
-                            if (!newValues.some(v =>
-                              v.toLowerCase() === optionKey.toLowerCase() ||
-                              v.toLowerCase() === displayName.toLowerCase()
-                            )) {
-                              newValues.push(optionKey);
-                            }
-                          } else {
-                            // Remove option key or display name (case-insensitive)
-                            newValues = newValues.filter(v =>
-                              v.toLowerCase() !== optionKey.toLowerCase() &&
-                              v.toLowerCase() !== displayName.toLowerCase()
-                            );
-                          }
+                          const selected = checked
+                            ? (parsed.selected.includes(optionKey) ? parsed.selected : [...parsed.selected, optionKey])
+                            : parsed.selected.filter((k) => k !== optionKey);
+                          write({ selected });
                         }
-
-                        // Join with comma and space for storage
-                        onChange(newValues.join(', '));
                       }}
                       disabled={!isEditMode}
                     />
@@ -270,31 +228,42 @@ const SectionFieldRenderer = ({
                 />
               );
             })}
+            {parsed.extras.map((token) => (
+              <FormControlLabel
+                key={`saved-${token}`}
+                control={
+                  <Checkbox
+                    checked
+                    onChange={() => write({ extras: parsed.extras.filter((x) => x !== token) })}
+                    disabled={!isEditMode}
+                  />
+                }
+                label={`${token} (saved answer)`}
+              />
+            ))}
           </FormGroup>
 
           {/* Others text field */}
-          {hasOthers && isOtherSelected && isEditMode && (
+          {parsed.otherSelected && isEditMode && (
             <TextField
               fullWidth
               size="small"
               label={t('otherSpecify') || 'Other (Please specify)'}
-              value={otherValue}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                setOtherValue(newValue);
-                const baseValues = selectedValues.filter(v =>
-                  !v.toLowerCase().includes('other') &&
-                  !v.toLowerCase().startsWith('others -') &&
-                  !v.toLowerCase().startsWith('other -')
-                );
-                onChange(newValue ? `Others - ${newValue}` : baseValues.join(', '));
-              }}
+              value={parsed.otherText}
+              onChange={(e) => write({ otherSelected: true, otherText: e.target.value })}
+              error={!!otherLengthError}
+              helperText={otherLengthError || (otherMax != null ? `${textLength(parsed.otherText.trim())}/${otherMax}` : undefined)}
               sx={{ mt: 1 }}
             />
           )}
-          {hasOthers && isOtherSelected && !isEditMode && otherValue && (
+          {parsed.otherSelected && !isEditMode && parsed.otherText && (
             <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-              {t('otherSpecify') || 'Other'}: {otherValue}
+              {t('otherSpecify') || 'Other'}: {parsed.otherText}
+            </Typography>
+          )}
+          {error && (
+            <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+              {error}
             </Typography>
           )}
         </Box>
@@ -303,31 +272,6 @@ const SectionFieldRenderer = ({
 
     // Single choice with Others (radio buttons)
     if (fieldConfig?.type === 'singleWithOthers') {
-      const isOtherSelected = value && (
-        value.toLowerCase().includes('others -') ||
-        value.toLowerCase().includes('other -') ||
-        value.toLowerCase().startsWith('others -') ||
-        value.toLowerCase().startsWith('other -') ||
-        (value.toLowerCase().includes('others') && !value.toLowerCase().includes('others -')) ||
-        (value.toLowerCase().includes('other') && !value.toLowerCase().includes('other -') &&
-         value.toLowerCase() !== 'other' && value.toLowerCase() !== 'others')
-      );
-      // Determine base value - handle both "Other" and "Others"
-      let baseValue = value;
-      if (isOtherSelected) {
-        if (fieldName === 'thrNotReceivedReason' || fieldName === 'thrNotReceivedReason_child' || fieldName === 'thrNotReceivedReasonLast3Month') {
-          baseValue = 'Other';
-        } else if (fieldName === 'qtyThrFood' || fieldName === 'thrQtyPrepareChild' || fieldName === 'qtyPrepareFood') {
-          baseValue = 'Any Other';
-        } else if (fieldName === 'storeOpenedThr' || fieldName === 'storeThr' || fieldName === 'thrStore') {
-          baseValue = 'Any other';
-        } else if (fieldName === 'familyAttendedAnnaprashan') {
-          baseValue = 'Others';
-        } else {
-          baseValue = 'Others';
-        }
-      }
-
       // Get options based on field name
       let options = [];
       if (fieldName === 'themeOfCbe') {
@@ -406,18 +350,20 @@ const SectionFieldRenderer = ({
         ];
       }
 
+      // The option that means Other for this question ("Others", "Other", "Any Other", "Any other").
+      const otherOption = (options.find((o) => /^(any\s+)?others?$/i.test(o.value)) || {}).value || 'Others';
+      // Exact parse: "Intended child and other children…" is a normal answer, not Other (A02).
+      const single = parseSingleChoice(value, otherOption);
+      const matchedChoice = options.find((o) => o.value.toLowerCase() === String(single.choice).toLowerCase());
+      if (matchedChoice) single.choice = matchedChoice.value;
+      const otherMax = columnLimit ? otherDetailMax(columnLimit) : null;
+      const otherLengthError = otherMax != null && single.isOther ? otherDetailError(single.otherText, otherMax) : null;
+
       return (
         <Box>
           <RadioGroup
-            value={baseValue || ''}
-            onChange={(e) => {
-              if (e.target.value === 'Others' || e.target.value === 'Other') {
-                onChange(e.target.value);
-              } else {
-                onChange(e.target.value);
-                setOtherValue('');
-              }
-            }}
+            value={single.choice || ''}
+            onChange={(e) => onChange(serializeSingleChoice(e.target.value, e.target.value === otherOption ? single.otherText : '', otherOption))}
           >
             {options.map((option) => (
               <FormControlLabel
@@ -429,33 +375,26 @@ const SectionFieldRenderer = ({
             ))}
           </RadioGroup>
 
-          {isOtherSelected && isEditMode && (
+          {single.isOther && isEditMode && (
             <TextField
               fullWidth
               size="small"
               label={t('otherSpecify') || 'Other (Please specify)'}
-              value={otherValue}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                setOtherValue(newValue);
-                let prefix = 'Others';
-                if (fieldName === 'thrNotReceivedReason' || fieldName === 'thrNotReceivedReason_child' || fieldName === 'thrNotReceivedReasonLast3Month') {
-                  prefix = 'Other';
-                } else if (fieldName === 'qtyThrFood' || fieldName === 'thrQtyPrepareChild' || fieldName === 'qtyPrepareFood') {
-                  prefix = 'Any Other';
-                } else if (fieldName === 'storeOpenedThr' || fieldName === 'storeThr' || fieldName === 'thrStore') {
-                  prefix = 'Any other';
-                } else if (fieldName === 'familyAttendedAnnaprashan') {
-                  prefix = 'Others';
-                }
-                onChange(newValue ? `${prefix} - ${newValue}` : prefix);
-              }}
+              value={single.otherText}
+              onChange={(e) => onChange(serializeSingleChoice(otherOption, e.target.value, otherOption))}
+              error={!!otherLengthError}
+              helperText={otherLengthError || (otherMax != null ? `${textLength(single.otherText.trim())}/${otherMax}` : undefined)}
               sx={{ mt: 1 }}
             />
           )}
-          {isOtherSelected && !isEditMode && otherValue && (
+          {single.isOther && !isEditMode && single.otherText && (
             <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-              {t('otherSpecify') || 'Other'}: {otherValue}
+              {t('otherSpecify') || 'Other'}: {single.otherText}
+            </Typography>
+          )}
+          {error && (
+            <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+              {error}
             </Typography>
           )}
         </Box>
@@ -557,7 +496,8 @@ const SectionFieldRenderer = ({
       );
     }
 
-    // Default: Text field
+    // Default: Text field (long notes are checked against their stored limit)
+    const limitError = columnLimit ? storedValueError(value, columnLimit) : null;
     return (
       <TextField
         fullWidth
@@ -567,8 +507,8 @@ const SectionFieldRenderer = ({
         disabled={!isEditMode}
         multiline={typeof value === 'string' && value.length > 100}
         rows={typeof value === 'string' && value.length > 100 ? 3 : 1}
-        error={!!error}
-        helperText={error}
+        error={!!error || !!limitError}
+        helperText={error || limitError}
       />
     );
   };

@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Card, Row, Col, Button, Select, DatePicker, Table, Tag,
-  Typography, Space, Alert, Tabs, Tooltip, message,
+  Typography, Alert, Tabs, Tooltip, message,
 } from "antd";
 import {
   DownloadOutlined, FileExcelOutlined, HistoryOutlined,
@@ -68,44 +68,55 @@ const FORM_CATEGORIES = [
     ],
   },
   {
+    // These four downloads are the Routine Monitoring "Household / caregiver
+    // interaction" sections — NOT the separate Household Checklist form (audit E06).
     key: "household",
-    label: "Household Data",
-    description: "Household Checklist exports by section",
+    label: "RMC Household Sections 8–11",
+    description: "Routine Monitoring household / caregiver interaction sections. For Household Checklist survey responses use the Household Checklist tab.",
     color: "#8e44ad",
     exports: [
       {
         key: "household-sec8",
-        label: "Household Section 8",
-        description: "Child nutrition & feeding data",
+        label: "RMC Household Section 8",
+        description: "Routine Monitoring — services received by a child enrolled under CMAM",
         endpoint: "/excel-export/household-section8",
         icon: "🏠",
         color: UNICEF_COLORS.green,
       },
       {
         key: "household-sec9",
-        label: "Household Section 9",
-        description: "Extended household assessment — Part 1",
+        label: "RMC Household Section 9",
+        description: "Routine Monitoring — infant 0–6 months",
         endpoint: "/excel-export/household-section9",
         icon: "📊",
         color: UNICEF_COLORS.orange,
       },
       {
         key: "household-sec10",
-        label: "Household Section 10",
-        description: "Extended household assessment — Part 2",
+        label: "RMC Household Section 10",
+        description: "Routine Monitoring — child 6–8 months",
         endpoint: "/excel-export/household-section10",
         icon: "📊",
         color: "#9B59B6",
       },
       {
         key: "household-sec11",
-        label: "Household Section 11",
-        description: "Extended household assessment — Part 3",
+        label: "RMC Household Section 11",
+        description: "Routine Monitoring — child 9–23 months",
         endpoint: "/excel-export/household-section11",
         icon: "📊",
         color: "#16A085",
       },
     ],
+  },
+  {
+    // The separate Household Checklist form. Its full download lives on Complete
+    // Response; the Child List is a sample. Both are linked from here.
+    key: "household-checklist",
+    label: "Household Checklist",
+    description: "Household Checklist survey responses (the separate Household form)",
+    color: "#6c3483",
+    exports: [],
   },
   {
     key: "followup",
@@ -160,6 +171,28 @@ const AUDIT_COLUMNS = [
   },
 ];
 
+// Household Checklist form downloads (audit E04/E06).
+const HOUSEHOLD_CHECKLIST_NAV_ITEMS = [
+  {
+    key: "household-checklist-full",
+    label: "Household Checklist — full responses",
+    description: "Every Household Checklist response for a date range and state, with the captured address. Opens Complete Response with Household Checklist selected.",
+    icon: "🗂️",
+    path: "/data/complete-response?form=household",
+    color: "#6c3483",
+    // Complete Response is limited to Admin / UNICEF / IEG.
+    disableForStateAdmin: true,
+  },
+  {
+    key: "household-child-list",
+    label: "Household Child List (sample)",
+    description: "A random sample: at most 25 records, one per unique Child ID, spread across clusters. Not the full dataset.",
+    icon: "🏠",
+    path: "/data/household-child-list",
+    color: "#16a085",
+  },
+];
+
 const CA_NAV_ITEMS = [
   {
     key: "response-summary",
@@ -171,13 +204,17 @@ const CA_NAV_ITEMS = [
   },
   {
     key: "household-child-list",
-    label: "Household Child List",
-    description: "Filter and export household survey records by location and date range",
+    label: "Household Child List (sample)",
+    description: "A random sample of at most 25 Household Checklist records (unique Child IDs) for a location — not the full dataset",
     icon: "🏠",
     path: "/data/household-child-list",
     color: "#16a085",
   },
 ];
+
+// /data/export/household opens the Household Checklist tab (the RMC household
+// sections are shown under Routine Monitoring).
+const TAB_FOR_FORM = { household: "household-checklist" };
 
 export default function DataExport({ defaultForm }) {
   const navigate = useNavigate();
@@ -186,7 +223,7 @@ export default function DataExport({ defaultForm }) {
   const [selectedState, setSelectedState] = useState("All States");
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(defaultForm || "rmc");
+  const [activeTab, setActiveTab] = useState(TAB_FOR_FORM[defaultForm] || defaultForm || "rmc");
   const { isAdmin, isStateAdmin } = useAuth();
 
   // States shown in the filter are derived from the active form_location entries
@@ -220,7 +257,7 @@ export default function DataExport({ defaultForm }) {
   // When the route changes (e.g., navigating from /data/export/household → /data/export/rmc),
   // sync the active tab with the new defaultForm prop.
   useEffect(() => {
-    if (defaultForm) setActiveTab(defaultForm);
+    if (defaultForm) setActiveTab(TAB_FOR_FORM[defaultForm] || defaultForm);
   }, [defaultForm]);
 
   const handleDownload = async (exportType) => {
@@ -325,6 +362,44 @@ export default function DataExport({ defaultForm }) {
     </Row>
   );
 
+  const NavGrid = ({ items }) => (
+    <Row gutter={[16, 16]}>
+      {items.map((item) => {
+        const blocked = item.disableForStateAdmin && isStateAdmin();
+        const button = (
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() => navigate(item.path)}
+            disabled={blocked}
+            block
+            style={{ borderRadius: 8, height: 38, ...(blocked ? {} : { borderColor: item.color, color: item.color }) }}
+          >
+            Open
+          </Button>
+        );
+        return (
+          <Col xs={24} sm={12} lg={8} key={item.key}>
+            <Card
+              style={{ borderRadius: 14, border: "1px solid #F3F4F6", background: "white", height: "100%" }}
+              bodyStyle={{ padding: 20, display: "flex", flexDirection: "column", height: "100%" }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 12 }}>{item.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 1.5, flex: 1 }}>
+                {item.description}
+              </div>
+              {blocked ? (
+                <Tooltip title="Not available for State Admin">
+                  <span style={{ display: "block", cursor: "not-allowed" }}>{button}</span>
+                </Tooltip>
+              ) : button}
+            </Card>
+          </Col>
+        );
+      })}
+    </Row>
+  );
+
   const householdCat = FORM_CATEGORIES.find((c) => c.key === "household");
 
   const tabItems = FORM_CATEGORIES.filter((cat) => cat.key !== "household").map((cat) => ({
@@ -339,7 +414,19 @@ export default function DataExport({ defaultForm }) {
         <div style={{ marginBottom: 16 }}>
           <Text type="secondary">{cat.description}</Text>
         </div>
-        <ExportGrid exports={cat.exports} />
+        {cat.exports.length > 0 && <ExportGrid exports={cat.exports} />}
+
+        {cat.key === "household-checklist" && (
+          <>
+            <Alert
+              type="info"
+              showIcon
+              style={{ borderRadius: 8, marginBottom: 16 }}
+              message="The “RMC Household Sections 8–11” downloads on the Routine Monitoring tab are Routine Monitoring data, not Household Checklist responses."
+            />
+            <NavGrid items={HOUSEHOLD_CHECKLIST_NAV_ITEMS} />
+          </>
+        )}
 
         {cat.key === "rmc" && householdCat && (
           <div style={{ marginTop: 36 }}>
@@ -373,30 +460,7 @@ export default function DataExport({ defaultForm }) {
                 <Text type="secondary" style={{ fontSize: 12 }}>View detailed response summaries and child lists</Text>
               </div>
             </div>
-            <Row gutter={[16, 16]}>
-              {CA_NAV_ITEMS.map((item) => (
-                <Col xs={24} sm={12} lg={8} key={item.key}>
-                  <Card
-                    style={{ borderRadius: 14, border: "1px solid #F3F4F6", background: "white", height: "100%" }}
-                    bodyStyle={{ padding: 20, display: "flex", flexDirection: "column", height: "100%" }}
-                  >
-                    <div style={{ fontSize: 28, marginBottom: 12 }}>{item.icon}</div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>{item.label}</div>
-                    <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, lineHeight: 1.5, flex: 1 }}>
-                      {item.description}
-                    </div>
-                    <Button
-                      icon={<DownloadOutlined />}
-                      onClick={() => navigate(item.path)}
-                      block
-                      style={{ borderRadius: 8, height: 38, borderColor: item.color, color: item.color }}
-                    >
-                      Open
-                    </Button>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
+            <NavGrid items={CA_NAV_ITEMS} />
           </div>
         )}
       </div>

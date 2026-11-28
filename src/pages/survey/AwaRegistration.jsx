@@ -20,9 +20,9 @@ import { ArrowBack, ArrowForward, Check } from "@mui/icons-material";
 // Section of the Routine Monitoring form -> uses ROUTINE_MONITORING per-form locations.
 import { getFormLocationHelpers } from "utils/formLocations";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField, registerDraftValue } from './rmc/sectionDraft';
 import { useCheckboxGroupWithOthers } from 'utils/formUtils';
 
 const { getStateOptions, getDistrictOptions, getBlockOptions } =
@@ -61,12 +61,14 @@ const FormSectionTitle = styled(Typography)(({ theme }) => ({
 
 const AwaRegistration = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
-    const [samChildren06, setSamChildren06] = useState('');
-    const [samChildren65, setSamChildren65] = useState('');
-    const [samChildrenTotal, setSamChildrenTotal] = useState('');
-    const [cmamChildren06, setCmamChildren06] = useState('');
-    const [cmamChildren65, setCmamChildren65] = useState('');
-    const [cmamChildrenTotal, setCmamChildrenTotal] = useState('');
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
+    const [samChildren06, setSamChildren06] = useDraftField(sectionDraft, 'samChildren06', '');
+    const [samChildren65, setSamChildren65] = useDraftField(sectionDraft, 'samChildren65', '');
+    const [samChildrenTotal, setSamChildrenTotal] = useDraftField(sectionDraft, 'samChildrenTotal', '');
+    const [cmamChildren06, setCmamChildren06] = useDraftField(sectionDraft, 'cmamChildren06', '');
+    const [cmamChildren65, setCmamChildren65] = useDraftField(sectionDraft, 'cmamChildren65', '');
+    const [cmamChildrenTotal, setCmamChildrenTotal] = useDraftField(sectionDraft, 'cmamChildrenTotal', '');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
@@ -119,12 +121,12 @@ const AwaRegistration = React.forwardRef((props, ref) => {
         if (cmamChildren65 && parseInt(cmamChildren65) <= parseInt(samChildren65 || 0)) {
             setCmamChildren65Error('');
         }
-    }, [samChildren06, samChildren65]);
+    }, [samChildren06, samChildren65]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const total = (parseInt(cmamChildren06 || 0) + parseInt(cmamChildren65 || 0)).toString();
         setCmamChildrenTotal(total);
-    }, [cmamChildren06, cmamChildren65]);
+    }, [cmamChildren06, cmamChildren65, setCmamChildrenTotal]);
 
     // Create validation schema inside component to access t function
     const step1ValidationSchema = Yup.object({
@@ -192,7 +194,14 @@ const AwaRegistration = React.forwardRef((props, ref) => {
     ];
 
     // Use the utility hook for variation reasons
-    const variationReasonGroup = useCheckboxGroupWithOthers('variationReason', 'variationReasonOther', [], '');
+    const variationReasonGroup = useCheckboxGroupWithOthers(
+        'variationReason',
+        'variationReasonOther',
+        Array.isArray(sectionDraft.initial?.variationReason) ? sectionDraft.initial.variationReason : [],
+        typeof sectionDraft.initial?.variationReasonOther === 'string' ? sectionDraft.initial.variationReasonOther : ''
+    );
+    registerDraftValue(sectionDraft, 'variationReason', variationReasonGroup.selectedOptions);
+    registerDraftValue(sectionDraft, 'variationReasonOther', variationReasonGroup.otherText);
     
     // Function to trigger validation display (called from parent on submit)
     const triggerValidation = () => {
@@ -273,10 +282,6 @@ const AwaRegistration = React.forwardRef((props, ref) => {
         return isValid;
     };
     
-    // Expose validation function to parent component
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     return (
         <div id="awaRegistrationForm" name="awaRegistrationForm">

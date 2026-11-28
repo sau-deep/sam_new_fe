@@ -12,6 +12,7 @@ import * as XLSX from "xlsx";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../services/axiosInstance";
+import { isApiSuccess, apiErrorMessage } from "../../utils/apiResult";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -156,17 +157,23 @@ export default function Notifications() {
     setDetailLoading(true);
     try {
       const res = await api.get(`${BASE}/${row.id}`);
-      const data = res?.data?.data || (res?.data && !res.data.success ? res.data : null);
-      if (data) setSelected((prev) => (prev && prev.id === row.id ? { ...prev, ...data } : prev));
+      const data = isApiSuccess(res) ? res?.data?.data : null;
+      if (!isApiSuccess(res)) message.error(apiErrorMessage(res, "Could not load the edit details"));
+      if (data && typeof data === "object") setSelected((prev) => (prev && prev.id === row.id ? { ...prev, ...data } : prev));
     } catch { /* ignore — diff will show no changes */ } finally {
       setDetailLoading(false);
     }
   };
 
-  // For these endpoints the SAMResponse wrapper uses success===true / statusCode 200 to mean OK.
-  const isOk = (res) => {
-    const d = res?.data;
-    return d?.success === true || d?.statusCode === 200 || d?.statusCode === 201;
+  // One success rule (audit A04): body status wins over `success`.
+  const isOk = (res) => isApiSuccess(res);
+
+  // Use the server's copy of the notification when the response carries it.
+  const applyServerRow = (id, fallback) => (res) => {
+    const d = res?.data?.data;
+    const fromServer = d && typeof d === "object" && !Array.isArray(d) && d.id === id ? d : null;
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, ...fallback, ...(fromServer || {}) } : n)));
+    setSelected((prev) => (prev && prev.id === id ? { ...prev, ...fallback, ...(fromServer || {}) } : prev));
   };
 
   const handleApprove = async (id) => {
@@ -174,13 +181,12 @@ export default function Notifications() {
       const res = await api.post(`/form/routine-monitoring/edit-notifications/${id}/approve`);
       if (isOk(res)) {
         message.success(res.data?.message || "Edit approved and applied");
-        // Optimistic update — the row is already in memory; avoid a 3-endpoint refetch.
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, status: "APPROVED" } : n)));
+        applyServerRow(id, { status: "APPROVED" })(res);
       } else {
-        message.error(res.data?.message || "Failed to approve");
+        // Failure: nothing changes on screen except the reason.
+        message.error(apiErrorMessage(res, "Failed to approve"));
       }
-    } catch (e) { message.error(e.response?.data?.message || "Failed to approve"); }
+    } catch (e) { message.error(apiErrorMessage(e, "Failed to approve")); }
   };
 
   const handleReject = async (id) => {
@@ -191,16 +197,14 @@ export default function Notifications() {
       );
       if (isOk(res)) {
         message.success(res.data?.message || "Edit rejected");
-        // Optimistic update — the row is already in memory; avoid a 3-endpoint refetch.
-        setNotifications((prev) =>
-          prev.map((n) =>
-            n.id === id ? { ...n, status: "REJECTED", rejectionReason: rejectComment } : n));
+        applyServerRow(id, { status: "REJECTED", rejectionReason: rejectComment })(res);
         setDetailModal(false);
         setRejectComment("");
       } else {
-        message.error(res.data?.message || "Failed to reject");
+        // Failure: the dialog stays open with the reason and the typed comment.
+        message.error(apiErrorMessage(res, "Failed to reject"));
       }
-    } catch (e) { message.error(e.response?.data?.message || "Failed to reject"); }
+    } catch (e) { message.error(apiErrorMessage(e, "Failed to reject")); }
   };
 
   // Export — fetches the filtered rows from the backend (submitted date + status), then
@@ -215,7 +219,7 @@ export default function Notifications() {
     try {
       const res = await api.get(`${BASE}/export`, { params, noCache: true });
       if (!isOk(res)) {
-        message.error(res.data?.message || "Failed to export notifications");
+        message.error(apiErrorMessage(res, "Failed to export notifications"));
         return;
       }
       const rows = Array.isArray(res.data?.data) ? res.data.data : [];
@@ -229,7 +233,7 @@ export default function Notifications() {
       message.success(`Exported ${rows.length} notification${rows.length > 1 ? "s" : ""}`);
       setExportOpen(false);
     } catch (e) {
-      message.error(e.response?.data?.message || "Failed to export notifications");
+      message.error(apiErrorMessage(e, "Failed to export notifications"));
     } finally {
       setExporting(false);
     }

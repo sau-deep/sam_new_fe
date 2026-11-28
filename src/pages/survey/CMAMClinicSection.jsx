@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -41,6 +42,8 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const CMAMClinicSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     const initialValues = {
         vhsndVisitDay: '',
@@ -148,27 +151,27 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
     ];
 
     // State management for checkbox groups and "Others" options
-    const [testConductedSam, setTestConductedSam] = useState([]);
-    const [testConductedSamOther, setTestConductedSamOther] = useState('');
-    const [motherNotAgreeReason, setMotherNotAgreeReason] = useState([]);
-    const [motherNotAgreeReasonOther, setMotherNotAgreeReasonOther] = useState('');
-    const [motherGivenMessage, setMotherGivenMessage] = useState([]);
-    const [motherGivenMessageOther, setMotherGivenMessageOther] = useState('');
-    const [counsellingAids, setCounsellingAids] = useState([]);
-    const [counsellingAidsOther, setCounsellingAidsOther] = useState('');
+    const [testConductedSam, setTestConductedSam] = useDraftField(sectionDraft, 'testConductedSam', []);
+    const [testConductedSamOther, setTestConductedSamOther] = useDraftField(sectionDraft, 'testConductedSamOther', '');
+    const [motherNotAgreeReason, setMotherNotAgreeReason] = useDraftField(sectionDraft, 'motherNotAgreeReason', []);
+    const [motherNotAgreeReasonOther, setMotherNotAgreeReasonOther] = useDraftField(sectionDraft, 'motherNotAgreeReasonOther', '');
+    const [motherGivenMessage, setMotherGivenMessage] = useDraftField(sectionDraft, 'motherGivenMessage', []);
+    const [motherGivenMessageOther, setMotherGivenMessageOther] = useDraftField(sectionDraft, 'motherGivenMessageOther', '');
+    const [counsellingAids, setCounsellingAids] = useDraftField(sectionDraft, 'counsellingAids', []);
+    const [counsellingAidsOther, setCounsellingAidsOther] = useDraftField(sectionDraft, 'counsellingAidsOther', '');
     // Add state for physicalExamSam
-    const [physicalExamSam, setPhysicalExamSam] = useState('');
+    const [physicalExamSam, setPhysicalExamSam] = useDraftField(sectionDraft, 'physicalExamSam', '');
     // Add state for 6.6 and 6.7
-    const [childReferralNrc, setChildReferralNrc] = useState('');
-    const [motherAgreeNrc, setMotherAgreeNrc] = useState('');
+    const [childReferralNrc, setChildReferralNrc] = useDraftField(sectionDraft, 'childReferralNrc', '');
+    const [motherAgreeNrc, setMotherAgreeNrc] = useDraftField(sectionDraft, 'motherAgreeNrc', '');
     // Add state for childEnrolledCmam
-    const [childEnrolledCmam, setChildEnrolledCmam] = useState('');
+    const [childEnrolledCmam, setChildEnrolledCmam] = useDraftField(sectionDraft, 'childEnrolledCmam', '');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         vhsndVisitDay: '',
         physicalExamSam: '',
         vhsndMedicalComplication: '',
@@ -362,10 +365,6 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
         return true;
     };
     
-    // Expose validation function to parent component
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     // Helper function to check if field is empty and validation should show
     const shouldShowError = (fieldName) => {
@@ -755,7 +754,7 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
                             )}
 
                             {/* Conditional "Others" field for 6.8 (only if 6.8 is shown) */}
-                            {formValues.childReferralNrc === 'Yes' && formValues.motherAgreeNrc === 'No' && formValues.motherNotAgreeReason && formValues.motherNotAgreeReason.includes('others') && (
+                            {formValues.childReferralNrc === 'Yes' && formValues.motherAgreeNrc === 'No' && motherNotAgreeReason.includes('others') && (
                                 <Grid item xs={12}>
                                     <label className={styles.label} htmlFor="motherNotAgreeReasonOther">
                                         {t('otherSpecify')} <span className={styles.requiredStar}>*</span>
@@ -1069,7 +1068,7 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
                             </Grid>
 
                             {/* Conditional "Others" field for 6.21 */}
-                            {formValues.motherGivenMessage && formValues.motherGivenMessage.includes('others') && (
+                            {motherGivenMessage.includes('others') && (
                                 <Grid item xs={12}>
                                     <label className={styles.label} htmlFor="motherGivenMessageOther">
                                         {t('otherSpecify')} <span className={styles.requiredStar}>*</span>
@@ -1157,7 +1156,7 @@ const CMAMClinicSection = React.forwardRef((props, ref) => {
                             </Grid>
 
                             {/* Conditional "Others" field for 6.22 */}
-                            {formValues.counsellingAids && formValues.counsellingAids.includes('others') && (
+                            {counsellingAids.includes('others') && (
                                 <Grid item xs={12}>
                                     <label className={styles.label} htmlFor="counsellingAidsOther">
                                         {t('otherSpecify')} <span className={styles.requiredStar}>*</span>

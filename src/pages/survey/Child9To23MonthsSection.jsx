@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -39,24 +40,26 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const Child9To23MonthsSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // State for conditional rendering
-    const [thrReceivedLast3Month, setThrReceivedLast3Month] = useState('');
-    const [thrNotReceivedReason, setThrNotReceivedReason] = useState('');
-    const [thrConsumedByChild, setThrConsumedByChild] = useState('');
-    const [thrNotConsumedReason, setThrNotConsumedReason] = useState([]);
-    const [qtyThrFood, setQtyThrFood] = useState('');
-    const [storeOpenedThr, setStoreOpenedThr] = useState('');
-    const [feedingAdviceReceived, setFeedingAdviceReceived] = useState('');
-    const [typeOfFeedingAdvice, setTypeOfFeedingAdvice] = useState([]);
-    const [childAwareLastWeighed, setChildAwareLastWeighed] = useState('');
+    const [thrReceivedLast3Month, setThrReceivedLast3Month] = useDraftField(sectionDraft, 'thrReceivedLast3Month', '');
+    const [thrNotReceivedReason, setThrNotReceivedReason] = useDraftField(sectionDraft, 'thrNotReceivedReason', '');
+    const [thrConsumedByChild, setThrConsumedByChild] = useDraftField(sectionDraft, 'thrConsumedByChild', '');
+    const [thrNotConsumedReason, setThrNotConsumedReason] = useDraftField(sectionDraft, 'thrNotConsumedReason', []);
+    const [, setQtyThrFood] = useDraftField(sectionDraft, 'qtyThrFood', '');
+    const [, setStoreOpenedThr] = useDraftField(sectionDraft, 'storeOpenedThr', '');
+    const [feedingAdviceReceived, setFeedingAdviceReceived] = useDraftField(sectionDraft, 'feedingAdviceReceived', '');
+    const [typeOfFeedingAdvice, setTypeOfFeedingAdvice] = useDraftField(sectionDraft, 'typeOfFeedingAdvice', []);
+    const [childAwareLastWeighed, setChildAwareLastWeighed] = useDraftField(sectionDraft, 'childAwareLastWeighed', '');
     const [ageError, setAgeError] = useState('');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         childFullName: '',
         childGender: '',
         childAgeInMonths: '',
@@ -114,7 +117,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
     });
     
     // State for food frequency selections (11.6)
-    const [foodFrequencies, setFoodFrequencies] = useState({
+    const [foodFrequencies, setFoodFrequencies] = useDraftField(sectionDraft, 'foodFrequencies', {
         porridgeGruelFrequency: '',
         babyFoodFrequency: '',
         grainsBasedFoodFrequency: '',
@@ -399,10 +402,6 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
         return true;
     };
 
-    // Expose validation function to parent
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     // Update hidden inputs when food frequencies change
     useEffect(() => {
@@ -414,56 +413,9 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
         });
     }, [foodFrequencies]);
 
-    // Update hidden inputs when "Other" text fields change
-    useEffect(() => {
-        const updateHiddenInputs = () => {
-            // Update qtyThrFood hidden input
-            const qtyOtherText = document.getElementById('qtyThrFoodOther')?.value;
-            const qtyHiddenInput = document.querySelector('input[name="qtyThrFood"]');
-            if (qtyHiddenInput) {
-                if (qtyThrFood === 'Any Other' && qtyOtherText?.trim()) {
-                    qtyHiddenInput.value = `Others - ${qtyOtherText.trim()}`;
-                } else {
-                    qtyHiddenInput.value = qtyThrFood || '';
-                }
-            }
-
-            // Update storeOpenedThr hidden input
-            const storeOtherText = document.getElementById('storeOpenedThrOther')?.value;
-            const storeHiddenInput = document.querySelector('input[name="storeOpenedThr"]');
-            if (storeHiddenInput) {
-                if (storeOpenedThr === 'Any other' && storeOtherText?.trim()) {
-                    storeHiddenInput.value = `Others - ${storeOtherText.trim()}`;
-                } else {
-                    storeHiddenInput.value = storeOpenedThr || '';
-                }
-            }
-        };
-
-        // Add event listeners to the "Other" text fields
-        const qtyOtherField = document.getElementById('qtyThrFoodOther');
-        const storeOtherField = document.getElementById('storeOpenedThrOther');
-
-        if (qtyOtherField) {
-            qtyOtherField.addEventListener('input', updateHiddenInputs);
-        }
-        if (storeOtherField) {
-            storeOtherField.addEventListener('input', updateHiddenInputs);
-        }
-
-        // Initial update
-        updateHiddenInputs();
-
-        // Cleanup event listeners
-        return () => {
-            if (qtyOtherField) {
-                qtyOtherField.removeEventListener('input', updateHiddenInputs);
-            }
-            if (storeOtherField) {
-                storeOtherField.removeEventListener('input', updateHiddenInputs);
-            }
-        };
-    }, [qtyThrFood, storeOpenedThr]);
+    // The qtyThrFood / storeOpenedThr hidden inputs below are computed from state.
+    // (A DOM listener used to write into input[name="qtyThrFood"], which is the first
+    // radio button, corrupting its value; it has been removed.)
 
     const frequencyOptions = ['0', '1', '2', '3', 'morethan3'];
 
@@ -1024,7 +976,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
                                 name="thrNotConsumedReasonCombined"
                         value={(() => {
                             let finalOptions = formValues.thrNotConsumedReason ? formValues.thrNotConsumedReason.split(', ') : [];
-                            const otherText = document.getElementById('thrNotConsumedReasonOther')?.value;
+                            const otherText = formValues.thrNotConsumedReasonOther || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (formValues.thrNotConsumedReason && formValues.thrNotConsumedReason.includes('others') && otherText?.trim()) {
                                 finalOptions = finalOptions.filter(option => option !== 'others');
                                 finalOptions.push(`Others - ${otherText.trim()}`);
@@ -1456,7 +1408,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
                                 name="typeOfFeedingAdvice"
                                 value={(() => {
                                     let finalOptions = formValues.typeOfFeedingAdvice ? formValues.typeOfFeedingAdvice.split(', ') : [];
-                                    const otherText = document.getElementById('typeOfFeedingAdviceOther')?.value;
+                                    const otherText = formValues.typeOfFeedingAdviceOther || ''; // state, not the DOM: correct on the first render after a draft restore
                                     if (formValues.typeOfFeedingAdvice && formValues.typeOfFeedingAdvice.includes('others') && otherText?.trim()) {
                                         finalOptions = finalOptions.filter(option => option !== 'others');
                                         finalOptions.push(`Others - ${otherText.trim()}`);
@@ -1636,7 +1588,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
                         type="hidden"
                         name="thrNotReceivedReasonLast3MonthCombined"
                         value={(() => {
-                            const otherText = document.getElementById('thrNotReceivedReasonOther')?.value;
+                            const otherText = formValues.thrNotReceivedReasonOther || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (formValues.thrNotReceivedReasonLast3Month === 'Other' && otherText?.trim()) {
                                 return `Others - ${otherText.trim()}`;
                             }
@@ -1649,7 +1601,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
                         type="hidden"
                         name="qtyThrFood"
                         value={(() => {
-                            const otherText = document.getElementById('qtyThrFoodOther')?.value;
+                            const otherText = formValues.qtyThrFoodOther || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (formValues.qtyThrFood === 'Any Other' && otherText?.trim()) {
                                 return `Others - ${otherText.trim()}`;
                             }
@@ -1661,7 +1613,7 @@ const Child9To23MonthsSection = React.forwardRef((props, ref) => {
                         type="hidden"
                         name="storeOpenedThr"
                         value={(() => {
-                            const otherText = document.getElementById('storeOpenedThrOther')?.value;
+                            const otherText = formValues.storeOpenedThrOther || ''; // state, not the DOM: correct on the first render after a draft restore
                             if (formValues.storeOpenedThr === 'Any other' && otherText?.trim()) {
                                 return `Others - ${otherText.trim()}`;
                             }

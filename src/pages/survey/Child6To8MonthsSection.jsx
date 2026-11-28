@@ -14,6 +14,13 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
+import { ANNAPRASHAN_OTHER_MAX, THR_QTY_OTHER_MAX, THR_STORE_OTHER_MAX, RMC_FIELD_LIMITS, otherDetailError, noteError, otherDetailMaxFor } from './rmc/rmcLimits';
+import { textLength } from 'utils/textLimits';
+
+const OTHER_REGULAR_FOOD_MAX = RMC_FIELD_LIMITS.householdData.otherRegularFood;
+// Q10.12 "Others - <detail>" is stored in thr_not_received_reason (150): detail <= 141.
+const THR_NOT_RECEIVED_OTHER_MAX = otherDetailMaxFor('householdData', 'thrNotReceivedReason');
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -48,28 +55,30 @@ const FrequencyButtonGroup = styled(ButtonGroup)(({ theme }) => ({
 
 const Child6To8MonthsSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // State for conditional rendering
-    const [familyAttendedAnnaprashan, setFamilyAttendedAnnaprashan] = useState('');
-    const [thrReceivedPastMonth, setThrReceivedPastMonth] = useState('');
-    const [thrConsumed, setThrConsumed] = useState('');
-    const [receivedFeedingAdvice, setReceivedFeedingAdvice] = useState('');
-    const [adviceReceived, setAdviceReceived] = useState([]);
-    const [awareWeightChild, setAwareWeightChild] = useState('');
-    const [reasonNotConsumedThr, setReasonNotConsumedThr] = useState([]);
-    const [thrNotReceivedReason, setThrNotReceivedReason] = useState('');
-    const [qtyPrepareFood, setQtyPrepareFood] = useState('');
-    const [thrStore, setThrStore] = useState('');
-    const [startedTakingFoodOtherThanBreastmilk, setStartedTakingFoodOtherThanBreastmilk] = useState('');
-    const [annaprashanConductedAtAwc, setAnnaprashanConductedAtAwc] = useState('');
-    const [reasonNotConsumedThrOther, setReasonNotConsumedThrOther] = useState('');
+    const [familyAttendedAnnaprashan, setFamilyAttendedAnnaprashan] = useDraftField(sectionDraft, 'familyAttendedAnnaprashan', '');
+    const [thrReceivedPastMonth, setThrReceivedPastMonth] = useDraftField(sectionDraft, 'thrReceivedPastMonth', '');
+    const [thrConsumed, setThrConsumed] = useDraftField(sectionDraft, 'thrConsumed', '');
+    const [receivedFeedingAdvice, setReceivedFeedingAdvice] = useDraftField(sectionDraft, 'receivedFeedingAdvice', '');
+    const [adviceReceived, setAdviceReceived] = useDraftField(sectionDraft, 'adviceReceived', []);
+    const [awareWeightChild, setAwareWeightChild] = useDraftField(sectionDraft, 'awareWeightChild', '');
+    const [reasonNotConsumedThr, setReasonNotConsumedThr] = useDraftField(sectionDraft, 'reasonNotConsumedThr', []);
+    const [thrNotReceivedReason, setThrNotReceivedReason] = useDraftField(sectionDraft, 'thrNotReceivedReason', '');
+    const [qtyPrepareFood, setQtyPrepareFood] = useDraftField(sectionDraft, 'qtyPrepareFood', '');
+    const [thrStore, setThrStore] = useDraftField(sectionDraft, 'thrStore', '');
+    const [startedTakingFoodOtherThanBreastmilk, setStartedTakingFoodOtherThanBreastmilk] = useDraftField(sectionDraft, 'startedTakingFoodOtherThanBreastmilk', '');
+    const [annaprashanConductedAtAwc, setAnnaprashanConductedAtAwc] = useDraftField(sectionDraft, 'annaprashanConductedAtAwc', '');
+    const [reasonNotConsumedThrOther, setReasonNotConsumedThrOther] = useDraftField(sectionDraft, 'reasonNotConsumedThrOther', '');
     const [ageError, setAgeError] = useState('');
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         nameOfChild68: '',
         sexOfChild68: '',
         currentAgeMonths68: '',
@@ -129,7 +138,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
     });
     
     // State for food frequency selections (10.9)
-    const [foodFrequencies, setFoodFrequencies] = useState({
+    const [foodFrequencies, setFoodFrequencies] = useDraftField(sectionDraft, 'foodFrequencies', {
         porridgeFrequency: '',
         fortifiedBabyFoodFrequency: '',
         grainsFoodFrequency: '',
@@ -333,6 +342,34 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
         
         return !formValues[fieldName] || formValues[fieldName] === '';
     };
+
+    // Length problems for the visible free-text answers of this section.
+    const lengthErrors = () => {
+        const errs = {};
+        const thrBranch = formValues.thrReceivedPastMonth === 'Yes' && formValues.thrConsumed === 'Yes';
+        if (formValues.annaprashanConductedAtAwc !== 'No' && formValues.familyAttendedAnnaprashan === 'Others') {
+            const e = otherDetailError(formValues.familyAttendedAnnaprashanOthers, ANNAPRASHAN_OTHER_MAX);
+            if (e) errs.familyAttendedAnnaprashanOthers = e;
+        }
+        if (thrBranch && formValues.qtyPrepareFood === 'Any Other') {
+            const e = otherDetailError(formValues.qtyPrepareFoodOthers, THR_QTY_OTHER_MAX);
+            if (e) errs.qtyPrepareFoodOthers = e;
+        }
+        if (thrBranch && formValues.thrStore === 'Any other') {
+            const e = otherDetailError(formValues.thrStoreOthers, THR_STORE_OTHER_MAX);
+            if (e) errs.thrStoreOthers = e;
+        }
+        if (formValues.thrReceivedPastMonth === 'No' && formValues.thrNotReceivedReason === 'Other') {
+            const e = otherDetailError(formValues.otherThrNotReceivedReason, THR_NOT_RECEIVED_OTHER_MAX);
+            if (e) errs.otherThrNotReceivedReason = e;
+        }
+        const foodError = noteError(formValues.otherRegularFood, OTHER_REGULAR_FOOD_MAX);
+        if (foodError) errs.otherRegularFood = foodError;
+        return errs;
+    };
+    const currentLengthErrors = lengthErrors();
+    const lengthHelper = (field, max) => currentLengthErrors[field]
+        || `${textLength(String(formValues[field] || '').trim())}/${max}`;
 
     // Validation function to be called from parent
     const triggerValidation = () => {
@@ -582,6 +619,13 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
         }
 
 
+        // Stored-length limits (F05 / C3): checked on the full stored value, input is kept.
+        const visibleLengthErrors = lengthErrors();
+        if (!firstInvalidField && Object.keys(visibleLengthErrors).length > 0) {
+            firstInvalidField = Object.keys(visibleLengthErrors)[0];
+            hasErrors = true;
+        }
+
         if (hasErrors) {
             // Scroll to first invalid field
             setTimeout(() => {
@@ -597,10 +641,6 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
         return true;
     };
 
-    // Expose validation function to parent
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     const frequencyOptions = ['0', '1', '2', '3', 'morethan3'];
 
@@ -844,7 +884,8 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                 fullWidth
                                 value={formValues.familyAttendedAnnaprashanOthers}
                                 onChange={(e) => updateFormValue('familyAttendedAnnaprashanOthers', e.target.value)}
-                                inputProps={{maxLength: 100}}
+                                error={!!currentLengthErrors.familyAttendedAnnaprashanOthers}
+                                helperText={lengthHelper('familyAttendedAnnaprashanOthers', ANNAPRASHAN_OTHER_MAX)}
                             />
                             {shouldShowError('familyAttendedAnnaprashanOthers') && (
                                 <Typography
@@ -868,7 +909,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                         name="familyAttendedAnnaprashanCombined"
                         value={(() => {
                             if (familyAttendedAnnaprashan === 'Others') {
-                                const otherText = document.getElementById('familyAttendedAnnaprashanOthers')?.value;
+                                const otherText = formValues.familyAttendedAnnaprashanOthers || ''; // state, not the DOM: correct on the first render after a draft restore
                                 return otherText?.trim() ? `Others - ${otherText.trim()}` : 'Others';
                             }
                             return familyAttendedAnnaprashan;
@@ -1013,6 +1054,8 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                 placeholder={t('pleaseSpecifyOtherFoodsDrinks')}
                                 multiline
                                 rows={2}
+                                error={!!currentLengthErrors.otherRegularFood}
+                                helperText={currentLengthErrors.otherRegularFood || ''}
                             />
                             {shouldShowError('otherRegularFood') && (
                                 <Typography 
@@ -1121,7 +1164,8 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                 value={formValues.otherThrNotReceivedReason}
                                 onChange={(e) => updateFormValue('otherThrNotReceivedReason', e.target.value)}
                                 placeholder={t('pleaseSpecifyOtherReasons')}
-                                inputProps={{ maxLength: 500 }}
+                                error={!!currentLengthErrors.otherThrNotReceivedReason}
+                                helperText={lengthHelper('otherThrNotReceivedReason', THR_NOT_RECEIVED_OTHER_MAX)}
                             />
                                             {shouldShowError('otherThrNotReceivedReason') && (
                                                 <Typography
@@ -1341,7 +1385,8 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                                 value={formValues.qtyPrepareFoodOthers}
                                                 onChange={(e) => updateFormValue('qtyPrepareFoodOthers', e.target.value)}
                                                 placeholder={t('specifyQuantity')}
-                                                inputProps={{ maxLength: 200 }}
+                                                error={!!currentLengthErrors.qtyPrepareFoodOthers}
+                                                helperText={lengthHelper('qtyPrepareFoodOthers', THR_QTY_OTHER_MAX)}
                                             />
                                         </Grid>
                                     )}
@@ -1352,7 +1397,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                         name="qtyPrepareFoodCombined"
                                         value={(() => {
                                             if (formValues.qtyPrepareFood === 'Any Other') {
-                                                const otherText = document.getElementById('qtyPrepareFoodOthers')?.value;
+                                                const otherText = formValues.qtyPrepareFoodOthers || ''; // state, not the DOM: correct on the first render after a draft restore
                                                 return otherText?.trim() ? `Others - ${otherText.trim()}` : 'Others';
                                             }
                                             return formValues.qtyPrepareFood;
@@ -1388,7 +1433,8 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                                 value={formValues.thrStoreOthers}
                                                 onChange={(e) => updateFormValue('thrStoreOthers', e.target.value)}
                                                 placeholder={t('otherStorage')}
-                                                inputProps={{ maxLength: 200 }}
+                                                error={!!currentLengthErrors.thrStoreOthers}
+                                                helperText={lengthHelper('thrStoreOthers', THR_STORE_OTHER_MAX)}
                                             />
                                         </Grid>
                                     )}
@@ -1399,20 +1445,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                         name="thrStoreCombined"
                                         value={(() => {
                                             if (formValues.thrStore === 'Any other') {
-                                                const otherText = document.getElementById('thrStoreOthers')?.value;
-                                                return otherText?.trim() ? `Others - ${otherText.trim()}` : 'Others';
-                                            }
-                                            return formValues.thrStore;
-                                        })()}
-                                    />
-                                    
-                                    {/* Hidden input for combined thrStore */}
-                                    <input
-                                        type="hidden"
-                                        name="thrStoreCombined"
-                                        value={(() => {
-                                            if (formValues.thrStore === 'Any other') {
-                                                const otherText = document.getElementById('thrStoreOthers')?.value;
+                                                const otherText = formValues.thrStoreOthers || ''; // state, not the DOM: correct on the first render after a draft restore
                                                 return otherText?.trim() ? `Others - ${otherText.trim()}` : 'Others';
                                             }
                                             return formValues.thrStore;
@@ -1581,6 +1614,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                             <Checkbox
                                                 name="adviceReceived"
                                                 value={option}
+                                                checked={adviceReceived.includes(option)}
                                                 onChange={(e) => handleAdviceReceivedChange(option, e.target.checked)}
                                             />
                                         }
@@ -1595,7 +1629,7 @@ const Child6To8MonthsSection = React.forwardRef((props, ref) => {
                                 value={(() => {
                                     let finalOptions = [...adviceReceived];
                                     if (finalOptions.includes('othersAdvice')) {
-                                        const otherText = document.getElementById('otherAdviceReceived')?.value;
+                                        const otherText = formValues.otherAdviceReceived || ''; // state, not the DOM: correct on the first render after a draft restore
                                         if (otherText && otherText.trim()) {
                                             finalOptions = finalOptions.filter(option => option !== 'othersAdvice');
                                             finalOptions.push(`Others - ${otherText.trim()}`);

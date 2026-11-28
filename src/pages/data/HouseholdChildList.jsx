@@ -61,7 +61,45 @@ const FIELDS = [
   { key: "responseMode", title: "Response Mode", width: 120 },
   { key: "createdBy", title: "Created By", width: 140 },
   { key: "createdOn", title: "Created On", width: 160, format: fmtDateTime },
+  // Appended (audit E04): the address the surveyor's device captured.
+  { key: "locationHousehold", title: "Address", width: 260 },
 ];
+
+// What this list is (audit E04): the backend returns a random SAMPLE — at most 25
+// records in total, one per unique Child ID, allocated across clusters in proportion
+// to their size. It is not the full dataset; Complete Response → Household Checklist is.
+export const SAMPLE_NOTE =
+  "Sample only: at most 25 records, one per unique Child ID, drawn at random and spread across clusters " +
+  "in proportion to their size. Each search can return a different sample. For every Household Checklist " +
+  "response use Complete Response → Household Checklist.";
+
+/** Workbook for the Child List: the sample sheet plus an "About" sheet saying what it is. */
+export function buildChildListWorkbook(records, { state, district, block, village, dateRange } = {}) {
+  const rows = records.map((r) =>
+    FIELDS.reduce((acc, f) => {
+      acc[f.title] = f.format ? f.format(r[f.key]) : blank(r[f.key]);
+      return acc;
+    }, {})
+  );
+  const ws = XLSX.utils.json_to_sheet(rows, { header: FIELDS.map((f) => f.title) });
+  const about = XLSX.utils.aoa_to_sheet([
+    ["Household Child List — SAMPLE"],
+    [SAMPLE_NOTE],
+    [],
+    ["Records in this sample", records.length],
+    ["State", state || "All"],
+    ["District", district || "All"],
+    ["Block", block || "All"],
+    ["Village", village || "All villages"],
+    ["Date range", dateRange || ""],
+    ["Downloaded", dayjs().format("DD MMM YYYY HH:mm")],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Household Child List");
+  XLSX.utils.book_append_sheet(wb, about, "About this sample");
+  wb.Props = { Title: "Household Child List (sample)", Subject: SAMPLE_NOTE };
+  return wb;
+}
 
 const COLUMNS = FIELDS.map((f) => ({
   title: f.title,
@@ -160,7 +198,7 @@ export default function HouseholdChildList() {
       if (unique.length === 0) {
         message.info("No records found for the selected criteria.");
       } else {
-        message.success(`Found ${unique.length} record${unique.length !== 1 ? "s" : ""}.`);
+        message.success(`Sample of ${unique.length} record${unique.length !== 1 ? "s" : ""}.`);
       }
     } catch (err) {
       if (err.response?.status === 413) {
@@ -188,29 +226,37 @@ export default function HouseholdChildList() {
 
   const handleExport = () => {
     if (!results.length) { message.warning("No data to export."); return; }
-    const rows = results.map((r) =>
-      FIELDS.reduce((acc, f) => {
-        acc[f.title] = f.format ? f.format(r[f.key]) : blank(r[f.key]);
-        return acc;
-      }, {})
-    );
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Household Child List");
+    const wb = buildChildListWorkbook(results, {
+      state: effectiveState,
+      district: selectedDistrict,
+      block: selectedBlock,
+      village: selectedVillage,
+      dateRange: dateRange?.[0] && dateRange?.[1]
+        ? `${dateRange[0].format("DD MMM YYYY")} – ${dateRange[1].format("DD MMM YYYY")}`
+        : "",
+    });
     const s = (effectiveState || "all").replace(/\s+/g, "_");
     const d = (selectedDistrict || "all").replace(/\s+/g, "_");
-    XLSX.writeFile(wb, `household_child_list_${s}_${d}_${dayjs().format("YYYYMMDD")}.xlsx`);
-    message.success("Excel file downloaded.");
+    XLSX.writeFile(wb, `household_child_list_sample_${s}_${d}_${dayjs().format("YYYYMMDD")}.xlsx`);
+    message.success("Sample downloaded (at most 25 records).");
   };
 
   return (
     <div style={{ padding: 24, background: "#F5F7FA", minHeight: "100vh" }}>
       <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0, color: "#002147" }}>Household Child List Download</Title>
+        <Title level={3} style={{ margin: 0, color: "#002147" }}>Household Child List (sample)</Title>
         <Text style={{ color: "#6B7280" }}>
-          Filter household survey records by location and date range, then export to Excel
+          A sample of Household Checklist records for a location and date range, exported to Excel
         </Text>
       </div>
+
+      <Alert
+        type="warning"
+        showIcon
+        style={{ borderRadius: 12, marginBottom: 16 }}
+        message="This list is a sample, not the full dataset"
+        description={SAMPLE_NOTE}
+      />
 
       {/* Filter Panel */}
       <Card style={{ borderRadius: 16, marginBottom: 24 }} bodyStyle={{ padding: "20px 24px" }}>
@@ -328,7 +374,7 @@ export default function HouseholdChildList() {
             disabled={results.length === 0}
             style={{ borderRadius: 8, height: 38 }}
           >
-            Export to Excel
+            Export sample to Excel
           </Button>
         </div>
       </Card>
@@ -339,7 +385,7 @@ export default function HouseholdChildList() {
           <Text style={{ fontWeight: 700, fontSize: 15, color: "#002147" }}>Results</Text>
           {searched && results.length > 0 && (
             <Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
-              {results.length} record{results.length !== 1 ? "s" : ""} found
+              {results.length} record{results.length !== 1 ? "s" : ""} in this sample (max 25, unique Child IDs)
             </Text>
           )}
         </div>

@@ -5,11 +5,13 @@ import generated from '../generated/releaseInfo.json';
 
 // Per-form payload schema versions. Bump one when that form's request shape
 // changes incompatibly; stored with drafts/queued records and sent on submit.
+// v2 (survey audit W1–W3): Other-detail sibling fields, captured visit dates kept,
+// stricter validation. The backend applies the new conditional rules only to v2+.
 export const FORM_SCHEMA_VERSIONS = Object.freeze({
-  routine: 1,
-  household: 1,
-  biannual: 1,
-  followup: 1,
+  routine: 2,
+  household: 2,
+  biannual: 2,
+  followup: 2,
 });
 
 // Records saved before schema versions existed were built with version 1.

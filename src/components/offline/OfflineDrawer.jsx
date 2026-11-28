@@ -20,34 +20,27 @@ import {
   ClockCircleOutlined,
   EyeOutlined,
   SendOutlined,
+  DownloadOutlined,
+  CopyOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import RouterSharpIcon from "@mui/icons-material/RouterSharp";
 import {
   getOfflineForms,
-  deleteForm,
   offlineFormOwnership,
-  claimLegacyOfflineForm,
-  ensureClientSubmissionId,
-  markOfflineFormConflict,
-  resendAsNewSubmission,
+  sameOfflineId,
 } from "../../utils/indexDB";
-import { LEGACY_FORM_SCHEMA_VERSION } from "../../constants/releaseInfo";
 import { useEffectiveNetworkStatus } from "../../utils/networkState";
-import { isSurveyorUser, syncAfterSubmission } from "../../utils/dailySurveyCount";
-import apiService from "../../services/api";
+import {
+  REPLAY,
+  replayOfflineQueue,
+  replayOfflineRecord,
+  discardOfflineRecord,
+  offlineRecordCopyText,
+  offlineRecordCopyFilename,
+} from "./offlineReplay";
 
 const { Text } = Typography;
-
-// Map a stored form url to the daily-count form type so an offline upload
-// refreshes the local counter the same way an online submit does. Without this,
-// synced offline forms raise the backend count but not the local cache, so the
-// calendar under-counts relative to the "Today" card.
-const URL_TO_FORM_TYPE = {
-  "/form/routine": "routine",
-  "/form/household": "household",
-  "/form/biannual": "concurrent",
-  "/form/followup": "followup",
-};
 
 // FloatButton appearance
 const ACCENT_COLOR = "#0F766E"; // teal — distinct from the navy app shell
@@ -65,7 +58,6 @@ const FORM_TYPE_NAMES = {
 const HIDDEN_FIELDS = ["id", "createdAt", "updatedAt"];
 
 const AUTO_UPLOAD_INTERVAL = 5 * 60 * 1000; // 5 minutes, matches the old UI
-const uploadsInProgress = new Map();
 const AUTO_UPLOAD_THROTTLE = 30 * 1000; // don't re-run within 30s
 
 const getFormName = (url) => FORM_TYPE_NAMES[url] || url || "Unknown Form";
@@ -95,6 +87,9 @@ export default function OfflineDrawer() {
   const [viewForm, setViewForm] = useState(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Parked records for which a copy was saved/copied in this session: only these
+  // can be removed from the device.
+  const [copiedIds, setCopiedIds] = useState(() => new Set());
 
   const intervalRef = useRef(null);
   const lastAutoUpload = useRef(0);
@@ -121,124 +116,44 @@ export default function OfflineDrawer() {
     }
   }, [open, refresh]);
 
-  // Upload a single form. Returns true on success, "conflict" when the server
-  // holds different data under this form's id (parked for the user), else false.
-  // Only the signed-in account's records are uploaded. A legacy record (saved
-  // before ownership tracking) is uploaded only when the user explicitly confirms
-  // (allowLegacy), and is first claimed so it is never re-attributed later.
-  const uploadForm = useCallback(async (form, { allowLegacy = false, resendAsNew = false } = {}) => {
-    if (uploadsInProgress.has(form.id)) return uploadsInProgress.get(form.id);
-
-    const upload = async () => {
-      const pending = await getOfflineForms();
-      let record = pending.find(r => r.id === form.id);
-      if (!record) return true; // already uploaded by another path
-
-      const ownership = offlineFormOwnership(record);
-      if (ownership === "other") return false;
-      if (ownership === "legacy") {
-        if (!allowLegacy) return false;
-        record = await claimLegacyOfflineForm(record);
-      }
-      if (record.syncConflict) {
-        // The server already holds DIFFERENT data under this id. Never retry it
-        // automatically; only the user can choose to send it as a new submission.
-        if (!resendAsNew) return false;
-        record = await resendAsNewSubmission(record);
-      }
-      // Persist a stable id before the first send so retries reuse it.
-      record = await ensureClientSubmissionId(record);
-
-      // Sent as a query parameter, not a header: a custom header would need a CORS
-      // allow-list change on every backend first. Older backends simply ignore it.
-      const res = await apiService.post(record.url, record.data, {
-        params: {
-          clientSubmissionId: record.clientSubmissionId,
-          // The schema the record was SAVED with, even if this build uses a newer one.
-          formSchemaVersion: record.formSchemaVersion ?? LEGACY_FORM_SCHEMA_VERSION,
-        },
-      });
-      if (res?.statusCode === 200) {
-        if (!(await deleteForm(form.id))) throw new Error("Could not remove uploaded survey from the local queue");
-        // Keep the local daily counter in step with the backend for surveyors,
-        // mirroring the online submit path.
-        const formType = URL_TO_FORM_TYPE[form.url];
-        if (formType && isSurveyorUser()) {
-          syncAfterSubmission(apiService, formType).catch((err) => {
-            console.error("Error syncing daily count after offline upload:", err);
-          });
-        }
-        return true;
-      }
-      if (res?.statusCode === 409) {
-        await markOfflineFormConflict(record, res?.message);
-        return "conflict";
-      }
-      // 429 = the first copy is still being saved: leave it queued and retry later.
-      return false;
-    };
-
-    const promise = upload();
-    uploadsInProgress.set(form.id, promise);
-    try {
-      return await promise;
-    } finally {
-      uploadsInProgress.delete(form.id);
-    }
-  }, []);
-
-  // Upload everything; optionally surface notifications to the user.
+  // Upload everything of the signed-in account through the shared replay
+  // coordinator (serialized, claimed per record, owner-scoped). Older or other
+  // accounts' forms are never uploaded here; parked forms wait for the user.
   const uploadAll = useCallback(
     async (notify = true) => {
       if (!isOnline) {
         if (notify) message.error("No internet connection. Please try again when online.");
         return;
       }
-      const all = await getOfflineForms();
-      const conflicts = all.filter(f => offlineFormOwnership(f) === "mine" && f.syncConflict).length;
-      const stored = all.filter(f => offlineFormOwnership(f) === "mine" && !f.syncConflict);
-      if (notify && conflicts > 0) {
-        message.warning(`${conflicts} form(s) need your attention — open them in Offline Saved Forms.`);
-      }
-      if (!stored || stored.length === 0) {
-        if (notify) message.info("No offline forms of yours to upload. Older or other accounts' forms are uploaded individually.");
+      if (notify) setUploading(true);
+      let summary;
+      try {
+        summary = await replayOfflineQueue({ automatic: !notify });
+      } catch (err) {
+        console.error("Offline upload failed:", err);
+        if (notify) {
+          setUploading(false);
+          message.error("Failed to upload forms. Please try again.");
+        }
+        await refresh();
         return;
       }
-
-      if (notify) setUploading(true);
-      let success = 0;
-      let failed = 0;
-      let conflicted = 0;
-
-      for (const form of stored) {
-        try {
-          const result = await uploadForm(form);
-          if (result === true) success++;
-          else if (result === "conflict") conflicted++;
-          else failed++;
-        } catch (err) {
-          failed++;
-          const status = err?.response?.status || err?.status;
-          if (status === 401 || status === 403) {
-            if (notify) message.error("Session expired. Please log in again to upload forms.");
-            break;
-          }
-          console.error("Offline upload failed:", err);
-        }
-      }
-
       await refresh();
-      if (notify) {
-        setUploading(false);
-        if (success > 0 && failed === 0) message.success(`Uploaded ${success} form(s) successfully!`);
-        else if (success > 0 && failed > 0) message.warning(`Uploaded ${success}, ${failed} failed.`);
-        else if (failed > 0) message.error("Failed to upload forms. Please try again.");
-        if (conflicted > 0) {
-          message.warning(`${conflicted} form(s) need your attention — open them below.`);
-        }
+      if (!notify) return;
+      setUploading(false);
+      const { uploaded, failed, busy, needsAttention, authFailed, total } = summary;
+      if (authFailed) message.error("Session expired. Please log in again to upload forms.");
+      if (total === 0 && needsAttention === 0) {
+        message.info("No offline forms of yours to upload. Older or other accounts' forms are uploaded individually.");
+      } else if (uploaded > 0 && failed === 0) message.success(`Uploaded ${uploaded} form(s) successfully!`);
+      else if (uploaded > 0 && failed > 0) message.warning(`Uploaded ${uploaded}, ${failed} will be retried.`);
+      else if (failed > 0) message.error("Failed to upload forms. They stay saved and will be retried.");
+      if (busy > 0) message.info(`${busy} form(s) are already being uploaded.`);
+      if (needsAttention > 0) {
+        message.warning(`${needsAttention} form(s) need your attention — open them below.`);
       }
     },
-    [isOnline, refresh, uploadForm],
+    [isOnline, refresh],
   );
 
   // Auto-upload every 5 minutes while online
@@ -267,6 +182,88 @@ export default function OfflineDrawer() {
   const openView = (form) => {
     setViewForm(form);
     setViewOpen(true);
+  };
+
+  // ── Parked records: keep a copy, then (only if the user asks) remove ──────
+  const markCopied = (rec) => setCopiedIds((prev) => new Set(prev).add(String(rec.id)));
+  const hasCopy = (rec) => !!rec && copiedIds.has(String(rec.id));
+
+  // Download the queued request as a readable JSON file.
+  const saveCopy = (rec) => {
+    const name = offlineRecordCopyFilename(rec);
+    try {
+      const blob = new Blob([offlineRecordCopyText(rec)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      markCopied(rec);
+      message.success(`Copy saved as ${name}. If no file appears on this device, use “Copy text”.`);
+    } catch (err) {
+      console.error("Saving a copy failed:", err);
+      message.error("Could not save a file on this device. Use “Copy text” and paste it somewhere safe.");
+    }
+  };
+
+  // Clipboard fallback (file downloads may not work inside the Android app).
+  const copyText = async (rec) => {
+    try {
+      await navigator.clipboard.writeText(offlineRecordCopyText(rec));
+      markCopied(rec);
+      message.success("Copied. Paste it into a note or message to keep it.");
+    } catch {
+      message.error("Could not copy here. Use “Save a copy” instead.");
+    }
+  };
+
+  const savedOn = (rec) => (rec?.timestamp ? new Date(rec.timestamp).toLocaleString() : "an unknown date");
+
+  const removeFromDevice = async (rec) => {
+    if (!rec || !hasCopy(rec)) return;
+    const confirmed = await new Promise((resolve) => Modal.confirm({
+      title: "Remove this survey from the device?",
+      content: (
+        <div>
+          <p style={{ marginBottom: 8 }}>
+            <strong>{getFormName(rec.url)}</strong> saved on {savedOn(rec)}
+            {rec.clientSubmissionId ? <> (id <Text code>{rec.clientSubmissionId}</Text>)</> : null} will be deleted
+            from this device.
+          </p>
+          <p style={{ marginBottom: 8 }}>
+            The server has not accepted it, so the copy you saved ({offlineRecordCopyFilename(rec)}) will be the only
+            record of these answers.
+          </p>
+          <p style={{ marginBottom: 0 }}><strong>This cannot be undone.</strong></p>
+        </div>
+      ),
+      okText: "Remove permanently",
+      okButtonProps: { danger: true },
+      cancelText: "Keep it",
+      onOk: () => resolve(true),
+      onCancel: () => resolve(false),
+    }));
+    if (!confirmed) return;
+    setSubmitting(true);
+    try {
+      const res = await discardOfflineRecord(rec.id);
+      if (res.status === REPLAY.REMOVED || res.status === REPLAY.GONE) {
+        message.success("Removed from this device.");
+        closeView();
+      } else if (res.status === REPLAY.BUSY) {
+        message.info("This form is being uploaded right now. Try again in a moment.");
+      } else {
+        message.error("This form cannot be removed here.");
+      }
+    } catch (err) {
+      message.error(err?.message || "Could not remove the form.");
+    } finally {
+      setSubmitting(false);
+      await refresh();
+    }
   };
 
   const closeView = () => {
@@ -299,26 +296,49 @@ export default function OfflineDrawer() {
     }
     setSubmitting(true);
     try {
-      const ok = await uploadForm(viewForm, { allowLegacy: ownership === "legacy" });
-      if (ok === "conflict") {
-        message.warning("This form needs your attention — see the note above.");
-        const fresh = (await getOfflineForms()).find(f => f.id === viewForm.id);
-        if (fresh) setViewForm(fresh);
-        await refresh();
-      } else if (ok) {
-        message.success("Form uploaded successfully!");
-        closeView();
-        await refresh();
-      } else {
-        message.error("Unable to upload form. Please try again later.");
-      }
+      const res = await replayOfflineRecord(viewForm.id, {
+        allowLegacy: ownership === "legacy",
+        retryRejected: !!viewForm.syncRejected,
+      });
+      await afterSingleUpload(res);
     } catch (err) {
-      const status = err?.response?.status || err?.status;
-      if (status === 401 || status === 403) message.error("Session expired. Please log in again.");
-      else message.error("Unable to upload form. Please try again later.");
+      console.error("Offline upload failed:", err);
+      message.error(err?.message || "Unable to upload form. Please try again later.");
+      await refresh();
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Show the outcome of a single-record upload and refresh the view.
+  const afterSingleUpload = async (res) => {
+    switch (res?.status) {
+      case REPLAY.UPLOADED:
+      case REPLAY.GONE:
+        message.success(res.status === REPLAY.GONE ? "This form was already uploaded." : "Form uploaded successfully!");
+        closeView();
+        break;
+      case REPLAY.CONFLICT:
+        message.warning("This form needs your attention — see the note above.");
+        break;
+      case REPLAY.REJECTED:
+        message.error(`The server did not accept this form: ${res.message || "please check the answers"}`);
+        break;
+      case REPLAY.BUSY:
+        message.info("This form is already being uploaded. Please wait a moment.");
+        break;
+      case REPLAY.AUTH:
+        message.error("Session expired. Please log in again.");
+        break;
+      case REPLAY.SKIPPED:
+        message.error("This form cannot be uploaded from this account.");
+        break;
+      default:
+        message.error(res?.message ? `Unable to upload form: ${res.message}` : "Unable to upload form. Please try again later.");
+    }
+    const fresh = (await getOfflineForms()).find(f => sameOfflineId(f.id, viewForm?.id));
+    if (fresh && res?.status !== REPLAY.UPLOADED) setViewForm(fresh);
+    await refresh();
   };
 
   // A 409 means the server holds different data under this record's id. Sending
@@ -336,16 +356,11 @@ export default function OfflineDrawer() {
     if (!confirmed) return;
     setSubmitting(true);
     try {
-      const ok = await uploadForm(viewForm, { resendAsNew: true });
-      if (ok === true) {
-        message.success("Form uploaded as a new submission.");
-        closeView();
-      } else {
-        message.error("Unable to upload form. Please try again later.");
-      }
+      const res = await replayOfflineRecord(viewForm.id, { resendAsNew: true });
+      await afterSingleUpload(res);
+    } catch (err) {
+      message.error(err?.message || "Unable to upload form. Please try again later.");
       await refresh();
-    } catch {
-      message.error("Unable to upload form. Please try again later.");
     } finally {
       setSubmitting(false);
     }
@@ -428,6 +443,7 @@ export default function OfflineDrawer() {
                   {(() => {
                     const ownership = offlineFormOwnership(form);
                     if (form.syncConflict) return <Tag color="error">Needs attention</Tag>;
+                    if (form.syncRejected) return <Tag color="error">Needs correction</Tag>;
                     if (ownership === "other") return <Tag color="default">Saved by {form.ownerId}</Tag>;
                     if (ownership === "legacy") return <Tag color="orange">Older form — upload manually</Tag>;
                     return (
@@ -437,6 +453,16 @@ export default function OfflineDrawer() {
                     );
                   })()}
                 </Space>
+                {form.syncRejected?.message && (
+                  <Text type="danger" style={{ display: "block", fontSize: 12, marginTop: 6 }}>
+                    {form.syncRejected.message}
+                  </Text>
+                )}
+                {!form.syncRejected && !form.syncConflict && form.lastSyncAttempt?.message && (
+                  <Text type="secondary" style={{ display: "block", fontSize: 12, marginTop: 6 }}>
+                    Last attempt failed: {form.lastSyncAttempt.message} — will retry.
+                  </Text>
+                )}
                 <Button
                   size="small"
                   icon={<EyeOutlined />}
@@ -472,10 +498,35 @@ export default function OfflineDrawer() {
             disabled={!isOnline || (viewForm && (offlineFormOwnership(viewForm) === "other" || !!viewForm.syncConflict))}
             onClick={submitNow}
           >
-            Submit Now
+            {viewForm?.syncRejected ? "Try again" : "Submit Now"}
           </Button>,
         ]}
       >
+        {viewForm?.syncRejected && (
+          <Alert
+            type="error"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="The server did not accept this form"
+            description={
+              <div>
+                <div>{viewForm.syncRejected.message}</div>
+                {Object.entries(viewForm.syncRejected.fieldErrors || {}).length > 0 && (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                    {Object.entries(viewForm.syncRejected.fieldErrors).map(([field, msg]) => (
+                      <li key={field}><Text code>{field}</Text> {String(msg)}</li>
+                    ))}
+                  </ul>
+                )}
+                <div style={{ marginTop: 6, fontSize: 12 }}>
+                  It stays saved on this device and is not retried automatically. “Try again” sends the same
+                  answers, so it helps only after the problem is fixed on the server (or by an app update). Save a
+                  copy and contact your supervisor if it keeps failing.
+                </div>
+              </div>
+            }
+          />
+        )}
         {viewForm?.syncConflict && (
           <Alert
             type="error"
@@ -489,6 +540,28 @@ export default function OfflineDrawer() {
               </Button>
             }
           />
+        )}
+        {(viewForm?.syncRejected || viewForm?.syncConflict) && offlineFormOwnership(viewForm) === "mine" && (
+          <div style={{ border: "1px solid #F0F0F0", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+            <Text strong style={{ display: "block", marginBottom: 4 }}>Keep a copy of these answers</Text>
+            <Text type="secondary" style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+              Save the queued survey as a file (or copy its text) before doing anything else. Removing it from the
+              device is possible only after a copy has been saved.
+            </Text>
+            <Space wrap>
+              <Button icon={<DownloadOutlined />} onClick={() => saveCopy(viewForm)}>Save a copy</Button>
+              <Button icon={<CopyOutlined />} onClick={() => copyText(viewForm)}>Copy text</Button>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={!hasCopy(viewForm) || submitting}
+                title={hasCopy(viewForm) ? undefined : "Save a copy first"}
+                onClick={() => removeFromDevice(viewForm)}
+              >
+                Remove from device
+              </Button>
+            </Space>
+          </div>
         )}
         {viewForm?.data && (
           <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>

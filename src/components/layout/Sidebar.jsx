@@ -72,6 +72,8 @@ function buildMenuItems(role, notifCount) {
       { key: "/data/state-wise-summary", icon: <BarChartOutlined />, label: "State-Wise Summary (RM)" },
       ...(!isState ? [{ key: "/data/complete-response", icon: <DownloadOutlined />, label: "Complete Response" }] : []),
       { key: "/data/export/rmc", icon: <DownloadOutlined />, label: "Routine Monitoring" },
+      // Household Checklist submissions (separate from RMC Household Sections 8–11).
+      { key: "/data/export/household", icon: <DownloadOutlined />, label: "Household Checklist" },
       { key: "/data/export/followup", icon: <DownloadOutlined />, label: "Follow-Up Data" },
       { key: "/data/export/biannual", icon: <CalendarOutlined />, label: "Concurrent Assessment" },
     ];

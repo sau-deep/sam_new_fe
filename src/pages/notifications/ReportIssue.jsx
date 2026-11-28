@@ -6,15 +6,10 @@ import { FlagOutlined } from "@ant-design/icons";
 import api from "../../services/axiosInstance";
 import { StateList } from "../../constants/locations";
 import { UNICEF_COLORS } from "../../theme/unicef";
+import { isApiSuccess, apiErrorMessage } from "../../utils/apiResult";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
-
-// For these endpoints the SAMResponse wrapper uses success===true / statusCode 200|201 to mean OK.
-const isOk = (res) => {
-  const d = res?.data;
-  return d?.success === true || d?.statusCode === 200 || d?.statusCode === 201;
-};
 
 export default function ReportIssue() {
   const [form] = Form.useForm();
@@ -65,15 +60,17 @@ export default function ReportIssue() {
         comment: values.comment.trim(),
       };
       const res = await api.post("/form/admin/routine-monitoring/report-issue", payload);
-      if (isOk(res)) {
+      // One success rule (audit A04): a body status of 4xx/5xx is a failure even
+      // when success=true. On failure the form keeps what was entered.
+      if (isApiSuccess(res)) {
         message.success(res.data?.message || "Issue reported successfully");
         form.resetFields();
         setSurveyors([]);
       } else {
-        message.error(res.data?.message || "Failed to report issue");
+        message.error(apiErrorMessage(res, "Failed to report issue"));
       }
     } catch (err) {
-      message.error(err.response?.data?.message || "Error submitting report. Please try again.");
+      message.error(apiErrorMessage(err, "Error submitting report. Please try again."));
     } finally {
       setSubmitting(false);
     }

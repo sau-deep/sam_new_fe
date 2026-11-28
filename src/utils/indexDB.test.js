@@ -2,8 +2,11 @@ import {
   deleteOfflineForm, getOfflineForms, saveOfflineForm, offlineFormOwnership, claimLegacyOfflineForm,
   ensureClientSubmissionId, stableDraftKey, saveFormDraft, getFormDraft, deleteFormDraft, getAllFormDrafts, cleanupOldDrafts,
   markOfflineFormConflict, resendAsNewSubmission,
+  deleteOfflineSubmission, findOfflineForm, markOfflineFormRejected, clearOfflineFormRejection,
+  recordOfflineFormAttempt, _setIDBTimeouts, _resetIDBStall,
 } from './indexDB';
 import { FORM_SCHEMA_VERSIONS } from '../constants/releaseInfo';
+import { installFakeIndexedDB, removeFakeIndexedDB } from './fakeIndexedDB.testutil';
 
 // The owner of local data is the LOGIN ID (samOwnerId), never the display name (iegUsername).
 const signInAs = loginId => localStorage.setItem('samOwnerId', loginId);
@@ -128,5 +131,172 @@ describe('cleanupOldDrafts', () => {
     localStorage.setItem('samv2_draft_biannual__surveyor1', JSON.stringify({ formKey: 'biannual__surveyor1', formData: {}, lastModified: old }));
     expect(await cleanupOldDrafts()).toBe(1);
     expect((await getAllFormDrafts()).map(d => d.formKey).sort()).toEqual(['biannual_1764000000000_/surveys/biannual', 'biannual__surveyor1']);
+  });
+});
+
+// ── IndexedDB primary store (fake) + localStorage fallback (audit A07) ─────────
+
+describe('durable queue with IndexedDB and the localStorage fallback', () => {
+  beforeEach(() => { localStorage.clear(); signInAs('surveyor1'); });
+  afterEach(() => removeFakeIndexedDB());
+  afterAll(() => localStorage.clear());
+
+  it('writes to IndexedDB when it works and reports success only after commit', async () => {
+    const idb = installFakeIndexedDB();
+    await expect(saveOfflineForm({ url: '/form/household', data: { a: 1 } })).resolves.toBe(true);
+    expect(idb.stores.surveyForms.size).toBe(1);
+    expect(Object.keys(localStorage).filter(k => k.startsWith('samv2_form_'))).toEqual([]);
+    const [rec] = await getOfflineForms();
+    expect(rec).toMatchObject({ storage: 'idb', url: '/form/household', ownerId: 'surveyor1' });
+    expect(typeof rec.id).toBe('number');
+  });
+
+  it('keeps a record written to the fallback while IndexedDB failed visible after it recovers', async () => {
+    installFakeIndexedDB({ open: true }); // IndexedDB failing
+    await saveOfflineForm({ url: '/form/followup', data: { fallback: true } });
+    removeFakeIndexedDB();
+    installFakeIndexedDB(); // recovered
+    await saveOfflineForm({ url: '/form/followup', data: { primary: true } });
+    const all = await getOfflineForms();
+    expect(all.map(r => r.storage).sort()).toEqual(['idb', 'local']);
+    expect(all.map(r => r.data)).toEqual(expect.arrayContaining([{ fallback: true }, { primary: true }]));
+    // The fallback record has a stable, unique id usable for an exact delete.
+    const local = all.find(r => r.storage === 'local');
+    expect(local.id).toBe(`samv2_form_${local.clientSubmissionId}`);
+    expect(await findOfflineForm(local.id)).toMatchObject({ data: { fallback: true } });
+  });
+
+  it('shows a submission stored in both stores once (same clientSubmissionId)', async () => {
+    const idb = installFakeIndexedDB();
+    await saveOfflineForm({ url: '/form/routine', data: { x: 1 } });
+    const [rec] = await getOfflineForms();
+    const { id, storage, ...copy } = rec;
+    localStorage.setItem(`samv2_form_${rec.clientSubmissionId}`, JSON.stringify(copy));
+    const all = await getOfflineForms();
+    expect(all).toHaveLength(1);
+    expect(all[0].storage).toBe('idb');
+    expect(idb.stores.surveyForms.size).toBe(1);
+  });
+
+  it('deletes exactly the uploaded submission and its stray copy, nothing else', async () => {
+    const idb = installFakeIndexedDB();
+    await saveOfflineForm({ url: '/form/routine', data: { n: 1 } });
+    await saveOfflineForm({ url: '/form/routine', data: { n: 2 } });
+    const [first, second] = await getOfflineForms();
+    const { id, storage, ...copy } = first;
+    localStorage.setItem(`samv2_form_${first.clientSubmissionId}`, JSON.stringify(copy));
+
+    await expect(deleteOfflineSubmission(first)).resolves.toBe(true);
+    const left = await getOfflineForms();
+    expect(left.map(r => r.clientSubmissionId)).toEqual([second.clientSubmissionId]);
+    expect(localStorage.getItem(`samv2_form_${first.clientSubmissionId}`)).toBeNull();
+    expect(idb.stores.surveyForms.size).toBe(1);
+  });
+
+  it('throws when neither store can hold the record (quota / aborted transaction)', async () => {
+    installFakeIndexedDB({ write: 'QuotaExceededError' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw Object.assign(new Error('QuotaExceededError'), { name: 'QuotaExceededError' });
+    });
+    try {
+      await expect(saveOfflineForm({ url: '/form/household', data: { a: 1 } })).rejects.toThrow('Could not store offline survey');
+      await expect(saveFormDraft('k', 'biannual', { a: 1 })).rejects.toThrow('Could not store form draft');
+    } finally {
+      setItem.mockRestore();
+    }
+    expect(await getOfflineForms()).toEqual([]);
+  });
+
+  it('surfaces an aborted IndexedDB update as an error instead of pretending it was saved', async () => {
+    const idb = installFakeIndexedDB();
+    await saveOfflineForm({ url: '/form/household', data: { a: 1 } });
+    const [rec] = await getOfflineForms();
+    idb.failures.write = 'QuotaExceededError';
+    await expect(markOfflineFormConflict(rec, 'x')).rejects.toMatchObject({ name: 'QuotaExceededError' });
+    await expect(deleteOfflineForm(rec.id)).resolves.toBe(false);
+    idb.failures.write = null;
+    expect(await getOfflineForms()).toHaveLength(1);
+  });
+
+  it('falls back to localStorage when IndexedDB aborts the write', async () => {
+    installFakeIndexedDB({ write: 'QuotaExceededError' });
+    await expect(saveOfflineForm({ url: '/form/biannual', data: { a: 1 } })).resolves.toBe(true);
+    const [rec] = await getOfflineForms();
+    expect(rec.storage).toBe('local');
+  });
+});
+
+describe('parking and attempt bookkeeping', () => {
+  beforeEach(() => { localStorage.clear(); signInAs('surveyor1'); });
+  afterAll(() => localStorage.clear());
+
+  it('parks a validation failure with the server reason and clears it on request', async () => {
+    await saveOfflineForm({ url: '/form/followup', data: { a: 1 } });
+    const [rec] = await getOfflineForms();
+    await markOfflineFormRejected(rec, { message: 'Child name too long', fieldErrors: { childName: 'Max 80' }, statusCode: 400 });
+    const [parked] = await getOfflineForms();
+    expect(parked.syncRejected).toMatchObject({ message: 'Child name too long', fieldErrors: { childName: 'Max 80' }, statusCode: 400 });
+    expect(parked.clientSubmissionId).toBe(rec.clientSubmissionId);
+    await clearOfflineFormRejection(parked);
+    const [cleared] = await getOfflineForms();
+    expect(cleared.syncRejected).toBeNull();
+  });
+
+  it('records transient attempts without parking', async () => {
+    await saveOfflineForm({ url: '/form/followup', data: { a: 1 } });
+    const [rec] = await getOfflineForms();
+    await recordOfflineFormAttempt(rec, 'Network Error');
+    const [again] = await getOfflineForms();
+    await recordOfflineFormAttempt(again, 'timeout');
+    const [reread] = await getOfflineForms();
+    expect(reread.syncAttempts).toBe(2);
+    expect(reread.lastSyncAttempt.message).toBe('timeout');
+    expect(reread.syncRejected).toBeUndefined();
+  });
+});
+
+describe('saveOfflineForm with a caller-supplied submission id', () => {
+  beforeEach(() => { localStorage.clear(); signInAs('surveyor1'); });
+  afterAll(() => localStorage.clear());
+
+  it('keeps the id an online attempt already used', async () => {
+    await saveOfflineForm({ url: '/form/household', data: { a: 1 }, clientSubmissionId: 'online-attempt-1' });
+    const [rec] = await getOfflineForms();
+    expect(rec.clientSubmissionId).toBe('online-attempt-1');
+    expect(rec.id).toBe('samv2_form_online-attempt-1');
+  });
+});
+
+describe('IndexedDB that never answers (some Android WebViews)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    signInAs('surveyor1');
+    _setIDBTimeouts({ openMs: 20, txMs: 20, stallMs: 60000 });
+  });
+  afterEach(() => {
+    removeFakeIndexedDB();
+    _resetIDBStall();
+    _setIDBTimeouts({ openMs: 8000, txMs: 10000, stallMs: 60000 });
+  });
+
+  it('times out a hung open, falls back to localStorage, and stops waiting on it', async () => {
+    const idb = installFakeIndexedDB({ hangOpen: true });
+    const started = Date.now();
+    await expect(saveOfflineForm({ url: '/form/followup', data: { a: 1 } })).resolves.toBe(true);
+    const all = await getOfflineForms();
+    expect(all).toHaveLength(1);
+    expect(all[0].storage).toBe('local');
+    // Only the first call waited for the open; later ones skip IndexedDB at once.
+    expect(idb.openCalls).toBe(1);
+    expect(Date.now() - started).toBeLessThan(2000);
+    await expect(saveFormDraft('k', 'biannual', { a: 1 })).resolves.toBe(true);
+    expect((await getFormDraft('k')).formData).toEqual({ a: 1 });
+  });
+
+  it('times out a transaction that never completes and falls back', async () => {
+    installFakeIndexedDB({ hangTx: true });
+    await expect(saveOfflineForm({ url: '/form/household', data: { b: 2 } })).resolves.toBe(true);
+    const all = await getOfflineForms();
+    expect(all.map(r => r.storage)).toEqual(['local']);
   });
 });

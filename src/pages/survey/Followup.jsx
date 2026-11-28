@@ -33,7 +33,15 @@ import useFormLocations from "hooks/useFormLocations";
 import {useTranslation} from "react-i18next";
 import { useFormTranslation } from "hooks/useFormTranslation";
 import {filterNumberKeyDown} from 'utils'
-import {saveOfflineForm} from 'utils/indexDB'
+import {saveOfflineForm, newClientId} from 'utils/indexDB'
+import {
+  FEEDING_SECTION_RESET, FOLLOWUP_DETAIL_LIMITS, FOLLOWUP_LIMITS, FOLLOWUP_URL, buildFollowupPayload,
+  followupFieldForKey, isChronicSpecifyAsked, isFeedingSectionAsked, isThrUsageAsked, validateFollowupRequest,
+} from './payload/followupPayload';
+import {
+  SURVEY_LIST_ROUTE, collectYupErrors, errorSummary, localIsoDate, mapRequestErrors, maxCharsRule, otherDetailRule,
+  requiredTextRule, sendSurvey,
+} from './payload/common';
 import usePreventPageReload from 'hooks/usePreventPageReload';
 import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
 
@@ -51,9 +59,6 @@ const {
   getDistrictOptionsByStateName,
   getBlockOptionsByDistrictName,
 } = getFormLocationHelpers("FOLLOWUP");
-
-/** FD3 "other food" text is saved inside the FD3 string under this key; the follow-up Excel export reads it. */
-const FD3_OTHER_FOOD_KEY = "Specify any other food item given";
 
 /** Re-derive location codes from selected labels so payload always has codes. */
 function enrichFollowupLocationCodes(v) {
@@ -80,40 +85,8 @@ function enrichFollowupLocationCodes(v) {
   return out;
 }
 
-/** FD1 (and FD2–FD4, which depend on it) is asked only when CQ5 age in months is more than 6. */
-const isFeedingSectionAsked = (childAgeMonths) => Number(childAgeMonths) > 6;
-
-/** Blank values for FD1–FD4, used when the child is 6 months or younger. */
-const FEEDING_SECTION_RESET = {
-  fedSolidOrSemisolidFood: '',
-  timesFedSolidOrSemisolidFood: '',
-  yesterdayFoodItemsConsumed: [],
-  yesterdayFoodItemsConsumed_other: '',
-  howToEnrichHomemadeFood: '',
-  howToEnrichHomemadeFood_other: '',
-};
-
-/** Drop FD1–FD4 answers that do not apply because the child is 6 months or younger. */
-function withoutSkippedFeedingAnswers(v) {
-  if (!v || isFeedingSectionAsked(v.childAgeMonths)) return v;
-  return { ...v, ...FEEDING_SECTION_RESET };
-}
-
-/**
- * Replace a selected "Other" option with "Other - <text>". Matches the option
- * case-insensitively: FD4 stores "Other" while MN14/MN19 store "other".
- */
-const processStringWithOther = (value, otherValue) => {
-  if (value && otherValue && otherValue.trim()) {
-    const selectedValues = value.split(', ').filter(Boolean);
-    if (selectedValues.some(item => item.toLowerCase() === 'other')) {
-      return selectedValues
-        .map(item => (item.toLowerCase() === 'other' ? `Other - ${otherValue.trim()}` : item))
-        .join(', ');
-    }
-  }
-  return value || '';
-};
+// FD1–FD4 skip logic, the "Other" encodings and the request builder live in
+// ./payload/followupPayload so Submit, Save Offline and Retry share them.
 
 // Validation schemas for each step
 const step1ValidationSchema = Yup.object({
@@ -124,23 +97,20 @@ const step1ValidationSchema = Yup.object({
     icdsProject: Yup.string().max(150, "Maximum 150 characters allowed").required("This is required field"),
     childCode: Yup.string().required("This is required field"),
     visitDate: Yup.string().required("This is required field"),
-    nameOfRespondent: Yup.string().required("This is required field"),
+    // F06/F07: required, whitespace-only rejected, at most 50 characters
+    nameOfRespondent: requiredTextRule(FOLLOWUP_LIMITS.nameOfRespondent, 'Respondent name'),
     sexOfRespondent: Yup.string().required("This is required field"),
     ageRespondent: Yup.string().required("This is required field"),
     educationRespondent: Yup.string().required("This is required field"),
-    sexOfRespondent_other: Yup.string().test(
-        'conditional-required',
-        'This is a required field',
-        function (value) {
-            const {sexOfRespondent} = this.parent;
-            return sexOfRespondent !== 'Other' || (value && value.trim() !== '');
-        }
-    ),
-
+    // Stored as "Other - <detail>" in a 20-character column: detail at most 12
+    sexOfRespondent_other: otherDetailRule({ mainField: 'sexOfRespondent', max: FOLLOWUP_DETAIL_LIMITS.sexOfRespondent }),
 });
 
 const step2ValidationSchema = Yup.object({
+    childName: maxCharsRule(FOLLOWUP_LIMITS.childName, 'Child name'),
     childSex: Yup.string().required("This is required field"),
+    // F06: "Other - <detail>" in a 30-character column: detail required, at most 22
+    childSex_other: otherDetailRule({ mainField: 'childSex', max: FOLLOWUP_DETAIL_LIMITS.childSex }),
     childDob: Yup.string().required("This is required field"),
     childAgeMonths: Yup.string().required("This is required field"),
     birthWeight: Yup.string().required("This is required field"),
@@ -153,6 +123,15 @@ const step2ValidationSchema = Yup.object({
           return !((chronicMedicalCondition === 'Yes') && (!value || value.trim() === ''));
         }
     ),
+    // F06: condition "Other" detail required; whole "Other - <detail>" value at most 255
+    chronicMedicalConditionSpecify_other: otherDetailRule({
+        mainField: 'chronicMedicalConditionSpecify',
+        max: FOLLOWUP_DETAIL_LIMITS.chronicMedicalConditionSpecify,
+        isAsked: isChronicSpecifyAsked,
+    }),
+    // F04: THR11 / THR13 Other details, stored in their own columns (max 200)
+    quantityThrEveryDay_other: otherDetailRule({ mainField: 'quantityThrEveryDay', max: FOLLOWUP_LIMITS.otherDetail, isAsked: isThrUsageAsked }),
+    storeThrPacket_other: otherDetailRule({ mainField: 'storeThrPacket', max: FOLLOWUP_LIMITS.otherDetail, isAsked: isThrUsageAsked }),
 
     childWeightLast1Month: Yup.string().required("This is required field"),
     weightMeasuredTimes:Yup.string().test(
@@ -234,7 +213,16 @@ const step2ValidationSchema = Yup.object({
     ashaHomeVisitsCount:Yup.string().required("This is required field"),
 });
 
-const step3ValidationSchema = Yup.object({});
+// C4: long notes at most 5000 characters
+const step3ValidationSchema = Yup.object({
+    relevantInfo: maxCharsRule(FOLLOWUP_LIMITS.relevantInfo, 'Other relevant information'),
+});
+
+/** Step (0, 1, 2) that shows a field, so errors can be shown where they are. */
+const STEP0_FIELDS = new Set([...Object.keys(step1ValidationSchema.fields), 'stateCode', 'districtCode', 'blockCode']);
+const STEP2_FIELDS = new Set(Object.keys(step3ValidationSchema.fields));
+// Everything else (the caregiver answers, their Other boxes) is on step 1.
+const stepOfField = (field) => (STEP0_FIELDS.has(field) ? 0 : STEP2_FIELDS.has(field) ? 2 : 1);
 
 const Followup = () => {
     const [loadingStatus, setLoadingStatus] = useState(false);
@@ -253,9 +241,7 @@ const Followup = () => {
     const [showSaveOfflineOption, setShowSaveOfflineOption] = useState(false);
     const [isRetrying, setIsRetrying] = useState(false);
     const [submitButtonDisabled, setSubmitButtonDisabled] = useState(false);
-    const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
-    const [whatsAppErrorMessage, setWhatsAppErrorMessage] = useState('');
-    const [errorPayload, setErrorPayload] = useState(null);
+    // Submission failures are reported through ErrorReportingDialog (Retry / Save Offline / WhatsApp).
 
     // Form state management
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -308,7 +294,7 @@ const Followup = () => {
 
     // Helper function to get current date
     const getCurrentDate = () => {
-        return new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        return localIsoDate(); // YYYY-MM-DD on the device's calendar (not UTC)
     };
 
     const initialValues = {
@@ -440,306 +426,171 @@ const Followup = () => {
         setStep(0);
     };
 
-    // Handle form submission without auto-save
-    const handleSubmit = async (values, { resetForm, setSubmitting }) => {
-      values = withoutSkippedFeedingAnswers(values);
-      // If offline, save directly to IndexedDB
-      if (!isOnline) {
-        handleSaveOffline(values, { resetForm, setSubmitting });
-        return;
+    // ── Submission (audit W1 / F10) ───────────────────────────────────────────
+    // Submit (online and offline), the Save Offline button and Retry share one
+    // builder (buildFollowupPayload) and one final check (validateFollowupRequest).
+    // Retry and the error dialog's Save Offline reuse the built request.
+    const formikRef = useRef(null);
+    // The last request that passed validation: { request, clientSubmissionId, sent }.
+    // `sent` = it was actually POSTed (the response may have been lost).
+    const preparedRef = useRef(null);
+
+    const buildRequest = (values) => buildFollowupPayload(values, {
+      coordinates,
+      enrichLocationCodes: enrichFollowupLocationCodes,
+      locationMetadata: surveyLocationMetadata,
+    });
+
+    /** Show field errors beside their inputs (switching to their step) and keep every answer. */
+    const showFormErrors = (fieldErrors, message) => {
+      const fields = Object.keys(fieldErrors || {});
+      const formik = formikRef.current;
+      if (fields.length && formik) {
+        formik.setTouched({ ...formik.touched, ...Object.fromEntries(fields.map((f) => [f, true])) }, false);
+        formik.setErrors(fieldErrors);
+        if (!fields.some((f) => stepOfField(f) === step)) {
+          setStep(Math.min(...fields.map(stepOfField)));
+        }
+        setTimeout(() => {
+          const element = document.querySelector(`[name="${fields[0]}"]`);
+          element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 500);
       }
-
-      // Use coordinates if available, otherwise use default (0, 0)
-      const lat = coordinates?.lat || 0;
-      const lng = coordinates?.lng || 0;
-
-      // Helper function to process array fields with other option
-      const processArrayWithOther = (array, otherValue) => {
-        if (!Array.isArray(array)) return array || '';
-        const values = [...array];
-        if (otherValue && otherValue.trim() && values.includes('Other')) {
-          values.splice(values.indexOf('Other'), 1);
-          values.push(`Other - ${otherValue.trim()}`);
-        }
-        return values.join(', ');
-      };
-
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed) with other option
-      const processObjectField = (obj, otherValue) => {
-        if (obj && typeof obj !== 'object') return obj;
-
-        // The field starts as [] until a food count is picked, so the other-food text is kept either way
-        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
-        if (otherValue && otherValue.trim()) {
-          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
-        }
-        if (entries.length === 0) return '';
-        
-        return entries.map(([key, value]) => `${key} - ${value}`).join(',');
-      };
-
-      // String fields with an "Other" option use the module-level processStringWithOther
-
-      // Process the form data to convert arrays to strings and handle other options
-      const processedValues = {
-        ...enrichFollowupLocationCodes(values),
-        // Convert array fields to strings with other option handling
-        awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
-        ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
-        
-        // Convert string fields with other option handling
-        awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
-        ashaCounselingToolsUsed: processStringWithOther(values.ashaCounselingToolsUsed, values.ashaCounselingToolsUsed_other),
-        receivedOtherFoodAwc: processStringWithOther(values.receivedOtherFoodAwc, values.receivedOtherFoodAwc_other),
-        howToEnrichHomemadeFood: processStringWithOther(values.howToEnrichHomemadeFood, values.howToEnrichHomemadeFood_other),
-        
-        // Handle other single field options
-        sexOfRespondent: values.sexOfRespondent === 'Other' && values.sexOfRespondent_other ? 
-          `Other - ${values.sexOfRespondent_other}` : values.sexOfRespondent,
-        childSex: values.childSex === 'Other' && values.childSex_other ? 
-          `Other - ${values.childSex_other}` : values.childSex,
-        chronicMedicalConditionSpecify: values.chronicMedicalConditionSpecify === 'Other' && values.chronicMedicalConditionSpecify_other ? 
-          `Other - ${values.chronicMedicalConditionSpecify_other}` : values.chronicMedicalConditionSpecify,
-      };
-
-      // Remove the _other fields from the payload
-      const {
-        sexOfRespondent_other,
-        childSex_other,
-        chronicMedicalConditionSpecify_other,
-        awwInformationDiscussed_other,
-        ashaInformationDiscussed_other,
-        yesterdayFoodItemsConsumed_other,
-        receivedOtherFoodAwc_other,
-        howToEnrichHomemadeFood_other,
-        awwCounselingToolsUsed_other,
-        ashaCounselingToolsUsed_other,
-        ...payload
-      } = processedValues;
-
-      // Add coordinates to payload
-      payload.latitude = lat;
-      payload.longitude = lng;
-      Object.assign(payload, surveyLocationMetadata(coordinates));
-      
-      setLoadingStatus(true);
-      setIsRetrying(false);
-
-      try {
-        const res = await apiService.post('/form/followup', payload);
-        setLoadingStatus(false);
-        setSubmitting(false);
-        
-        // Check for actual success: only statusCode: 200 indicates success
-        if (res.statusCode === 200) {
-          // Increment daily count for surveyors and sync with API
-          if (isSurveyorUser()) {
-            try {
-              incrementDailyCount(null, 'followup');
-              syncAfterSubmission(apiService, 'followup').catch((error) => {
-                console.error('Error syncing daily count with API:', error);
-              });
-            } catch (error) {
-              console.error('Error updating daily count:', error);
-            }
-          }
-
-          setShowSnackBar(true);
-          setSnackBarMessage({
-            text: "Form submitted successfully!",
-            type: "success",
-          });
-
-          resetForm();
-          setTimeout(() => {
-            navigate("/survey/list", { replace: true });
-          }, 1000);
-        } else {
-          // Handle backend errors (including 200 responses with error statusCode)
-          const backendMessage = res.message || res.error || "Form submission failed";
-          const errorStatusCode = res.statusCode || 'Unknown';
-          
-          setShowSnackBar(true);
-          setSnackBarMessage({
-            text: `Submission failed: ${backendMessage}. Please try again or save offline.`,
-            type: "error",
-          });
-          
-          // Show WhatsApp contact dialog for backend errors
-          setWhatsAppErrorMessage(`Backend Error (${errorStatusCode}): ${backendMessage}`);
-          setErrorPayload(payload);
-          setShowWhatsAppDialog(true);
-        }
-      } catch (error) {
-        // Handle network/server errors with improved error messages
-        console.error('Followup form submission error:', error);
-        const statusCode = error.response?.status || error.status;
-        
-        if (statusCode === 401 || statusCode === 403) {
-          setShowSnackBar(true);
-          setSnackBarMessage({
-            text: "Session expired. Please login again.",
-            type: "error",
-          });
-          return;
-        }
-        
-        if (statusCode >= 500) {
-          setShowSaveOfflineOption(true);
-          setShowSnackBar(true);
-          setSnackBarMessage({
-            text: "Server error. You can save this form offline.",
-            type: "error",
-          });
-          
-          // Show WhatsApp contact dialog for server errors
-          setWhatsAppErrorMessage(`Server Error (${statusCode}): Please try again later or contact support`);
-          setErrorPayload(payload);
-          setShowWhatsAppDialog(true);
-          return;
-        }
-        
-        const backendMessage = error.response?.data?.message || error.response?.data?.error || error.message;
-        setShowSaveOfflineOption(true);
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: `Error: ${backendMessage}. You can save this form offline.`,
-          type: "error",
-        });
-        
-        // Show WhatsApp contact dialog for other errors
-        setWhatsAppErrorMessage(`Network/Connection Error: ${backendMessage}`);
-        setErrorPayload(payload);
-        setShowWhatsAppDialog(true);
-      }
-    };
-
-    const handleSubmissionFailure = (payload, resetForm, setSubmitting, response) => {
-      setLoadingStatus(false);
-      setSubmitting(false);
-      // Create error object for the dialog
-      const error = {
-        status: response?.statusCode || 'Unknown',
-        message: response?.message || response?.error || "Form submission failed",
-        response: { data: response }
-      };
-      setCurrentError(error);
-      setCurrentPayload(payload);
-      setShowErrorDialog(true);
-    };
-
-    const handleSubmissionError = (error, payload, resetForm, setSubmitting) => {
-      console.error('Form submission error:', error);
-      setLoadingStatus(false);
-      setSubmitting(false);
-      const statusCode = error.response?.status || error.status;
-      if (statusCode === 401 || statusCode === 403) {
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: "Session expired. Please login again.",
-          type: "error",
-        });
-        return;
-      }
-      setCurrentError(error);
-      setCurrentPayload(payload);
-      setShowErrorDialog(true);
-    };
-
-    const handleSaveOffline = async (values, { resetForm, setSubmitting }) => {
-      values = withoutSkippedFeedingAnswers(values);
-      // Helper function to process array fields with other option
-      const processArrayWithOther = (array, otherValue) => {
-        if (!Array.isArray(array)) return array || '';
-        const values = [...array];
-        if (otherValue && otherValue.trim() && values.includes('Other')) {
-          values.splice(values.indexOf('Other'), 1);
-          values.push(`Other - ${otherValue.trim()}`);
-        }
-        return values.join(', ');
-      };
-
-      // Helper function to process object fields (like yesterdayFoodItemsConsumed) with other option
-      const processObjectField = (obj, otherValue) => {
-        if (obj && typeof obj !== 'object') return obj;
-
-        // The field starts as [] until a food count is picked, so the other-food text is kept either way
-        const entries = obj && !Array.isArray(obj) ? Object.entries(obj) : [];
-        if (otherValue && otherValue.trim()) {
-          entries.push([FD3_OTHER_FOOD_KEY, otherValue.trim()]);
-        }
-        if (entries.length === 0) return '';
-        
-        return entries.map(([key, value]) => `${key} - ${value}`).join(',');
-      };
-
-      // String fields with an "Other" option use the module-level processStringWithOther
-
-      // Process the form data to convert arrays to strings and handle other options
-      const processedValues = {
-        ...enrichFollowupLocationCodes(values),
-        // Convert array fields to strings with other option handling
-        awwInformationDiscussed: processArrayWithOther(values.awwInformationDiscussed, values.awwInformationDiscussed_other),
-        ashaInformationDiscussed: processArrayWithOther(values.ashaInformationDiscussed, values.ashaInformationDiscussed_other),
-        yesterdayFoodItemsConsumed: processObjectField(values.yesterdayFoodItemsConsumed, values.yesterdayFoodItemsConsumed_other),
-        
-        // Convert string fields with other option handling
-        awwCounselingToolsUsed: processStringWithOther(values.awwCounselingToolsUsed, values.awwCounselingToolsUsed_other),
-        ashaCounselingToolsUsed: processStringWithOther(values.ashaCounselingToolsUsed, values.ashaCounselingToolsUsed_other),
-        receivedOtherFoodAwc: processStringWithOther(values.receivedOtherFoodAwc, values.receivedOtherFoodAwc_other),
-        howToEnrichHomemadeFood: processStringWithOther(values.howToEnrichHomemadeFood, values.howToEnrichHomemadeFood_other),
-        
-        // Handle other single field options
-        sexOfRespondent: values.sexOfRespondent === 'Other' && values.sexOfRespondent_other ? 
-          `Other - ${values.sexOfRespondent_other}` : values.sexOfRespondent,
-        childSex: values.childSex === 'Other' && values.childSex_other ? 
-          `Other - ${values.childSex_other}` : values.childSex,
-        chronicMedicalConditionSpecify: values.chronicMedicalConditionSpecify === 'Other' && values.chronicMedicalConditionSpecify_other ? 
-          `Other - ${values.chronicMedicalConditionSpecify_other}` : values.chronicMedicalConditionSpecify,
-      };
-
-      // Remove the _other fields from the payload
-      const {
-        sexOfRespondent_other,
-        childSex_other,
-        chronicMedicalConditionSpecify_other,
-        awwInformationDiscussed_other,
-        ashaInformationDiscussed_other,
-        yesterdayFoodItemsConsumed_other,
-        receivedOtherFoodAwc_other,
-        howToEnrichHomemadeFood_other,
-        awwCounselingToolsUsed_other,
-        ashaCounselingToolsUsed_other,
-        ...payload
-      } = processedValues;
-
-      // Use coordinates if available, otherwise use default (0, 0)
-      const lat = coordinates?.lat || 0;
-      const lng = coordinates?.lng || 0;
-
-      try {
-        await saveOfflineForm({ url: '/form/followup', data: { ...payload, latitude: lat, longitude: lng, ...surveyLocationMetadata(coordinates), responseMode: 'offline' } });
-      } catch {
-        setSubmitting?.(false);
-        setShowSnackBar(true);
-        setSnackBarMessage({ text: "Could not save the survey offline. Please try again.", type: "error" });
-        return;
-      }
-
-      setHasUnsavedChanges(false);
-      
-      resetForm();
       setShowSnackBar(true);
+      setSnackBarMessage({ text: message || errorSummary(fieldErrors), type: "error" });
+    };
+
+    /** Validate every step and the final request. Returns { request, clientSubmissionId } or null. */
+    const prepareSubmission = async (values) => {
+      const yupErrors = await collectYupErrors([step1ValidationSchema, step2ValidationSchema, step3ValidationSchema], values);
+      const request = buildRequest(values);
+      const { fields, unmatched } = mapRequestErrors(validateFollowupRequest(request), followupFieldForKey, values);
+      const errors = { ...fields, ...yupErrors };
+      if (Object.keys(errors).length > 0) {
+        showFormErrors(errors, `Please correct the highlighted fields. ${errorSummary(errors)}`);
+        return null;
+      }
+      if (Object.keys(unmatched).length > 0) {
+        showFormErrors({}, Object.values(unmatched)[0]);
+        return null;
+      }
+      // Same request as the last attempt that may have reached the server: reuse that
+      // attempt (same id, same bytes) so the server can recognise a repeat.
+      const previous = preparedRef.current;
+      const sameAsPrevious = previous && JSON.stringify(previous.request) === JSON.stringify(request);
+      if (sameAsPrevious) return previous;
+      return { request, clientSubmissionId: newClientId(), sent: false };
+    };
+
+    /** Queue a complete, validated request for upload. Keeps the form if storage fails (A07). */
+    const queueOffline = async (prepared) => {
+      setSubmitButtonDisabled(true);
+      setLoadingStatus(true);
+      try {
+        await saveOfflineForm(prepared.sent
+          // Already POSTed (the response may have been lost): queue the byte-identical
+          // request under the same id, so a replay the server already saved returns the
+          // original result instead of saving it twice (A08).
+          ? { url: FOLLOWUP_URL, data: prepared.request, clientSubmissionId: prepared.clientSubmissionId }
+          // Never sent: a normal offline submission with a fresh id.
+          : { url: FOLLOWUP_URL, data: { ...prepared.request, responseMode: 'offline' } });
+      } catch (error) {
+        console.error('Error saving form offline:', error);
+        setLoadingStatus(false);
+        setSubmitButtonDisabled(false);
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: "Could not save the survey on this device. Your answers are still here - please try again.", type: "error" });
+        return false;
+      }
+      setLoadingStatus(false);
+      preparedRef.current = null;
+      setHasUnsavedChanges(false);
+      formikRef.current?.resetForm();
       setRetryCount(0);
       setShowSaveOfflineOption(false);
+      setShowSnackBar(true);
       setSnackBarMessage({
-          text: "Form saved offline due to repeated failures. It will sync when you're online.",
+          text: "Form saved offline. It will sync when you're online.",
           type: "warning",
       });
       setTimeout(() => {
-          navigate("/survey/list", { replace: true });
+          navigate(SURVEY_LIST_ROUTE, { replace: true });
       }, 3000);
+      return true;
+    };
+
+    /** POST a prepared request; on failure keep it for Retry / Save Offline. */
+    const submitOnline = async (prepared) => {
+      // From here on the server may receive it: Retry and Save Offline reuse this attempt.
+      const attempt = prepared.sent ? prepared : { ...prepared, sent: true };
+      preparedRef.current = attempt;
+      setSubmitButtonDisabled(true);
+      setLoadingStatus(true);
+      setShowSaveOfflineOption(false);
+
+      const result = await sendSurvey(apiService.post, FOLLOWUP_URL, attempt.request, attempt.clientSubmissionId);
+      setLoadingStatus(false);
+
+      if (result.status === 'ok') {
+        // Increment daily count for surveyors and sync with API
+        if (isSurveyorUser()) {
+          try {
+            incrementDailyCount(null, 'followup');
+            syncAfterSubmission(apiService, 'followup').catch((error) => {
+              console.error('Error syncing daily count with API:', error);
+            });
+          } catch (error) {
+            console.error('Error updating daily count:', error);
+          }
+        }
+        preparedRef.current = null;
+        setShowSnackBar(true);
+        setSnackBarMessage({
+          text: "Form submitted successfully!",
+          type: "success",
+        });
+        setHasUnsavedChanges(false);
+        formikRef.current?.resetForm();
+        setTimeout(() => {
+          navigate(SURVEY_LIST_ROUTE, { replace: true });
+        }, 1000);
+        return;
+      }
+
+      setSubmitButtonDisabled(false);
+      if (result.status === 'auth') {
+        setShowSnackBar(true);
+        setSnackBarMessage({ text: result.message, type: "error" });
+        return;
+      }
+      if (result.status === 'invalid') {
+        // C1: show the server's message, mark the fields it names, keep every answer.
+        const { fields } = mapRequestErrors(result.fieldErrors, followupFieldForKey, formikRef.current?.values || {});
+        showFormErrors(fields, `Submission failed: ${result.message}`);
+        return;
+      }
+      // Network / server problem: offer Retry and Save Offline with the same request.
+      setShowSaveOfflineOption(true);
+      setCurrentError({
+        status: result.statusCode,
+        message: result.message,
+        response: result.error ? result.error.response : { data: result.body },
+      });
+      setShowErrorDialog(true);
+    };
+
+    /** Formik submit (final step): full validation, then send or queue. */
+    const handleFinalSubmit = async (values) => {
+      const prepared = await prepareSubmission(values);
+      if (!prepared) return;
+      if (!isOnline) await queueOffline(prepared);
+      else await submitOnline(prepared);
+    };
+
+    /** The page's Save Offline button: same validation as Submit, never a bypass. */
+    const handleSaveOfflineClick = async (values) => {
+      const prepared = await prepareSubmission(values);
+      if (prepared) await queueOffline(prepared);
     };
 
     // Get today's date in the format YYYY-MM-DD
@@ -826,7 +677,6 @@ const Followup = () => {
     // Error reporting states
     const [showErrorDialog, setShowErrorDialog] = useState(false);
     const [currentError, setCurrentError] = useState(null);
-    const [currentPayload, setCurrentPayload] = useState(null);
 
     // Consent management states
     const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -860,29 +710,26 @@ const Followup = () => {
     const handleErrorDialogClose = () => {
       setShowErrorDialog(false);
       setCurrentError(null);
-      setCurrentPayload(null);
     };
 
-    const handleRetry = () => {
-      setIsRetrying(true);
+    // Retry re-sends the request that was built (same submission id), not the form values.
+    const handleRetry = async () => {
       setShowErrorDialog(false);
-      // Retry the form submission
-      if (currentPayload) {
-        handleSubmit(currentPayload, { 
-          resetForm: () => {}, 
-          setSubmitting: () => {} 
-        });
+      const prepared = preparedRef.current;
+      if (!prepared) return;
+      setIsRetrying(true);
+      setRetryCount((n) => n + 1);
+      try {
+        await submitOnline(prepared);
+      } finally {
+        setIsRetrying(false);
       }
-      setIsRetrying(false);
     };
 
+    // The dialog's Save Offline queues the request that just failed to send.
     const handleErrorSaveOffline = () => {
-      if (currentPayload) {
-        handleSaveOffline(currentPayload, { 
-          resetForm: () => {}, 
-          setSubmitting: () => {} 
-        });
-      }
+      const prepared = preparedRef.current;
+      if (prepared) queueOffline(prepared);
     };
 
     return (
@@ -932,7 +779,9 @@ const Followup = () => {
                             initialValues={initialValues}
                             validationSchema={(values) =>
                                 step === 0 ? step1ValidationSchema : step === 1 ? step2ValidationSchema : step3ValidationSchema}
-                            onSubmit={handleSubmit}
+                            innerRef={formikRef}
+                            // Enter on an earlier step moves on instead of submitting a partial survey.
+                            onSubmit={async (values, actions) => { if (step < 2) handleNext(values, actions); else await handleFinalSubmit(values); }}
                         >
                             {({
                                   values,
@@ -2093,6 +1942,8 @@ const Followup = () => {
                                                                                                 setFieldValue('quantityThrEveryDay_other', e.target.value);
                                                                                             }}
                                                                                             onBlur={handleBlur}
+                                                                                            error={touched.quantityThrEveryDay_other && !!errors.quantityThrEveryDay_other}
+                                                                                            helperText={touched.quantityThrEveryDay_other && errors.quantityThrEveryDay_other}
                                                                                         />
                                                                                     </Grid>
                                                                                 )}
@@ -2315,6 +2166,8 @@ const Followup = () => {
                                                                                                 setFieldValue('storeThrPacket_other', e.target.value);
                                                                                             }}
                                                                                             onBlur={handleBlur}
+                                                                                            error={touched.storeThrPacket_other && !!errors.storeThrPacket_other}
+                                                                                            helperText={touched.storeThrPacket_other && errors.storeThrPacket_other}
                                                                                         />
                                                                                     </Grid>
                                                                                 )}
@@ -2436,6 +2289,8 @@ const Followup = () => {
                                                                                                 setFieldValue('receivedOtherFoodAwc_other', e.target.value);
                                                                                             }}
                                                                                             onBlur={handleBlur}
+                                                                                            error={touched.receivedOtherFoodAwc_other && !!errors.receivedOtherFoodAwc_other}
+                                                                                            helperText={touched.receivedOtherFoodAwc_other && errors.receivedOtherFoodAwc_other}
                                                                                         />
                                                                                     </Grid>
                                                                                 )}
@@ -3625,6 +3480,8 @@ const Followup = () => {
                                                                                 setFieldValue('awwCounselingToolsUsed_other', e.target.value);
                                                                             }}
                                                                             onBlur={handleBlur}
+                                                                            error={touched.awwCounselingToolsUsed_other && !!errors.awwCounselingToolsUsed_other}
+                                                                            helperText={touched.awwCounselingToolsUsed_other && errors.awwCounselingToolsUsed_other}
                                                                         />
                                                                     </Grid>
                                                                 )}
@@ -3985,6 +3842,8 @@ const Followup = () => {
                                                                                 setFieldValue('ashaCounselingToolsUsed_other', e.target.value);
                                                                             }}
                                                                             onBlur={handleBlur}
+                                                                            error={touched.ashaCounselingToolsUsed_other && !!errors.ashaCounselingToolsUsed_other}
+                                                                            helperText={touched.ashaCounselingToolsUsed_other && errors.ashaCounselingToolsUsed_other}
                                                                         />
                                                                     </Grid>
                                                                 )}
@@ -4402,7 +4261,7 @@ const Followup = () => {
                                                             <Button
                                                                 variant="outlined"
                                                                 color="warning"
-                                                                onClick={() => handleSaveOffline(values, { resetForm })}
+                                                                onClick={() => handleSaveOfflineClick(values)}
                                                                 disabled={loadingStatus}
                                                                 sx={{ ml: 2 }}
                                                             >

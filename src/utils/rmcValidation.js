@@ -13,6 +13,9 @@
  * guarantees previously-required data is never silently dropped.
  */
 
+import { parseMultiSelect, parseSingleChoice, isBareOtherToken } from "../pages/survey/rmc/otherOptions";
+import { sectionLimitErrors, SECTION_TYPE_TO_KEY } from "../pages/survey/rmc/rmcLimits";
+
 export const isEmpty = (v) => {
   if (v === null || v === undefined) return true;
   if (typeof v === "string") return v.trim() === "";
@@ -52,9 +55,12 @@ const conditionMet = (data, cond) => {
   return true;
 };
 
-// A value that is a bare "Other(s)"/"Any other" with no specify text is incomplete.
-const bareOther = /^(others?|any\s*other)\s*-?\s*$/i;
-const hasBareOther = (v) => tokens(v).some((t) => bareOther.test(t));
+// A value that is a bare "Other(s)"/"Any other"/"othersAdvice" with no specify text is incomplete.
+const hasBareOther = (v) => tokens(v).some((t) => isBareOtherToken(t));
+
+// Free-text answers whose key starts with "other": a comma-separated "others"
+// inside typed text is not an unanswered Other option.
+const isFreeTextKey = (k) => /^other[A-Z]/.test(k);
 
 // ---------------------------------------------------------------------------
 // Rules per section (payload field keys)
@@ -114,6 +120,14 @@ export const RMC_RULES = {
   cbe: {
     required: ["themeOfCbe", "typeOfBeneficiaryAttendedCbe", "serviceProvidersPresentCbe", "groupCounsellingConducted"],
     conditional: [
+      { field: "counsellingTopicsCbe", when: { field: "groupCounsellingConducted", in: ["Yes"] } },
+      { field: "counsellingAidsUsed", when: { field: "groupCounsellingConducted", in: ["Yes"] } },
+    ],
+    // P02: when Other is chosen its text is required (same rule as the intake form).
+    otherTextRequired: [
+      { field: "themeOfCbe", single: true },
+      { field: "typeOfBeneficiaryAttendedCbe" },
+      { field: "serviceProvidersPresentCbe" },
       { field: "counsellingTopicsCbe", when: { field: "groupCounsellingConducted", in: ["Yes"] } },
       { field: "counsellingAidsUsed", when: { field: "groupCounsellingConducted", in: ["Yes"] } },
     ],
@@ -251,6 +265,18 @@ export const detectHouseholdSection = (data) => {
   return null;
 };
 
+const OTHER_TEXT_MSG = "Please specify the 'Other' value";
+
+// Other chosen but its text is empty, for a multi-select or single-choice value.
+const otherTextMissing = (value, single) => {
+  if (single) {
+    const parsed = parseSingleChoice(value, "Others");
+    return parsed.isOther && parsed.otherText.trim() === "";
+  }
+  const parsed = parseMultiSelect(value);
+  return parsed.otherSelected && parsed.otherText.trim() === "";
+};
+
 const getRuleSet = (sectionType, data) => {
   if (sectionType === "household") {
     const sub = detectHouseholdSection(data);
@@ -296,13 +322,24 @@ export const validateSectionData = (sectionType, data, original = null) => {
       const b = parseInt(data[c.lte] || 0);
       if (!isEmpty(data[c.field]) && !isEmpty(data[c.lte]) && a > b) errors[c.field] = c.message;
     });
+    (rules.otherTextRequired || []).forEach((rule) => {
+      if (errors[rule.field] || isEmpty(data[rule.field])) return;
+      if (rule.when && !conditionMet(data, rule.when)) return;
+      if (otherTextMissing(data[rule.field], rule.single)) errors[rule.field] = OTHER_TEXT_MSG;
+    });
   }
 
   // Generic: a selected "Other" without specify text is incomplete
   Object.entries(data).forEach(([k, v]) => {
-    if (!errors[k] && typeof v === "string" && hasBareOther(v)) {
-      errors[k] = "Please specify the 'Other' value";
+    if (!errors[k] && !isFreeTextKey(k) && typeof v === "string" && hasBareOther(v)) {
+      errors[k] = OTHER_TEXT_MSG;
     }
+  });
+
+  // Stored-length limits (F05 / C4): the full value incl. the "Others - " prefix.
+  const limitErrors = sectionLimitErrors(SECTION_TYPE_TO_KEY[sectionType], data);
+  Object.entries(limitErrors).forEach(([k, msg]) => {
+    if (!errors[k]) errors[k] = msg;
   });
 
   // Safety net: a field filled in the original record may not be cleared

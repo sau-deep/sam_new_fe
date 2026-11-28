@@ -50,11 +50,41 @@ export function newClientId() {
   });
 }
 
+// Some Android WebViews never fire any event for indexedDB.open() (or for a
+// transaction). Every IndexedDB step is therefore bounded: on a timeout the caller
+// falls back to localStorage, and after an open that hung IndexedDB is skipped for
+// a while so each later call does not wait again.
+const idbTimeouts = { openMs: 8000, txMs: 10000, stallMs: 60000 };
+let idbStalledUntil = 0;
+
+/** Test hook: shorten the IndexedDB timeouts. */
+export function _setIDBTimeouts(overrides = {}) {
+  Object.assign(idbTimeouts, overrides);
+}
+
+/** Test hook: forget an earlier hung open. */
+export function _resetIDBStall() {
+  idbStalledUntil = 0;
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     if (!isIDBAvailable()) { reject(new Error('IndexedDB unavailable')); return; }
+    if (Date.now() < idbStalledUntil) { reject(new Error('IndexedDB not responding')); return; }
     let req;
-    try { req = indexedDB.open(DB_NAME, DB_VERSION); } catch (e) { reject(e); return; }
+    let settled = false;
+    const settle = (fn, value) => {
+      if (settled) return false;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+      return true;
+    };
+    const timer = setTimeout(() => {
+      idbStalledUntil = Date.now() + idbTimeouts.stallMs;
+      settle(reject, new Error('IndexedDB open timed out'));
+    }, idbTimeouts.openMs);
+    try { req = indexedDB.open(DB_NAME, DB_VERSION); } catch (e) { settle(reject, e); return; }
     req.onupgradeneeded = e => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(STORE_FORMS)) {
@@ -64,24 +94,55 @@ function openDB() {
         db.createObjectStore(STORE_DRAFTS, { keyPath: 'formKey' });
       }
     };
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = e => reject(e.target.error);
-    req.onblocked = () => reject(new Error('IndexedDB blocked'));
+    req.onsuccess = e => {
+      const db = e.target.result;
+      if (!settle(resolve, db)) {
+        // Opened after we gave up: release the connection.
+        try { db.close(); } catch { /* ignore */ }
+      } else {
+        idbStalledUntil = 0;
+      }
+    };
+    req.onerror = e => settle(reject, e?.target?.error || new Error('IndexedDB open failed'));
+    req.onblocked = () => settle(reject, new Error('IndexedDB blocked'));
   });
 }
 
 // Run one request inside a transaction; resolve with the request result only
-// after the transaction has committed.
+// after the transaction has committed. A quota error, a failed request or an
+// aborted transaction rejects with a real Error, so callers never treat an
+// unwritten record as saved.
 function runTx(db, storeName, mode, fn) {
   return new Promise((resolve, reject) => {
     let tx;
     try { tx = db.transaction(storeName, mode); } catch (e) { reject(e); return; }
     let result;
-    const req = fn(tx.objectStore(storeName));
+    let req;
+    let settled = false;
+    const fail = (fallbackMessage) => {
+      if (settled) return;
+      settled = true;
+      reject(tx.error || req?.error || new Error(fallbackMessage));
+    };
+    try {
+      req = fn(tx.objectStore(storeName));
+    } catch (e) {
+      settled = true;
+      try { tx.abort(); } catch { /* already finished */ }
+      reject(e);
+      return;
+    }
     if (req) req.onsuccess = () => { result = req.result; };
-    tx.oncomplete = () => resolve(result);
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction aborted'));
-    tx.onerror = () => reject(tx.error);
+    // A transaction that never completes must not hang the caller. (A readwrite
+    // that commits after this fires leaves at most a duplicate copy with the same
+    // clientSubmissionId, which reads de-duplicate and deleteOfflineSubmission removes.)
+    const timer = setTimeout(() => {
+      try { tx.abort(); } catch { /* already finished */ }
+      fail('IndexedDB transaction timed out');
+    }, idbTimeouts.txMs);
+    tx.oncomplete = () => { clearTimeout(timer); if (!settled) { settled = true; resolve(result); } };
+    tx.onabort = () => { clearTimeout(timer); fail('IndexedDB transaction aborted'); };
+    tx.onerror = () => { clearTimeout(timer); fail('IndexedDB request failed'); };
   });
 }
 
@@ -90,16 +151,21 @@ const recordIdentity = rec => rec?.clientSubmissionId || (rec?.id != null ? `id:
 // ── Offline form submissions ──────────────────────────────────────────────────
 
 // Survey pages call this with a single object: saveOfflineForm({ url, data }).
-// Resolves true only after the record is durably stored; throws otherwise.
+// Optional clientSubmissionId: pass the id an online attempt already used, so a
+// submission the server did save (response lost) is recognised on replay instead
+// of being stored twice. Resolves true only after the record is durably stored;
+// throws otherwise.
 export async function saveOfflineForm(payload) {
-  const { url, data } = payload || {};
+  const { url, data, clientSubmissionId } = payload || {};
   const record = {
     url,
     data,
     timestamp: Date.now(),
     lastModified: Date.now(),
     synced: false,
-    clientSubmissionId: newClientId(),
+    clientSubmissionId: typeof clientSubmissionId === 'string' && clientSubmissionId.trim()
+      ? clientSubmissionId.trim()
+      : newClientId(),
     ownerId: getCurrentOwnerId(),
     // The payload shape this build produced; sent with the upload even after an app update.
     formSchemaVersion: formSchemaVersionFor(url),
@@ -157,6 +223,15 @@ export async function getOfflineForms() {
     merged.push(rec);
   }
   return merged.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+}
+
+/** Two queued-record ids are the same record (IndexedDB ids are numbers, fallback ids are storage keys). */
+export const sameOfflineId = (a, b) => a != null && b != null && String(a) === String(b);
+
+/** The current copy of one queued record (either store), or null when it is gone. */
+export async function findOfflineForm(id) {
+  if (id == null) return null;
+  return (await getOfflineForms()).find(r => sameOfflineId(r.id, id)) || null;
 }
 
 /**
@@ -235,6 +310,41 @@ export async function resendAsNewSubmission(rec) {
   return updateOfflineForm(rec, { clientSubmissionId: newClientId(), previousSubmissionIds: previous, syncConflict: null });
 }
 
+/**
+ * The server rejected this record's data (validation failure). Park it with the
+ * server's reason so it is shown to the surveyor and NOT retried automatically.
+ */
+export async function markOfflineFormRejected(rec, { message, fieldErrors, statusCode } = {}) {
+  if (!rec) return rec;
+  return updateOfflineForm(rec, {
+    syncRejected: {
+      at: Date.now(),
+      message: message || 'The server did not accept this survey.',
+      fieldErrors: fieldErrors && typeof fieldErrors === 'object' ? fieldErrors : {},
+      statusCode: statusCode ?? null,
+    },
+  });
+}
+
+/** User-confirmed retry of a parked (rejected) record. */
+export async function clearOfflineFormRejection(rec) {
+  if (!rec?.syncRejected) return rec;
+  return updateOfflineForm(rec, { syncRejected: null });
+}
+
+/** Remember the last transient upload failure (the record stays queued for retry). */
+export async function recordOfflineFormAttempt(rec, message) {
+  if (!rec) return rec;
+  return updateOfflineForm(rec, {
+    syncAttempts: (rec.syncAttempts || 0) + 1,
+    lastSyncAttempt: { at: Date.now(), message: message || 'Upload failed' },
+  });
+}
+
+/**
+ * Delete one queued record by its id, from the store that holds it.
+ * Resolves true only when the delete is durable (the transaction committed).
+ */
 export async function deleteOfflineForm(id) {
   if (typeof id === 'string' && id.startsWith(FORM_FALLBACK_PREFIX)) return lsFallback.del(id);
   try {
@@ -242,6 +352,36 @@ export async function deleteOfflineForm(id) {
     await runTx(db, STORE_FORMS, 'readwrite', store => store.delete(id));
     return true;
   } catch { return false; }
+}
+
+/**
+ * After a confirmed upload: delete exactly this submission — the record itself
+ * and any other stored copy carrying the same clientSubmissionId (a copy can be
+ * left in the fallback store when an IndexedDB write committed but reported an
+ * error). Never touches a different submission. Resolves true once the record
+ * itself is durably removed; copies are removed best effort (if one survives, the
+ * server recognises its clientSubmissionId and returns the original result).
+ */
+export async function deleteOfflineSubmission(rec) {
+  if (!rec || rec.id == null) return false;
+  if (!(await deleteOfflineForm(rec.id))) return false;
+  const csid = rec.clientSubmissionId;
+  if (!csid) return true;
+  for (const key of lsFallback.keys(FORM_FALLBACK_PREFIX)) {
+    if (sameOfflineId(key, rec.id)) continue;
+    if (lsFallback.get(key)?.clientSubmissionId === csid) lsFallback.del(key);
+  }
+  if (isIDBAvailable()) {
+    try {
+      const db = await openDB();
+      const copies = ((await runTx(db, STORE_FORMS, 'readonly', store => store.getAll())) || [])
+        .filter(r => r.clientSubmissionId === csid && !sameOfflineId(r.id, rec.id));
+      for (const copy of copies) {
+        await runTx(db, STORE_FORMS, 'readwrite', store => store.delete(copy.id));
+      }
+    } catch { /* IndexedDB unreachable: nothing visible to remove */ }
+  }
+  return true;
 }
 
 // alias used in some places
@@ -298,15 +438,16 @@ export async function getFormDraft(formKey) {
   return primary || fallback || null;
 }
 
-// Removes the draft from both stores.
+// Removes the draft from both stores. True only when neither store still holds it.
 export async function deleteFormDraft(formKey) {
   const lsOk = lsFallback.del(`${DRAFT_FALLBACK_PREFIX}${formKey}`);
+  if (!isIDBAvailable()) return lsOk;
   try {
     const db = await openDB();
     await runTx(db, STORE_DRAFTS, 'readwrite', store => store.delete(formKey));
-    return true;
-  } catch {
     return lsOk;
+  } catch {
+    return false;
   }
 }
 

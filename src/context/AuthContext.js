@@ -45,8 +45,20 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
+  // Another tab signed in as a different account, or signed out: cached private
+  // GET responses belong to the previous account, so drop them (audit A11).
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === OWNER_KEY || e.key === JWT_KEY || e.key === null) clearApiCache();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   const login = useCallback((data) => {
     const { accessToken, username, authorities, state, name } = data;
+    // Drop every cached private response (and any still in flight) before the new
+    // account's id is stored.
     clearApiCache();
     localStorage.setItem(JWT_KEY, accessToken);
     // Owner of local data = login id (not the display name in `username`).
@@ -75,7 +87,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    clearApiCache(); // cached GETs belong to the account that is signing out
+    clearApiCache(); // cached GETs (and reads still in flight) belong to the account signing out
     localStorage.removeItem(JWT_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(OWNER_KEY);

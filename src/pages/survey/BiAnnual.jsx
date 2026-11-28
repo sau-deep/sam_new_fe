@@ -36,8 +36,16 @@ import useFormLocations from "hooks/useFormLocations";
 import { useTranslation } from "react-i18next";
 import { useFormTranslation } from "hooks/useFormTranslation";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm, stableDraftKey } from 'utils/indexDB'
+import { saveOfflineForm, stableDraftKey, newClientId } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
+import {
+  BIANNUAL_LIMITS, BIANNUAL_URL, CA_DEPENDENT_FIELDS, biannualChildId, biannualFieldForKey,
+  biannualOtherDetailRule, buildBiannualPayload, isAnth5Asked, validateBiannualRequest, withoutSkippedCaAnswers,
+} from './payload/biannualPayload';
+import {
+  SURVEY_LIST_ROUTE, collectYupErrors, errorSummary, localIsoDate, mapRequestErrors, maxCharsRule, requiredTextRule,
+  sendSurvey,
+} from './payload/common';
 import useFormAutoSave, { hasUserChanges } from 'hooks/useFormAutoSave';
 import usePreventPageReload from 'hooks/usePreventPageReload';
 import { captureSurveyLocation, surveyLocationMetadata } from 'utils/locationUtils';
@@ -112,26 +120,8 @@ const CQ6_1_ILLNESS_OPTIONS = [
   { value: 'Fever', label: 'illness_fever' },
 ];
 
-/** ANTH5 is asked only for a SAM child (ANTH4) whom the AWW also identified as SAM (ANTH4.1 = Yes). */
-const isAnth5Asked = (v) => v.nutritionalCategory === 'SAM' && v.samIdentifiedByAww === 'Yes';
-
-/** Answers that depend on another answer; blanked by withoutSkippedCaAnswers when their condition fails. */
-const CA_DEPENDENT_FIELDS = ['hhHeadReligionOther', 'childIllnessType', 'samIdentifiedByAww', 'mamIdentifiedByAww', 'childEnrollCmam'];
-
-/**
- * Blank answers whose skip condition no longer holds, e.g. ANTH4.1 after the
- * auto-calculated ANTH4 changes from SAM to Normal, or CQ6.1 after CQ6 turns No.
- */
-function withoutSkippedCaAnswers(v) {
-  if (!v) return v;
-  const out = { ...v };
-  if (out.hhHeadReligion !== 'Others') out.hhHeadReligionOther = '';
-  if (out.childIllnessPast2Weeks !== 'Yes') out.childIllnessType = '';
-  if (out.nutritionalCategory !== 'SAM') out.samIdentifiedByAww = '';
-  if (out.nutritionalCategory !== 'MAM') out.mamIdentifiedByAww = '';
-  if (!isAnth5Asked(out)) out.childEnrollCmam = '';
-  return out;
-}
+// isAnth5Asked, CA_DEPENDENT_FIELDS and withoutSkippedCaAnswers live in
+// ./payload/biannualPayload so the request builder applies the same skip logic.
 
 /**
  * Clears dependent answers as soon as their condition fails, so stale answers are
@@ -174,7 +164,9 @@ const step1ValidationSchema = Yup.object({
   // ANTH4.1 / ANTH4.2
   samIdentifiedByAww: requiredWhen((p) => p.nutritionalCategory === 'SAM'),
   mamIdentifiedByAww: requiredWhen((p) => p.nutritionalCategory === 'MAM'),
-  caregiverName: Yup.string().required("This is required field"),
+  // F07: required, whitespace-only rejected, at most 80 characters (column width)
+  caregiverName: requiredTextRule(BIANNUAL_LIMITS.caregiverName, 'Caregiver name'),
+  childName: maxCharsRule(BIANNUAL_LIMITS.childName, 'Child name'),
   caregiversex: Yup.string().required("This is required field"),
   caregiverAge: Yup.string()
     .required("This is a required field")
@@ -426,22 +418,9 @@ const step1ValidationSchema = Yup.object({
   ),
   // ANTH5: only when ANTH4 = SAM and ANTH4.1 = Yes
   childEnrollCmam: requiredWhen(isAnth5Asked),
-  caregiversex_other: Yup.string().test(
-    'conditional-required',
-    'This is a required field',
-    function (value) {
-      const { caregiversex } = this.parent;
-      return !(caregiversex === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  childSex_other: Yup.string().test(
-    'conditional-required',
-    'This is a required field',
-    function (value) {
-      const { childSex } = this.parent;
-      return !(childSex === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
+  // F02: Other details are required when Other is chosen and stored in their own column (max 200)
+  caregiversex_other: biannualOtherDetailRule('caregiversex_other'),
+  childSex_other: biannualOtherDetailRule('childSex_other'),
   awwCounsel: Yup.array().test(
     'conditional-required',
     'At least one option must be selected',
@@ -806,48 +785,12 @@ const step1ValidationSchema = Yup.object({
       return !(Number(homeVisitAsha) > 0 && Array.isArray(ashaUsedtoInform) && ashaUsedtoInform.includes('other') && (!value || value.trim() === ''));
     }
   ),
-  weightNotMeasuredReason_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { weightNotMeasuredReason } = this.parent;
-      return !(weightNotMeasuredReason === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  heightNotMeasuredReason_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { heightNotMeasuredReason } = this.parent;
-      return !(heightNotMeasuredReason === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  childUndernourishedType_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { childUndernourishedType } = this.parent;
-      return !(childUndernourishedType === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  reasonWtNotMeasuring_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { reasonWtNotMeasuring } = this.parent;
-      return !(reasonWtNotMeasuring === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  reasonHtNotMeasuring_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { reasonHtNotMeasuring } = this.parent;
-      return !(reasonHtNotMeasuring === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
-  reasonNotAssessing_other: Yup.string().test(
-    'conditional-required', 'This is a required field',
-    function (value) {
-      const { reasonNotAssessing } = this.parent;
-      return !(reasonNotAssessing === 'Other' && (!value || value.trim() === ''));
-    }
-  ),
+  weightNotMeasuredReason_other: biannualOtherDetailRule('weightNotMeasuredReason_other'),
+  heightNotMeasuredReason_other: biannualOtherDetailRule('heightNotMeasuredReason_other'),
+  childUndernourishedType_other: biannualOtherDetailRule('childUndernourishedType_other'),
+  reasonWtNotMeasuring_other: biannualOtherDetailRule('reasonWtNotMeasuring_other'),
+  reasonHtNotMeasuring_other: biannualOtherDetailRule('reasonHtNotMeasuring_other'),
+  reasonNotAssessing_other: biannualOtherDetailRule('reasonNotAssessing_other'),
 });
 
 const step0ValidationSchema = Yup.object({
@@ -873,15 +816,28 @@ const step0ValidationSchema = Yup.object({
     .required("This is a required field"),
   primaryCaregiver: Yup.string().required("This is required field"),
   careGiverInterview: Yup.string().required("This is required field"),
-  primaryCaregiver_other: Yup.string().test(
-    'conditional-required',
-    'This is a required field',
-    function (value) {
-      const { primaryCaregiver } = this.parent;
-      return primaryCaregiver !== 'Other' || (value && value.trim() !== '');
-    }
-  ),
+  primaryCaregiver_other: biannualOtherDetailRule('primaryCaregiver_other'),
 });
+
+/** Fields shown on step 0 (General Information); errors on them are shown there. */
+const STEP0_FIELDS = new Set([
+  ...Object.keys(step0ValidationSchema.fields),
+  'stateCode', 'districtCode', 'blockCode', 'childId', 'latitude', 'longitude',
+]);
+
+/** The deepest selected location entry, so dependent dropdowns and the Child ID work after a draft restore. */
+function locationEntryFor(v) {
+  if (!v?.state) return {};
+  if (v.district && v.block) {
+    const blockOpt = getBlockOptionsByDistrictName(v.state, v.district)?.find((b) => b.text === v.block);
+    if (blockOpt) return blockOpt;
+  }
+  if (v.district) {
+    const districtOpt = getDistrictOptionsByStateName(v.state)?.find((d) => d.text === v.district);
+    if (districtOpt) return districtOpt;
+  }
+  return getStateOptions(v.state)?.[0] || {};
+}
 
 /** Re-derive admin codes from selected labels so payload always has codes (drafts / edge cases). */
 function enrichBiannualLocationCodes(v) {
@@ -946,14 +902,11 @@ const BiAnnual = () => {
   // Add location state
   const [showSaveOfflineOption, setShowSaveOfflineOption] = useState(false);
   const [submitButtonDisabled, setSubmitButtonDisabled] = useState(false);
-  const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
-  const [whatsAppErrorMessage, setWhatsAppErrorMessage] = useState('');
-  const [errorPayload, setErrorPayload] = useState(null);
+  // Submission failures are reported through ErrorReportingDialog (Retry / Save Offline / WhatsApp).
   
   // Error reporting states
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [currentError, setCurrentError] = useState(null);
-  const [currentPayload, setCurrentPayload] = useState(null);
   const [isRetrying, setIsRetrying] = useState(false);
   
   // Consent management states
@@ -1150,7 +1103,7 @@ const BiAnnual = () => {
 
   // Helper function to get current date
   const getCurrentDate = () => {
-    return new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    return localIsoDate(); // YYYY-MM-DD on the device's calendar (not UTC)
   };
 
   const initialValues = {
@@ -1304,265 +1257,185 @@ const BiAnnual = () => {
     longitude: '',
   };
 
-  const handleSubmit = async (values, { resetForm, setSubmitting }) => {
-    // Disable submit button immediately
-    setSubmitButtonDisabled(true);
-    setLoadingStatus(true);
-    setShowSaveOfflineOption(false); // Hide Save Offline button when starting new submission
-    
-    // If offline, save directly to IndexedDB
-    if (!isOnline) {
-      handleSaveOffline(values, { resetForm, setSubmitting });
-      return;
-    }
+  // ── Submission (audit W1 / F10) ─────────────────────────────────────────────
+  // Submit (online and offline), the Save Offline buttons and Retry share one
+  // builder (buildBiannualPayload) and one final check (validateBiannualRequest).
+  // Retry and the error dialog's Save Offline reuse the request that was built,
+  // never re-encoding it. Autosave drafts (incomplete answers) stay separate from
+  // queueing a complete submission.
+  const formikRef = useRef(null);
+  // The last request that passed validation: { request, clientSubmissionId, sent }.
+  // `sent` = it was actually POSTed (the response may have been lost).
+  const preparedRef = useRef(null);
 
-    // Always allow submission - location is not mandatory for form submission
-    // Use captured coordinates if available, otherwise use fallback (0,0)
-    const finalCoordinates = coordinates || { lat: 0, lng: 0 };
-    
+  const buildRequest = (values) => buildBiannualPayload(values, {
+    coordinates,
+    enrichLocationCodes: enrichBiannualLocationCodes,
+    locationMetadata: surveyLocationMetadata,
+  });
 
-    // Helper function to handle array fields with other option
-    const processArrayWithOther = (array, otherValue) => {
-      if (!Array.isArray(array)) return array || '';
-      const values = [...array];
-      const otherIndex = values.findIndex((v) => v.toLowerCase() === 'other');
-      if (otherValue && otherIndex !== -1) {
-        values.splice(otherIndex, 1);
-        values.push(`Other - ${otherValue}`);
-      }
-      return values.join(',');
-    };
-
-    // Process the form data to convert arrays to strings
-    const processedValues = {
-      ...enrichBiannualLocationCodes(withoutSkippedCaAnswers(values)),
-      reasonStoppedFeedingw: processArrayWithOther(values.reasonStoppedFeedingw, values.reasonStoppedFeedingw_other),
-      medicineConsumed: processArrayWithOther(values.medicineConsumed, values.medicineConsumed_other),
-      reasonAdmitted: processArrayWithOther(values.reasonAdmitted, values.reasonAdmitted_other),
-      otherThanMilkGiven: processArrayWithOther(values.otherThanMilkGiven, values.otherThanMilkGiven_other),
-      otherThanMilkGivenReason: processArrayWithOther(values.otherThanMilkGivenReason, values.otherThanMilkGivenReason_other),
-      awwDiscussion: processArrayWithOther(values.awwDiscussion, values.awwDiscussion_other),
-      awwCounsel: processArrayWithOther(values.awwCounsel, values.awwCounsel_other),
-      ashaInform: processArrayWithOther(values.ashaInform, values.ashaInform_other),
-      ashaUsedtoInform: processArrayWithOther(values.ashaUsedtoInform, values.ashaUsedtoInform_other)
-    };
-
-    // DEBUG — remove after verifying other_text fix
-    console.log('[DEBUG] ashaInform raw:', values.ashaInform, '| other text:', values.ashaInform_other);
-    console.log('[DEBUG] ashaInform processed:', processedValues.ashaInform);
-    console.log('[DEBUG] awwDiscussion processed:', processedValues.awwDiscussion);
-
-    // Always include coordinates in payload (either captured or fallback)
-    const payload = { 
-      ...processedValues, 
-      latitude: finalCoordinates.lat?.toString() || '0', 
-      longitude: finalCoordinates.lng?.toString() || '0',
-      ...surveyLocationMetadata(finalCoordinates)
-    };
-
-    try {
-      const res = await apiService.post('/form/biannual', payload);
-      setLoadingStatus(false);
-      setSubmitting(false);
-      
-      // Check for actual success: only statusCode: 200 indicates success
-      if (res.statusCode === 200) {
-        // Increment daily count for surveyors and sync with API
-        if (isSurveyorUser()) {
-          try {
-            incrementDailyCount(null, 'concurrent');
-            syncAfterSubmission(apiService, 'concurrent').catch((error) => {
-              console.error('Error syncing daily count with API:', error);
-            });
-          } catch (error) {
-            console.error('Error updating daily count:', error);
-          }
-        }
-
-        setShowSaveOfflineOption(false); // Hide Save Offline button on successful submission
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: hasValidCoordinates 
-            ? "Form submitted successfully with location data!" 
-            : "Form submitted successfully with default coordinates!",
-          type: "success",
-        });
-
-        await autoSave.clearDraft(); // submitted — don't offer it for restore next time
-        resetForm();
-        setTimeout(() => {
-          navigate("/survey/list", { replace: true });
-        }, 1000);
-      } else {
-        // Handle backend errors (including 200 responses with error statusCode)
-        const backendMessage = res.message || res.error || "Form submission failed";
-        const errorStatusCode = res.statusCode || 'Unknown';
-        
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: `Submission failed: ${backendMessage}. Please try again.`,
-          type: "error",
-        });
-        
-        // Show WhatsApp contact dialog for backend errors
-        setWhatsAppErrorMessage(`Backend Error (${errorStatusCode}): ${backendMessage}`);
-        setErrorPayload(payload);
-        setShowWhatsAppDialog(true);
-      }
-    } catch (error) {
-      // Handle network/server errors with improved error messages
-      console.error('BiAnnual form submission error:', error);
-      const statusCode = error.response?.status || error.status;
-      
-      if (statusCode === 401 || statusCode === 403) {
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: "Session expired. Please login again.",
-          type: "error",
-        });
-        return;
-      }
-      
-      if (statusCode >= 500) {
-        setShowSnackBar(true);
-        setSnackBarMessage({
-          text: "Server error. Please try again later.",
-          type: "error",
-        });
-        
-        // Show WhatsApp contact dialog for server errors
-        setWhatsAppErrorMessage(`Server Error (${statusCode}): Please try again later or contact support`);
-        setErrorPayload(payload);
-        setShowWhatsAppDialog(true);
-        return;
-      }
-      
-      const backendMessage = error.response?.data?.message || error.response?.data?.error || error.message;
-      setShowSnackBar(true);
-      setSnackBarMessage({
-        text: `Error: ${backendMessage}. Please try again.`,
-        type: "error",
-      });
-      
-      // Show WhatsApp contact dialog for other errors
-      setWhatsAppErrorMessage(`Network/Connection Error: ${backendMessage}`);
-      setErrorPayload(payload);
-      setShowWhatsAppDialog(true);
-    }
-  };
-
-  const handleSubmissionFailure = (payload, resetForm, setSubmitting, response) => {
-    setLoadingStatus(false);
-    setSubmitting(false);
-    setSubmitButtonDisabled(false);
-    setShowSaveOfflineOption(true); // Show Save Offline button after API failure
-    
-    // Create error object for the dialog
-    const error = {
-      status: response?.statusCode || 'Unknown',
-      message: response?.message || response?.error || "Form submission failed",
-      response: { data: response }
-    };
-    
-    // Show error dialog
-    setCurrentError(error);
-    setCurrentPayload(payload);
-    setShowErrorDialog(true);
-  };
-
-  const handleSubmissionError = (error, payload, resetForm, setSubmitting) => {
-    console.error('Form submission error:', error);
-    setLoadingStatus(false);
-    setSubmitting(false);
-    setSubmitButtonDisabled(false);
-    setShowSaveOfflineOption(true); // Show Save Offline button after API failure
-    
-    const statusCode = error.response?.status || error.status;
-    
-    // Handle authentication/authorization errors
-    if (statusCode === 401 || statusCode === 403) {
-      setShowSnackBar(true);
-      setSnackBarMessage({
-        text: "Session expired. Please login again.",
-        type: "error",
-      });
-      return;
-    }
-    
-    // For all other errors, show error dialog
-    setCurrentError(error);
-    setCurrentPayload(payload);
-    setShowErrorDialog(true);
-  };
-
-  const handleSaveOffline = async (values, { resetForm, setSubmitting }) => {
-    // Disable submit button immediately
-    setSubmitButtonDisabled(true);
-    setLoadingStatus(true);
-
-    // Helper function to handle array fields with other option
-    const processArrayWithOther = (array, otherValue) => {
-      if (!Array.isArray(array)) return array || '';
-      const values = [...array];
-      const otherIndex = values.findIndex((v) => v.toLowerCase() === 'other');
-      if (otherValue && otherIndex !== -1) {
-        values.splice(otherIndex, 1);
-        values.push(`Other - ${otherValue}`);
-      }
-      return values.join(',');
-    };
-
-    // Process the form data to convert arrays to strings
-    const processedValues = {
-      ...enrichBiannualLocationCodes(withoutSkippedCaAnswers(values)),
-      reasonStoppedFeedingw: processArrayWithOther(values.reasonStoppedFeedingw, values.reasonStoppedFeedingw_other),
-      medicineConsumed: processArrayWithOther(values.medicineConsumed, values.medicineConsumed_other),
-      reasonAdmitted: processArrayWithOther(values.reasonAdmitted, values.reasonAdmitted_other),
-      otherThanMilkGiven: processArrayWithOther(values.otherThanMilkGiven, values.otherThanMilkGiven_other),
-      otherThanMilkGivenReason: processArrayWithOther(values.otherThanMilkGivenReason, values.otherThanMilkGivenReason_other),
-      awwDiscussion: processArrayWithOther(values.awwDiscussion, values.awwDiscussion_other),
-      awwCounsel: processArrayWithOther(values.awwCounsel, values.awwCounsel_other),
-      ashaInform: processArrayWithOther(values.ashaInform, values.ashaInform_other),
-      ashaUsedtoInform: processArrayWithOther(values.ashaUsedtoInform, values.ashaUsedtoInform_other)
-    };
-
-    const finalCoordinates = coordinates || { lat: 0, lng: 0 };
-    const payload = {
-      ...processedValues,
-      latitude: finalCoordinates?.lat ? finalCoordinates.lat.toString() : (values.latitude || '0'),
-      longitude: finalCoordinates?.lng ? finalCoordinates.lng.toString() : (values.longitude || '0'),
-      ...surveyLocationMetadata(finalCoordinates)
-    };
-    
-    try {
-      await saveOfflineForm({ url: '/form/biannual', data: { ...payload, responseMode: 'offline' } });
-      
-      // Clear auto-save draft after offline save
-      await autoSave.clearDraft();
-      setHasUnsavedChanges(false);
-      
-      resetForm();
-      if(setSubmitting) setSubmitting(false);
-      setShowSnackBar(true);
-      setShowSaveOfflineOption(false);
-      setSnackBarMessage({
-        text: "Form saved offline. It will sync when you're online.",
-        type: "warning",
-      });
+  /** Show field errors beside their inputs and keep every answer on screen. */
+  const showFormErrors = (fieldErrors, message) => {
+    const fields = Object.keys(fieldErrors || {});
+    const formik = formikRef.current;
+    if (fields.length && formik) {
+      formik.setTouched({ ...formik.touched, ...Object.fromEntries(fields.map((f) => [f, true])) }, false);
+      formik.setErrors(fieldErrors);
+      // Errors only on General Information while on the caregiver step: go back to show them.
+      if (step === 1 && fields.every((f) => STEP0_FIELDS.has(f))) setStep(0);
       setTimeout(() => {
-        navigate("/survey/list", { replace: true });
-      }, 3000);
+        const element = document.querySelector(`[name="${fields[0]}"]`);
+        element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }, 500);
+    }
+    setShowSnackBar(true);
+    setSnackBarMessage({ text: message || errorSummary(fieldErrors), type: "error" });
+  };
+
+  /**
+   * Validate the whole questionnaire and the final request. Returns
+   * { request, clientSubmissionId } or null (errors are shown).
+   */
+  const prepareSubmission = async (values) => {
+    const yupErrors = await collectYupErrors(
+      [step0ValidationSchema, values.careGiverInterview === 'Yes' ? step1ValidationSchema : null],
+      values,
+    );
+    const request = buildRequest(values);
+    const { fields, unmatched } = mapRequestErrors(validateBiannualRequest(request), biannualFieldForKey, values);
+    const errors = { ...fields, ...yupErrors };
+    if (Object.keys(errors).length > 0) {
+      showFormErrors(errors, `Please fill all required fields. ${errorSummary(errors)}`);
+      return null;
+    }
+    if (Object.keys(unmatched).length > 0) {
+      showFormErrors({}, Object.values(unmatched)[0]);
+      return null;
+    }
+    // Same request as the last attempt that may have reached the server: reuse that
+    // attempt (same id, same bytes) so the server can recognise a repeat.
+    const previous = preparedRef.current;
+    const sameAsPrevious = previous && JSON.stringify(previous.request) === JSON.stringify(request);
+    if (sameAsPrevious) return previous;
+    return { request, clientSubmissionId: newClientId(), sent: false };
+  };
+
+  /** Queue a complete, validated request for upload. Keeps the form if storage fails (A07). */
+  const queueOffline = async (prepared) => {
+    setSubmitButtonDisabled(true);
+    setLoadingStatus(true);
+    try {
+      await saveOfflineForm(prepared.sent
+        // Already POSTed (the response may have been lost): queue the byte-identical
+        // request under the same id, so a replay the server already saved returns the
+        // original result instead of saving it twice (A08).
+        ? { url: BIANNUAL_URL, data: prepared.request, clientSubmissionId: prepared.clientSubmissionId }
+        // Never sent: a normal offline submission with a fresh id.
+        : { url: BIANNUAL_URL, data: { ...prepared.request, responseMode: 'offline' } });
     } catch (error) {
       console.error('Error saving form offline:', error);
+      setLoadingStatus(false);
+      setSubmitButtonDisabled(false);
       setShowSnackBar(true);
       setSnackBarMessage({
-        text: "Failed to save form offline. Please try again.",
+        text: "Could not save the survey on this device. Your answers are still here - please try again.",
         type: "error",
       });
-      setSubmitButtonDisabled(false);
-      setLoadingStatus(false);
-      if(setSubmitting) setSubmitting(false);
+      return false;
     }
+    setLoadingStatus(false);
+    preparedRef.current = null;
+    setShowSaveOfflineOption(false);
+    await autoSave.clearDraft(); // queued — the draft is no longer needed
+    setHasUnsavedChanges(false);
+    formikRef.current?.resetForm();
+    setShowSnackBar(true);
+    setSnackBarMessage({
+      text: "Form saved offline. It will sync when you're online.",
+      type: "warning",
+    });
+    setTimeout(() => {
+      navigate(SURVEY_LIST_ROUTE, { replace: true });
+    }, 3000);
+    return true;
+  };
+
+  /** POST a prepared request; on failure keep it for Retry / Save Offline. */
+  const submitOnline = async (prepared) => {
+    // From here on the server may receive it: Retry and Save Offline reuse this attempt.
+    const attempt = prepared.sent ? prepared : { ...prepared, sent: true };
+    preparedRef.current = attempt;
+    setSubmitButtonDisabled(true);
+    setLoadingStatus(true);
+    setShowSaveOfflineOption(false);
+
+    const result = await sendSurvey(apiService.post, BIANNUAL_URL, attempt.request, attempt.clientSubmissionId);
+    setLoadingStatus(false);
+
+    if (result.status === 'ok') {
+      // Increment daily count for surveyors and sync with API
+      if (isSurveyorUser()) {
+        try {
+          incrementDailyCount(null, 'concurrent');
+          syncAfterSubmission(apiService, 'concurrent').catch((error) => {
+            console.error('Error syncing daily count with API:', error);
+          });
+        } catch (error) {
+          console.error('Error updating daily count:', error);
+        }
+      }
+      preparedRef.current = null;
+      setShowSnackBar(true);
+      setSnackBarMessage({
+        text: hasValidCoordinates
+          ? "Form submitted successfully with location data!"
+          : "Form submitted successfully with default coordinates!",
+        type: "success",
+      });
+      await autoSave.clearDraft(); // submitted — don't offer it for restore next time
+      setHasUnsavedChanges(false);
+      formikRef.current?.resetForm();
+      setTimeout(() => {
+        navigate(SURVEY_LIST_ROUTE, { replace: true });
+      }, 1000);
+      return;
+    }
+
+    setSubmitButtonDisabled(false);
+    if (result.status === 'auth') {
+      setShowSnackBar(true);
+      setSnackBarMessage({ text: result.message, type: "error" });
+      return;
+    }
+    if (result.status === 'invalid') {
+      // C1: the server rejected the data. Show its message, mark the fields it
+      // names, keep every answer. Retrying or queueing the same data would fail again.
+      const { fields } = mapRequestErrors(result.fieldErrors, biannualFieldForKey, formikRef.current?.values || {});
+      showFormErrors(fields, `Submission failed: ${result.message}`);
+      return;
+    }
+    // Network / server problem: offer Retry and Save Offline with the same request.
+    setShowSaveOfflineOption(true);
+    setCurrentError({
+      status: result.statusCode,
+      message: result.message,
+      response: result.error ? result.error.response : { data: result.body },
+    });
+    setShowErrorDialog(true);
+  };
+
+  /** Formik submit on the final step: validate everything, then send or queue. */
+  const handleFinalSubmit = async (values) => {
+    const prepared = await prepareSubmission(values);
+    if (!prepared) return;
+    if (!isOnline) await queueOffline(prepared);
+    else await submitOnline(prepared);
+  };
+
+  /** The page's Save Offline button: same validation as Submit, never a bypass. */
+  const handleSaveOfflineClick = async (values) => {
+    const prepared = await prepareSubmission(values);
+    if (prepared) await queueOffline(prepared);
   };
 
   // Get today's date in the format YYYY-MM-DD
@@ -1572,23 +1445,8 @@ const BiAnnual = () => {
     String(date.getMonth() + 1).padStart(2, '0') + '-' +
     String(date.getDate()).padStart(2, '0');
 
-  const resolveChildId = formValue => {
-    try {
-      const formattedDistrictCode = address?.district_code ? address.district_code.toString().padStart(3, '0') : '000';
-      const formattedBlockCode = address?.block_code ? address.block_code.toString().padStart(4, '0') : '0000';
-      const formattedVillageCode = formValue?.villageCode ? formValue.villageCode.toString().padStart(2, '0').slice(-2) : '00';
-      const formattedClusterCode = formValue?.clusterCode ? formValue.clusterCode.toString().padStart(2, '0') : '00';
-      const formattedStructureCode = formValue?.structureCode ? formValue.structureCode.toString().padStart(2, '0') : '00';
-      const formattedHouseholdNumber = formValue?.householdNumber ? formValue.householdNumber.toString().padStart(3, '0') : '000';
-      // Concatenate all formatted values
-      const childId = formattedDistrictCode + formattedBlockCode + formattedVillageCode + formattedClusterCode + formattedStructureCode + formattedHouseholdNumber;
-
-      return childId;
-    } catch (error) {
-      console.error('Error in resolveChildId:', error);
-      return '';  // child_id is varchar(16); a longer sentinel is rejected by the DB
-    }
-  }
+  // Child ID preview: the same C5 rule the request uses (biannualChildId), built
+  // from the form's own codes so it also works after a draft restore.
 
   // Calculate child age in months from date of birth
   const getDobMonths = date => {
@@ -1624,9 +1482,17 @@ const BiAnnual = () => {
     // Restore draft if requested
     useEffect(() => {
       if (draftToRestore && draftToRestore.formData) {
-        Object.keys(draftToRestore.formData).forEach(k => {
-          setFieldValue(k, draftToRestore.formData[k]);
+        const restored = draftToRestore.formData;
+        Object.keys(restored).forEach(k => {
+          setFieldValue(k, restored[k]);
         });
+        // Rebuild the location selection so the district/block/village lists work again.
+        setAddress(locationEntryFor(restored));
+        setSelectedVillage(
+          restored.state && restored.district && restored.block && restored.village
+            ? getVillageOptionsByBlockName(restored.state, restored.district, restored.block)?.find((x) => x.text === restored.village) || null
+            : null
+        );
         if (draftToRestore.coordinates) setCoordinates(draftToRestore.coordinates);
         setDraftToRestore(null);
       }
@@ -1639,29 +1505,25 @@ const BiAnnual = () => {
   const handleErrorDialogClose = () => {
     setShowErrorDialog(false);
     setCurrentError(null);
-    setCurrentPayload(null);
   };
 
-  const handleRetry = () => {
-    setIsRetrying(true);
+  // Retry re-sends the request that was built (same submission id), not the form values.
+  const handleRetry = async () => {
     setShowErrorDialog(false);
-    // Retry the form submission
-    if (currentPayload) {
-      handleSubmit(currentPayload, { 
-        resetForm: () => {}, 
-        setSubmitting: () => {} 
-      });
+    const prepared = preparedRef.current;
+    if (!prepared) return;
+    setIsRetrying(true);
+    try {
+      await submitOnline(prepared);
+    } finally {
+      setIsRetrying(false);
     }
-    setIsRetrying(false);
   };
 
+  // The dialog's Save Offline queues the request that just failed to send.
   const handleErrorSaveOffline = () => {
-    if (currentPayload) {
-      handleSaveOffline(currentPayload, { 
-        resetForm: () => {}, 
-        setSubmitting: () => {} 
-      });
-    }
+    const prepared = preparedRef.current;
+    if (prepared) queueOffline(prepared);
   };
 
   return (
@@ -1756,56 +1618,12 @@ const BiAnnual = () => {
               enableReinitialize={false}
               validationSchema={(values) =>
                 step === 0 ? step0ValidationSchema : step1ValidationSchema}
+              innerRef={formikRef}
               onSubmit={async (values, actions) => {
-                console.log("Caregiver interview:", values.careGiverInterview);
-                console.log("Step 1 condition:", step === 1);
-                console.log("Caregiver No condition:", values.careGiverInterview === 'No');
-                console.log("Should submit:", step === 1 || values.careGiverInterview === 'No');
-                
                 if (step === 1 || values.careGiverInterview === 'No') {
-                  console.log("✅ Proceeding to handleFormSubmit");
-                  
-                  // Validate before submission
-                  const currentValidationSchema = step === 0 ? step0ValidationSchema : step1ValidationSchema;
-                  try {
-                    await currentValidationSchema.validate(values, { abortEarly: false });
-                    console.log("✅ Final validation passed, submitting form");
-                    
-                    const valuesWithCoordinates = {
-                      ...values,
-                      latitude: coordinates?.lat?.toString() || values.latitude || '0',
-                      longitude: coordinates?.lng?.toString() || values.longitude || '0'
-                    };
-                    await handleSubmit(valuesWithCoordinates, actions);
-                  } catch (err) {
-                    console.log("❌ Final validation failed:", err);
-                    const errors = {};
-                    err.inner.forEach((validationError) => {
-                      errors[validationError.path] = validationError.message;
-                    });
-                    actions.setTouched(
-                      Object.keys(values).reduce((acc, field) => {
-                        acc[field] = true;
-                        return acc;
-                      }, {})
-                    );
-                    actions.setErrors(errors);
-                    
-                    // Show snackbar with error message
-                    setShowSnackBar(true);
-                    setSnackBarMessage({
-                      text: `Please fill all required fields. ${Object.keys(errors).length} field(s) have errors.`,
-                      type: "error",
-                    });
-                    
-                    // Scroll to first error
-                    setTimeout(() => {
-                      const element = document.querySelector(`[name="${Object.keys(errors)[0]}"]`);
-                      element?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                    }, 500);
-                  }
+                  // Final step: full validation, one canonical request, then send or queue.
+                  await handleFinalSubmit(values);
                 } else {
-                  console.log("➡️ Moving to next step");
                   await handleNext(values, actions);
                 }
               }}
@@ -2238,7 +2056,8 @@ const BiAnnual = () => {
                               type="text"
                               name="childId"
                               id="childId"
-                              value={resolveChildId(values)}
+                              value={biannualChildId(values) || ''}
+                              placeholder="Filled in from the location and household codes"
                               onChange={handleChange}
                               onBlur={handleBlur}
                               InputProps={{
@@ -2313,7 +2132,7 @@ const BiAnnual = () => {
                                   <Button
                                     variant="outlined"
                                     color="warning"
-                                    onClick={() => handleSaveOffline(values, { resetForm, setSubmitting: () => {} })}
+                                    onClick={() => handleSaveOfflineClick(values)}
                                     disabled={loadingStatus}
                                     sx={{ ml: 2 }}
                                   >
@@ -2336,7 +2155,7 @@ const BiAnnual = () => {
                                   <Button
                                     variant="outlined"
                                     color="warning"
-                                    onClick={() => handleSaveOffline(values, { resetForm, setSubmitting: () => {} })}
+                                    onClick={() => handleSaveOfflineClick(values)}
                                     disabled={loadingStatus}
                                     sx={{ ml: 2 }}
                                   >
@@ -5156,7 +4975,7 @@ const BiAnnual = () => {
                                   <Button
                                     variant="outlined"
                                     color="warning"
-                                    onClick={() => handleSaveOffline(values, { resetForm, setSubmitting: () => {} })}
+                                    onClick={() => handleSaveOfflineClick(values)}
                                     disabled={loadingStatus}
                                     sx={{ ml: 2 }}
                                   >
@@ -5179,7 +4998,7 @@ const BiAnnual = () => {
                                   <Button
                                     variant="outlined"
                                     color="warning"
-                                    onClick={() => handleSaveOffline(values, { resetForm, setSubmitting: () => {} })}
+                                    onClick={() => handleSaveOfflineClick(values)}
                                     disabled={loadingStatus}
                                     sx={{ ml: 2 }}
                                   >

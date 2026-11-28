@@ -15,8 +15,18 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+
+// The month picker holds a dayjs value; drafts store it as an ISO string.
+const DAYJS_DRAFT_CODEC = {
+    encode: (v) => (v && typeof v.toISOString === 'function' ? v.toISOString() : null),
+    decode: (saved, initial) => {
+        const d = saved ? dayjs(saved) : null;
+        return d && d.isValid() ? d : initial;
+    },
+};
 
 // Styled components for better section styling
 const StyledDetails = styled('details')(({ theme }) => ({
@@ -43,25 +53,27 @@ const StyledDetails = styled('details')(({ theme }) => ({
 
 const ANMCHOKnowledgeAssessmentSection = React.forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // State management for checkbox groups and "Others" options
-    const [confirmChildSam, setConfirmChildSam] = useState('');
-    const [assessingMedicalComplication, setAssessingMedicalComplication] = useState([]);
-    const [assessingMedicalComplicationOther, setAssessingMedicalComplicationOther] = useState('');
-    const [childSamReferredNrc, setChildSamReferredNrc] = useState([]);
-    const [childSamReferredNrcOther, setChildSamReferredNrcOther] = useState('');
-    const [medicinesGivenCommunityLevel, setMedicinesGivenCommunityLevel] = useState([]);
-    const [medicinesGivenCommunityLevelOther, setMedicinesGivenCommunityLevelOther] = useState('');
+    const [confirmChildSam, setConfirmChildSam] = useDraftField(sectionDraft, 'confirmChildSam', '');
+    const [assessingMedicalComplication, setAssessingMedicalComplication] = useDraftField(sectionDraft, 'assessingMedicalComplication', []);
+    const [assessingMedicalComplicationOther, setAssessingMedicalComplicationOther] = useDraftField(sectionDraft, 'assessingMedicalComplicationOther', '');
+    const [childSamReferredNrc, setChildSamReferredNrc] = useDraftField(sectionDraft, 'childSamReferredNrc', []);
+    const [childSamReferredNrcOther, setChildSamReferredNrcOther] = useDraftField(sectionDraft, 'childSamReferredNrcOther', '');
+    const [medicinesGivenCommunityLevel, setMedicinesGivenCommunityLevel] = useDraftField(sectionDraft, 'medicinesGivenCommunityLevel', []);
+    const [medicinesGivenCommunityLevelOther, setMedicinesGivenCommunityLevelOther] = useDraftField(sectionDraft, 'medicinesGivenCommunityLevelOther', '');
     // Re-add state for cmamTraining (7.1)
-    const [cmamTraining, setCmamTraining] = useState('');
+    const [cmamTraining, setCmamTraining] = useDraftField(sectionDraft, 'cmamTraining', '');
     // Add state for date picker
-    const [lastTrainingMonthYear, setLastTrainingMonthYear] = useState(dayjs());
+    const [lastTrainingMonthYear, setLastTrainingMonthYear] = useDraftField(sectionDraft, 'lastTrainingMonthYear', () => dayjs(), DAYJS_DRAFT_CODEC);
     
     // State to track if validation should be shown (only after submit attempt)
     const [showValidation, setShowValidation] = useState(false);
     
     // State to track form field values for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         cmamTraining: '',
         cmamTrainingMonth: '',
         confirmChildSam: '',
@@ -192,10 +204,6 @@ const ANMCHOKnowledgeAssessmentSection = React.forwardRef((props, ref) => {
         return true;
     };
     
-    // Expose validation function to parent component
-    React.useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     // Helper function to check if field is empty and validation should show
     const shouldShowError = (fieldName) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, forwardRef } from 'react'
 import { useNavigate } from "react-router-dom";
 import styles from "./survey.module.css";
 import * as Yup from "yup";
@@ -30,10 +30,12 @@ import { ArrowBack, ArrowForward, Check } from "@mui/icons-material";
 import { getFormLocationHelpers } from "utils/formLocations";
 import { useTranslation } from "react-i18next";
 import { filterNumberKeyDown } from 'utils'
-import { saveOfflineForm } from 'utils/indexDB'
 import useNetworkStatus from 'utils/networkState';
 import AwaRegistration from './AwaRegistration';
 import { styled } from '@mui/material/styles';
+import { useSectionDraft, useDraftField } from './rmc/sectionDraft';
+import { FOLLOWUP_FREQ_OTHER_MAX, otherDetailError } from './rmc/rmcLimits';
+import { textLength } from 'utils/textLimits';
 import { useCheckboxGroupWithOthers, useRadioGroupWithOthers, createOthersValidation } from 'utils/formUtils';
 import { calculateWHZ, classifyWHZ } from 'utils/whoZScore';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -134,12 +136,14 @@ const validationSchema = Yup.object({
 
 const SkillAssessment = forwardRef((props, ref) => {
     const { t } = useTranslation();
+    // Answers are kept in a draft so autosave can store them and a restored draft can bring them back (A06).
+    const sectionDraft = useSectionDraft(ref, props, { triggerValidation: () => triggerValidation() });
     
     // Validation state
     const [showValidation, setShowValidation] = useState(false);
     
     // Form values state for validation
-    const [formValues, setFormValues] = useState({
+    const [formValues, setFormValues] = useDraftField(sectionDraft, 'formValues', {
         cmamTraining: '',
         childSex: '',
         childAge: '',
@@ -187,37 +191,37 @@ const SkillAssessment = forwardRef((props, ref) => {
         }
         return !value || value.trim() === '';
     };
-    const [cmamTraining, setCmamTraining] = useState('');
-    const [instrumentAww, setInstrumentAww] = useState('');
-    const [heightInstrument, setHeightInstrument] = useState('');
-    const [appetiteTestFood, setAppetiteTestFood] = useState([]);
-    const [appetiteTestFoodOther, setAppetiteTestFoodOther] = useState('');
-    const [childFollowupCmam, setChildFollowupCmam] = useState('');
-    const [childFollowupCmamOther, setChildFollowupCmamOther] = useState('');
-    const [activitiesFollowupCmam, setActivitiesFollowupCmam] = useState([]);
-    const [activitiesFollowupCmamOther, setActivitiesFollowupCmamOther] = useState('');
-    const [lastTrainingMonthYear, setLastTrainingMonthYear] = useState('');
-    const [lastDiscussionMonthYear, setLastDiscussionMonthYear] = useState('');
-    const [measurementFollowedStepDigital, setMeasurementFollowedStepDigital] = useState([]);
-    const [measurementFollowedStepMechanical, setMeasurementFollowedStepMechanical] = useState([]);
-    const [measurementFollowedStepSalter, setMeasurementFollowedStepSalter] = useState([]);
-    const [infantometerSteps, setInfantometerSteps] = useState([]);
-    const [stadiometerSteps, setStadiometerSteps] = useState([]);
-    const [nutritionalOedema, setNutritionalOedema] = useState([]);
-    const [childNrcMtc, setChildNrcMtc] = useState([]);
-    const [lastMeasurementDate, setLastMeasurementDate] = useState('');
-    const [childWeight, setChildWeight] = useState('');
-    const [childSex, setChildSex] = useState('');
-    const [childAge, setChildAge] = useState('');
-    const [childHeight, setChildHeight] = useState('');
-    const [childWeightAww, setChildWeightAww] = useState('');
-    const [childWeightFieldMonitor, setChildWeightFieldMonitor] = useState('');
-    const [childHeightInstrumentOther, setChildHeightInstrumentOther] = useState('');
-    const [childHeightAww, setChildHeightAww] = useState('');
-    const [childHeightFieldMonitor, setChildHeightFieldMonitor] = useState('');
-    const [classifyWastingAww, setClassifyWastingAww] = useState('');
-    const [nutritionalStatusXScorecard, setNutritionalStatusXScorecard] = useState('');
-    const [screeningSamChildren, setScreeningSamChildren] = useState('');
+    const [cmamTraining, setCmamTraining] = useDraftField(sectionDraft, 'cmamTraining', '');
+    const [instrumentAww, setInstrumentAww] = useDraftField(sectionDraft, 'instrumentAww', '');
+    const [heightInstrument, setHeightInstrument] = useDraftField(sectionDraft, 'heightInstrument', '');
+    const [appetiteTestFood, setAppetiteTestFood] = useDraftField(sectionDraft, 'appetiteTestFood', []);
+    const [appetiteTestFoodOther, setAppetiteTestFoodOther] = useDraftField(sectionDraft, 'appetiteTestFoodOther', '');
+    const [childFollowupCmam, setChildFollowupCmam] = useDraftField(sectionDraft, 'childFollowupCmam', '');
+    const [childFollowupCmamOther, setChildFollowupCmamOther] = useDraftField(sectionDraft, 'childFollowupCmamOther', '');
+    const [activitiesFollowupCmam, setActivitiesFollowupCmam] = useDraftField(sectionDraft, 'activitiesFollowupCmam', []);
+    const [activitiesFollowupCmamOther, setActivitiesFollowupCmamOther] = useDraftField(sectionDraft, 'activitiesFollowupCmamOther', '');
+    const [lastTrainingMonthYear, setLastTrainingMonthYear] = useDraftField(sectionDraft, 'lastTrainingMonthYear', '');
+    const [lastDiscussionMonthYear, setLastDiscussionMonthYear] = useDraftField(sectionDraft, 'lastDiscussionMonthYear', '');
+    const [measurementFollowedStepDigital, setMeasurementFollowedStepDigital] = useDraftField(sectionDraft, 'measurementFollowedStepDigital', []);
+    const [measurementFollowedStepMechanical, setMeasurementFollowedStepMechanical] = useDraftField(sectionDraft, 'measurementFollowedStepMechanical', []);
+    const [measurementFollowedStepSalter, setMeasurementFollowedStepSalter] = useDraftField(sectionDraft, 'measurementFollowedStepSalter', []);
+    const [infantometerSteps, setInfantometerSteps] = useDraftField(sectionDraft, 'infantometerSteps', []);
+    const [stadiometerSteps, setStadiometerSteps] = useDraftField(sectionDraft, 'stadiometerSteps', []);
+    const [nutritionalOedema, setNutritionalOedema] = useDraftField(sectionDraft, 'nutritionalOedema', []);
+    const [childNrcMtc, setChildNrcMtc] = useDraftField(sectionDraft, 'childNrcMtc', []);
+    const [lastMeasurementDate, setLastMeasurementDate] = useDraftField(sectionDraft, 'lastMeasurementDate', '');
+    const [childWeight, setChildWeight] = useDraftField(sectionDraft, 'childWeight', '');
+    const [childSex, setChildSex] = useDraftField(sectionDraft, 'childSex', '');
+    const [childAge, setChildAge] = useDraftField(sectionDraft, 'childAge', '');
+    const [childHeight, setChildHeight] = useDraftField(sectionDraft, 'childHeight', '');
+    const [childWeightAww, setChildWeightAww] = useDraftField(sectionDraft, 'childWeightAww', '');
+    const [childWeightFieldMonitor, setChildWeightFieldMonitor] = useDraftField(sectionDraft, 'childWeightFieldMonitor', '');
+    const [childHeightInstrumentOther, setChildHeightInstrumentOther] = useDraftField(sectionDraft, 'childHeightInstrumentOther', '');
+    const [childHeightAww, setChildHeightAww] = useDraftField(sectionDraft, 'childHeightAww', '');
+    const [childHeightFieldMonitor, setChildHeightFieldMonitor] = useDraftField(sectionDraft, 'childHeightFieldMonitor', '');
+    const [classifyWastingAww, setClassifyWastingAww] = useDraftField(sectionDraft, 'classifyWastingAww', '');
+    const [nutritionalStatusXScorecard, setNutritionalStatusXScorecard] = useDraftField(sectionDraft, 'nutritionalStatusXScorecard', '');
+    const [screeningSamChildren, setScreeningSamChildren] = useDraftField(sectionDraft, 'screeningSamChildren', '');
     const [calculatedWHZ, setCalculatedWHZ] = useState(null);
     // true when calculated WHZ falls outside the physiologically valid window −6 … +6
     const [whzOutOfRange, setWhzOutOfRange] = useState(false);
@@ -365,6 +369,12 @@ const SkillAssessment = forwardRef((props, ref) => {
             }
         }
         
+        // 4.23 "Others - <detail>" must fit its 100-character column (F05).
+        if (!firstInvalidField && formValues.childFollowupCmam === 'Others'
+            && otherDetailError(formValues.childFollowupCmamOther, FOLLOWUP_FREQ_OTHER_MAX)) {
+            firstInvalidField = 'childFollowupCmamOther';
+        }
+
         // If we found an invalid field, scroll to it
         if (firstInvalidField) {
             setTimeout(() => {
@@ -384,10 +394,6 @@ const SkillAssessment = forwardRef((props, ref) => {
         return true;
     };
     
-    // Expose validation function to parent component
-    useImperativeHandle(ref, () => ({
-        triggerValidation
-    }));
 
     return (
         <div id="skillAssessmentForm" name="skillAssessmentForm">
@@ -1975,8 +1981,13 @@ const SkillAssessment = forwardRef((props, ref) => {
                                     setChildFollowupCmamOther(e.target.value);
                                     updateFormValue('childFollowupCmamOther', e.target.value);
                                 }}
-                                error={shouldShowError('childFollowupCmamOther')}
-                                helperText={shouldShowError('childFollowupCmamOther') ? (t('validationRequiredField') || 'This field is required') : ''}
+                                error={shouldShowError('childFollowupCmamOther') || !!otherDetailError(formValues.childFollowupCmamOther, FOLLOWUP_FREQ_OTHER_MAX)}
+                                helperText={
+                                    otherDetailError(formValues.childFollowupCmamOther, FOLLOWUP_FREQ_OTHER_MAX)
+                                    || (shouldShowError('childFollowupCmamOther')
+                                        ? (t('validationRequiredField') || 'This field is required')
+                                        : `${textLength((formValues.childFollowupCmamOther || '').trim())}/${FOLLOWUP_FREQ_OTHER_MAX}`)
+                                }
                             />
                         </Grid>
                     )}
