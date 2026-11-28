@@ -58,6 +58,7 @@ const {
   getBlockOptions,
   getDistrictOptionsByStateName,
   getBlockOptionsByDistrictName,
+  getVillageOptionsByBlockName,
 } = getFormLocationHelpers("FOLLOWUP");
 
 /** Re-derive location codes from selected labels so payload always has codes. */
@@ -81,6 +82,13 @@ function enrichFollowupLocationCodes(v) {
     if (blockOpt?.block_code != null && blockOpt.block_code !== "") {
       out.blockCode = String(blockOpt.block_code).padStart(4, "0");
     }
+  }
+  if (out.village && out.block) {
+    const villageName = out.village.trim().toLowerCase();
+    const matches = getVillageOptionsByBlockName(out.state, out.district, out.block)
+      .filter(option => option.text?.trim().toLowerCase() === villageName);
+    const codes = new Set(matches.map(option => option.village_code).filter(Boolean));
+    if (codes.size === 1) out.villageCode = String([...codes][0]);
   }
   return out;
 }
