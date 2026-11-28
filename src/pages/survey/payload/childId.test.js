@@ -78,6 +78,17 @@ describe('buildChildId', () => {
     expect(legacyChildId(base)).toBe(legacyChildId({ ...base, villageCode: '345' }));
   });
 
+  it('keeps the established 18-character ID for 6-digit block codes', () => {
+    // QA and production form locations use 6-digit census block codes.
+    expect(buildChildId({ districtCode: '999', blockCode: '999999', villageCode: '99', clusterCode: '7', structureCode: '01', householdNumber: '9' }))
+      .toBe('999999999990701009');
+    expect(buildChildId({ districtCode: '881', blockCode: '881001', villageCode: '01', clusterCode: '2', structureCode: '1', householdNumber: '3' }))
+      .toBe('881881001010201003');
+    // ...but an over-width village still switches to the dash format.
+    expect(buildChildId({ districtCode: '012', blockCode: '123456', villageCode: '345', clusterCode: '1', structureCode: '1', householdNumber: '1' }))
+      .toBe('012-123456-345-01-01-001');
+  });
+
   it('keeps block 12345 + village 06 apart from block 1234 + village 506', () => {
     const a = buildChildId({ ...base, blockCode: '12345', villageCode: '06' });
     const b = buildChildId({ ...base, blockCode: '1234', villageCode: '506' });

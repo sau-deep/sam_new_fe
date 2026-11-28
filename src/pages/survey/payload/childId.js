@@ -9,7 +9,9 @@
 //     otherwise keep it exactly as stored and left-pad with '0' only when shorter.
 //     Nothing is ever truncated.
 //  2. If every normalised code is exactly its width, the ID is the plain
-//     concatenation: today's format, so existing numeric IDs are unchanged.
+//     concatenation: today's format, so existing numeric IDs are unchanged. The block
+//     code has two legacy widths, 4 and 6 (6-digit census block codes give the
+//     established 18-character ID), so a 6-character block also keeps the plain format.
 //  3. Otherwise the normalised codes are joined with '-' ("045-0123-345-01-02-003"),
 //     so variable-width codes cannot run into each other (block 12345 + village 06
 //     and block 1234 + village 506 stay different).
@@ -25,6 +27,9 @@ export const CODE_WIDTHS = Object.freeze({
 });
 
 export const CHILD_ID_SEPARATOR = '-';
+
+/** The other legacy block width: 6-digit block codes give the established 18-character ID. */
+export const LEGACY_LONG_BLOCK_WIDTH = 6;
 
 const DIGITS = /^[0-9]+$/;
 const charCount = s => Array.from(s).length;
@@ -65,8 +70,9 @@ export function buildChildId({ districtCode, blockCode, villageCode, clusterCode
     [clusterCode, CODE_WIDTHS.cluster],
     [structureCode, CODE_WIDTHS.structure],
     [householdNumber, CODE_WIDTHS.household],
-  ].map(([code, width]) => ({ code: normalizeCode(code, width), width }));
+  ].map(([code, width], i) => ({ code: normalizeCode(code, width), width, isBlock: i === 1 }));
   if (parts.some(p => p.code === null)) return null;
-  const legacyFormat = parts.every(p => charCount(p.code) === p.width);
+  const legacyFormat = parts.every(p => charCount(p.code) === p.width
+    || (p.isBlock && charCount(p.code) === LEGACY_LONG_BLOCK_WIDTH));
   return parts.map(p => p.code).join(legacyFormat ? '' : CHILD_ID_SEPARATOR);
 }
